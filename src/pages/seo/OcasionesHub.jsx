@@ -3,6 +3,7 @@ import { AppContext } from '../../App';
 import SEOHead, { generateBreadcrumbData } from '../../components/SEOHead';
 import SEOLink from '../../components/SEOLink';
 import { getAllOccasions, getFeaturedOccasions, getCurrentSeasonalOccasions } from '../../data/seoData';
+import { CenzoMark } from '../../components/Cenzo';
 
 /**
  * OcasionesHub - SEO Hub page for all occasions
@@ -55,7 +56,7 @@ export default function OcasionesHub() {
             <div className="w-8 h-8 bg-landing-primary rounded-lg flex items-center justify-center">
               <span className="text-white text-lg">🎵</span>
             </div>
-            <h2 className="text-white text-xl font-bold tracking-tight">RegalosQueCantan</h2>
+            <CenzoMark size={44} /><h2 className="text-white text-xl font-bold tracking-tight">RegalosQueCantan</h2>
           </SEOLink>
           <div className="flex flex-1 justify-end gap-4 md:gap-8 items-center">
             <nav className="hidden md:flex items-center gap-8">
@@ -77,7 +78,7 @@ export default function OcasionesHub() {
 
         {/* Seasonal Banner */}
         {seasonalOccasions.length > 0 && (
-          <div className="py-4 px-6" style={{ background: 'linear-gradient(135deg, #c9184a, #a01540)' }}>
+          <div className="py-4 px-6" style={{ background: 'linear-gradient(135deg, #B44F35, #8E3A26)' }}>
             <div className="max-w-[1000px] mx-auto text-center">
               <p className="text-white font-bold text-lg">
                 🎉 ¡{seasonalOccasions[0].name} se acerca! Crea tu canción ahora
@@ -94,7 +95,7 @@ export default function OcasionesHub() {
 
         {/* Hero */}
         <section className="relative py-20 px-6 overflow-hidden">
-          <div className="absolute inset-0 opacity-20" style={{ background: 'radial-gradient(ellipse at center top, #f20d8040 0%, transparent 70%)' }} />
+          <div className="absolute inset-0 opacity-20" style={{ background: 'radial-gradient(ellipse at center top, #E4795A40 0%, transparent 70%)' }} />
           <div className="relative max-w-[1000px] mx-auto">
             <h1 className="text-4xl md:text-6xl font-bold leading-tight tracking-tight font-display mb-5">
               Una Canción para<br/>Cada Ocasión
@@ -122,7 +123,7 @@ export default function OcasionesHub() {
                 >
                   <div className="text-4xl mb-4">{occasion.icon}</div>
                   <h3 className="text-white text-lg font-bold mb-1 group-hover:text-landing-primary transition-colors">{occasion.name}</h3>
-                  <p className="text-white/40 text-xs line-clamp-2 mb-3">
+                  <p className="text-white/55 text-xs line-clamp-2 mb-3">
                     {occasion.description?.split('.')[0] || 'Ocasión especial'}
                   </p>
                   {occasion.featured && (
@@ -144,7 +145,7 @@ export default function OcasionesHub() {
                 <div className="glass-morphism rounded-2xl p-8 text-center genre-card">
                   <div className="text-4xl mb-4">💎</div>
                   <h3 className="font-bold text-white mb-2">Único e Irrepetible</h3>
-                  <p className="text-white/40 text-sm">
+                  <p className="text-white/55 text-sm">
                     No existe otra canción igual en el mundo. Es un regalo 100% exclusivo.
                   </p>
                 </div>
@@ -152,7 +153,7 @@ export default function OcasionesHub() {
                 <div className="glass-morphism rounded-2xl p-8 text-center genre-card">
                   <div className="text-4xl mb-4">😭</div>
                   <h3 className="font-bold text-white mb-2">Emotivo</h3>
-                  <p className="text-white/40 text-sm">
+                  <p className="text-white/55 text-sm">
                     Escuchar su nombre en una canción provoca emociones que no olvidarán.
                   </p>
                 </div>
@@ -160,7 +161,7 @@ export default function OcasionesHub() {
                 <div className="glass-morphism rounded-2xl p-8 text-center genre-card">
                   <div className="text-4xl mb-4">♾️</div>
                   <h3 className="font-bold text-white mb-2">Para Siempre</h3>
-                  <p className="text-white/40 text-sm">
+                  <p className="text-white/55 text-sm">
                     A diferencia de flores o chocolates, la canción la pueden escuchar siempre.
                   </p>
                 </div>
@@ -180,8 +181,8 @@ export default function OcasionesHub() {
                   to="genre"
                   className="flex items-center justify-center gap-2 rounded-full h-14 px-8 text-white text-base font-bold animate-pulse-glow"
                   style={{
-                    background: 'linear-gradient(135deg, #c9184a, #a01540)',
-                    boxShadow: '0 4px 30px rgba(201, 24, 74, 0.4)'
+                    background: 'linear-gradient(135deg, #B44F35, #8E3A26)',
+                    boxShadow: '0 4px 30px rgba(180,79,53, 0.4)'
                   }}
                 >
                   Crear Mi Canción →
@@ -197,13 +198,13 @@ export default function OcasionesHub() {
             <div className="flex flex-col gap-4">
               <div className="flex items-center gap-2">
                 <span className="text-3xl">🎵</span>
-                <span className="font-bold text-lg text-white">RegalosQueCantan</span>
+                <CenzoMark size={38} /><span className="font-bold text-lg text-white">RegalosQueCantan</span>
               </div>
-              <p className="text-sm text-white/30">Canciones personalizadas en géneros latinos para cada ocasión especial.</p>
+              <p className="text-sm text-white/50">Canciones personalizadas en géneros latinos para cada ocasión especial.</p>
             </div>
             <div className="flex flex-col gap-4">
               <h4 className="font-bold text-white/50 uppercase text-xs tracking-widest">Navegación</h4>
-              <div className="flex flex-col gap-2 text-sm text-white/40">
+              <div className="flex flex-col gap-2 text-sm text-white/55">
                 <SEOLink to="landing" className="hover:text-white transition-colors text-left">Inicio</SEOLink>
                 <SEOLink to="generos" className="hover:text-white transition-colors text-left">Géneros</SEOLink>
                 <SEOLink to="ocasiones" className="hover:text-white transition-colors text-left">Ocasiones</SEOLink>
@@ -211,12 +212,12 @@ export default function OcasionesHub() {
             </div>
             <div className="flex flex-col gap-4">
               <h4 className="font-bold text-white/50 uppercase text-xs tracking-widest">Soporte</h4>
-              <div className="flex flex-col gap-2 text-sm text-white/40">
+              <div className="flex flex-col gap-2 text-sm text-white/55">
                 <a href="mailto:hola@regalosquecantan.com" className="hover:text-white transition-colors">Contáctanos</a>
               </div>
             </div>
           </div>
-          <div className="max-w-[1000px] mx-auto mt-12 pt-8 border-t border-white/5 text-center text-xs text-white/20">
+          <div className="max-w-[1000px] mx-auto mt-12 pt-8 border-t border-white/5 text-center text-xs text-white/55">
             <p>© {new Date().getFullYear()} RegalosQueCantan. Todos los derechos reservados.</p>
           </div>
         </footer>

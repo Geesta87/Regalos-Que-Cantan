@@ -4,6 +4,7 @@ import {
   getCurrentSubscription,
   enablePushNotifications,
 } from '../../services/push';
+import MakeSongModal from './MakeSongModal';
 
 // ──────────────────────────────────────────────────────────────────────────
 // SMS Inbox (Admin)
@@ -67,6 +68,19 @@ function formatTime(iso) {
   }
   return d.toLocaleDateString('es-MX', { month: 'short', day: 'numeric' }) +
     ' · ' + d.toLocaleTimeString('es-MX', { hour: 'numeric', minute: '2-digit' });
+}
+
+// How long a customer has been waiting on a human, for the Pending tab. Short
+// and glanceable ("3h", "1d 4h") — this is a triage cue, not a precise clock.
+function formatWait(iso) {
+  if (!iso) return '';
+  const mins = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 60000));
+  if (mins < 60) return `${mins}m`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  const rem = hours % 24;
+  return rem ? `${days}d ${rem}h` : `${days}d`;
 }
 
 function formatPhone(p) {
@@ -268,6 +282,12 @@ export default function SmsInboxTab({ accessToken }) {
   // { exchange, summary, loading, submitting, error, done }
   const [fixModal, setFixModal] = useState(null);
 
+  // "Make Song for Customer" — the OTHER direction: the customer wants us to
+  // build them a NEW song from what they told us in chat. Claude extracts the
+  // whole brief with evidence, a human confirms, then it runs through the normal
+  // generate-song pipeline. { turns, exchange }
+  const [makeSongModal, setMakeSongModal] = useState(null);
+
   useEffect(() => {
     const { supported, isIos, isStandalone } = getPushSupport();
     if (!supported) {
@@ -411,6 +431,19 @@ export default function SmsInboxTab({ accessToken }) {
     const q = search.trim().toLowerCase();
     // "Unread" pools both channels: any conversation with unread messages.
     // "Pinned" pools both channels too: every chat the owner pinned.
+    // "Pending" = wrote in while we were out of office and no human has replied
+    // yet. Oldest wait FIRST — the person who has been waiting since 9pm gets
+    // answered before the one who wrote ten minutes ago.
+    if (channelTab === 'pending') {
+      const waiting = conversations
+        .filter((c) => !!c.awaiting_reply_since)
+        .sort((a, b) => new Date(a.awaiting_reply_since) - new Date(b.awaiting_reply_since));
+      if (!q) return waiting;
+      return waiting.filter((c) =>
+        (c.customer_name || '').toLowerCase().includes(q) ||
+        (c.phone || '').includes(q)
+      );
+    }
     const inChannel = channelTab === 'unread'
       ? conversations.filter((c) => (c.unread || 0) > 0)
       : channelTab === 'pinned'
@@ -485,6 +518,12 @@ export default function SmsInboxTab({ accessToken }) {
     [conversations]
   );
 
+  // People who wrote in while we were away and still owe a human reply.
+  const totalPending = useMemo(
+    () => conversations.reduce((n, c) => n + (c.awaiting_reply_since ? 1 : 0), 0),
+    [conversations]
+  );
+
   // Conversations with an AI draft waiting anywhere — for the Unread tab badge.
   const totalDrafts = useMemo(
     () => conversations.reduce(
@@ -512,6 +551,20 @@ export default function SmsInboxTab({ accessToken }) {
   const turnsToText = (turns) =>
     turns.map((t) => `${t.who === 'customer' ? 'Cliente' : 'Nosotros'}: ${t.text}`).join('\n');
 
+  // The customer often TYPES their email into the chat (the thread itself only
+  // carries a phone, and orders are sometimes placed under a different number) —
+  // fish the most recent email out of THEIR messages so the song lookup can use
+  // it automatically. Skips our own addresses. (Owner hit this 2026-08-09: email
+  // sat in the conversation, form found no songs by phone.)
+  const emailFromTurns = (turns) => {
+    for (let i = turns.length - 1; i >= 0; i--) {
+      if (turns[i].who !== 'customer') continue;
+      const m = turns[i].text.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/);
+      if (m && !/@regalosquecantan\.com$/i.test(m[0])) return m[0].toLowerCase();
+    }
+    return '';
+  };
+
   // Open the confirmation modal and kick off the AI summary in the background.
   // INTAKE QUESTIONNAIRE (owner spec 2026-07-27): the modal now REQUIRES tying
   // the request to the exact song(s) — email/phone → paid filter → pick 1-2 from
@@ -522,14 +575,18 @@ export default function SmsInboxTab({ accessToken }) {
     if (!selected) return;
     const turns = buildTurns(selected);
     const exchange = turnsToText(turns);
+    // Prefill the email from the conversation itself (customers type it in chat
+    // when their order is under a different number than the thread's phone).
+    const chatEmail = emailFromTurns(turns);
     setFixModal({
       turns, exchange, summary: '', loading: true, submitting: false, error: '', done: false,
       // intake fields
-      phone: selected.phone || '', email: '', paid: true,
+      phone: selected.phone || '', email: chatEmail, paid: true,
       songs: null, searching: false, selectedSongs: [], searchFailed: '',
     });
-    // Auto-search right away when we already have the phone from the thread.
-    if (!isDemo && selected.phone) searchIntakeSongs({ phone: selected.phone, email: '', paid: true });
+    // Auto-search right away with EVERY identifier we have — the backend ORs
+    // phone + email, so whichever one matches the order finds the songs.
+    if (!isDemo && (selected.phone || chatEmail)) searchIntakeSongs({ phone: selected.phone || '', email: chatEmail, paid: true });
     if (isDemo) {
       setFixModal((m) => (m ? { ...m, summary: '', loading: false } : m));
       return;
@@ -554,6 +611,14 @@ export default function SmsInboxTab({ accessToken }) {
       // A failed summary is non-fatal — the owner can type the change themselves.
       setFixModal((m) => (m ? { ...m, summary: '', loading: false, error: 'AI summary unavailable — write what to fix below.' } : m));
     }
+  };
+
+  // Open the "Make Song for Customer" brief. Same conversation slice the fix
+  // intake uses — the extraction happens inside the modal.
+  const openMakeSongModal = () => {
+    if (!selected) return;
+    const turns = buildTurns(selected);
+    setMakeSongModal({ turns, exchange: turnsToText(turns) });
   };
 
   // Look up the customer's songs by email/phone + paid filter (recent first).
@@ -1170,8 +1235,8 @@ export default function SmsInboxTab({ accessToken }) {
             onClick={() => saveOutOfOffice(!outOfOffice)}
             disabled={ooBusy}
             title={outOfOffice
-              ? 'Out of office is ON — customers get an auto-reply. Click to turn off.'
-              : 'Turn on to auto-reply to customers while you are away.'}
+              ? 'Out of office is ON — the AI bot is paused and customers get only the away message. Click to turn off.'
+              : 'Turn on to pause the AI bot and auto-reply to customers while you are away.'}
             className={`px-3 py-2 rounded-xl text-sm font-medium transition disabled:opacity-60 ${
               outOfOffice
                 ? 'bg-amber-400/20 text-amber-200 border border-amber-400/40 hover:bg-amber-400/30'
@@ -1218,12 +1283,15 @@ export default function SmsInboxTab({ accessToken }) {
       <div className="flex items-center gap-2 mb-4">
         {[
           { key: 'unread', label: '📬 Unread' },
+          { key: 'pending', label: '🕓 Pending' },
           { key: 'sms', label: '💬 SMS' },
           { key: 'whatsapp', label: '🟢 WhatsApp' },
           { key: 'pinned', label: '📌 Pinned' },
         ].map((t) => {
           const stats = t.key === 'unread'
             ? { unread: totalUnread, drafts: totalDrafts }
+            : t.key === 'pending'
+            ? { unread: 0, drafts: 0, pending: totalPending }
             : t.key === 'pinned'
             ? { unread: 0, drafts: 0, pinned: totalPinned }
             : (channelStats[t.key] || { unread: 0, drafts: 0 });
@@ -1239,6 +1307,13 @@ export default function SmsInboxTab({ accessToken }) {
               }`}
             >
               {t.label}
+              {(stats.pending || 0) > 0 && (
+                <span className={`text-[10px] font-bold rounded-full min-w-4 h-4 px-1 flex items-center justify-center ${
+                  activeTab ? 'bg-black/20 text-black' : 'bg-amber-500 text-black'
+                }`}>
+                  {stats.pending}
+                </span>
+              )}
               {(stats.pinned || 0) > 0 && (
                 <span className={`text-[10px] font-bold rounded-full min-w-4 h-4 px-1 flex items-center justify-center ${
                   activeTab ? 'bg-black/20 text-black' : 'bg-amber-400/25 text-amber-200'
@@ -1272,9 +1347,12 @@ export default function SmsInboxTab({ accessToken }) {
           {!ooEditing ? (
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <div className="font-semibold text-amber-200 mb-0.5">🌙 Out of office is on</div>
+                <div className="font-semibold text-amber-200 mb-0.5">
+                  🌙 Out of office is on — the AI bot is paused
+                </div>
                 <div className="text-amber-100/80 text-xs">
-                  New customers get this auto-reply (once each, until you turn it off):
+                  The bot sends nothing while you are away. Customers get only this
+                  auto-reply (once each per 8 hours), then wait for you:
                 </div>
                 <div className="mt-1 text-amber-50/90 italic">“{ooMessage}”</div>
               </div>
@@ -1360,6 +1438,8 @@ export default function SmsInboxTab({ accessToken }) {
               <div className="p-6 text-center text-gray-500 text-sm">
                 {channelTab === 'unread'
                   ? '✅ All caught up — no unread messages.'
+                  : channelTab === 'pending'
+                  ? '✅ Nobody waiting. Everyone who wrote in while we were out of office has been answered.'
                   : channelTab === 'pinned'
                   ? '📌 No pinned chats. Open a conversation and tap "Pin" to keep it here.'
                   : 'No conversations yet.'}
@@ -1369,7 +1449,7 @@ export default function SmsInboxTab({ accessToken }) {
                 const msgs = c.messages || [];
                 // Preview the last message ON THIS TAB's channel. On the mixed
                 // tabs (Unread, Pinned) just preview the overall last message.
-                const mixedTab = channelTab === 'unread' || channelTab === 'pinned';
+                const mixedTab = channelTab === 'unread' || channelTab === 'pinned' || channelTab === 'pending';
                 const last = mixedTab
                   ? msgs[msgs.length - 1]
                   : ([...msgs].reverse().find((m) => msgChannel(m) === channelTab)
@@ -1428,6 +1508,14 @@ export default function SmsInboxTab({ accessToken }) {
                           )}
                         </div>
                       </div>
+                      {c.awaiting_reply_since && (
+                        <span
+                          title={`Wrote in while we were out of office — waiting since ${formatTime(c.awaiting_reply_since)}`}
+                          className="inline-block mt-1 mr-1 text-[10px] text-amber-200 bg-amber-500/15 border border-amber-500/30 rounded px-1.5 py-0.5"
+                        >
+                          🕓 Waiting {formatWait(c.awaiting_reply_since)}
+                        </span>
+                      )}
                       {c.opted_out && (
                         <span className="inline-block mt-1 text-[10px] text-red-300 bg-red-500/15 border border-red-500/25 rounded px-1.5 py-0.5">
                           Opted out (STOP)
@@ -1811,9 +1899,18 @@ export default function SmsInboxTab({ accessToken }) {
                     <button
                       onClick={openFixModal}
                       className="flex-shrink-0 text-xs bg-amber-500/15 hover:bg-amber-500/25 text-amber-200 border border-amber-500/40 rounded-full px-3 py-1.5 transition whitespace-nowrap font-medium"
-                      title="Send this song to the Fix Song queue for a correction"
+                      title="Send this correction to Ace, the Fix Song specialist"
                     >
-                      🔧 Enviar a arreglar
+                      🎧 Send to Ace
+                    </button>
+                    {/* The other direction: build this customer a NEW song from
+                        what they described in the chat. */}
+                    <button
+                      onClick={openMakeSongModal}
+                      className="flex-shrink-0 text-xs bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-200 border border-indigo-500/40 rounded-full px-3 py-1.5 transition whitespace-nowrap font-medium"
+                      title="Build this customer's song from the conversation — AI fills the brief, you verify it"
+                    >
+                      🎵 Make Song
                     </button>
                   </div>
                   {/* Staged attachment preview — paste (Ctrl+V), drag-drop, or 📎. */}
@@ -2009,15 +2106,15 @@ export default function SmsInboxTab({ accessToken }) {
           <div className="absolute inset-0 bg-black/60" onClick={() => !fixModal.submitting && setFixModal(null)} />
           <div className="relative w-full max-w-lg bg-[#141922] border border-white/10 rounded-2xl shadow-2xl p-5 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-base font-semibold text-white">🔧 Send to Fix Song</h3>
+              <h3 className="text-base font-semibold text-white">🎧 Send to Ace</h3>
               <button onClick={() => !fixModal.submitting && setFixModal(null)} className="text-gray-400 hover:text-white text-lg px-1" aria-label="Close">✕</button>
             </div>
 
             {fixModal.done ? (
               <div className="text-center py-6">
                 <p className="text-3xl mb-2">✅</p>
-                <p className="text-sm text-white font-medium mb-1">Added to the Fix Song queue.</p>
-                <p className="text-xs text-gray-400 mb-4">Song(s) linked and request confirmed. When automation is on, the fix runs by itself and you'll get a WhatsApp when it's ready to approve — otherwise it's waiting in the <strong>Fix Song</strong> tab.</p>
+                <p className="text-sm text-white font-medium mb-1">Ace has it.</p>
+                <p className="text-xs text-gray-400 mb-4">Song(s) linked and request confirmed. When his auto-mode is on, Ace works the fix by himself and pings you on WhatsApp when it's ready to approve — otherwise it waits in the <strong>Fix Song</strong> tab.</p>
                 <button onClick={() => setFixModal(null)} className="px-4 py-2 rounded-xl text-sm font-semibold bg-amber-400 text-black hover:bg-amber-300 transition">Done</button>
               </div>
             ) : (
@@ -2172,7 +2269,7 @@ export default function SmsInboxTab({ accessToken }) {
                     disabled={fixModal.submitting || fixModal.loading || !fixModal.summary.trim() || !(fixModal.selectedSongs || []).length}
                     className="px-4 py-2 rounded-xl text-sm font-semibold bg-amber-400 text-black hover:bg-amber-300 transition disabled:opacity-40 disabled:cursor-not-allowed"
                   >
-                    {fixModal.submitting ? 'Sending…' : '🔧 Send to Fix Song'}
+                    {fixModal.submitting ? 'Sending…' : '🎧 Send to Ace'}
                   </button>
                 </div>
               </>
@@ -2180,6 +2277,20 @@ export default function SmsInboxTab({ accessToken }) {
           </div>
         </div>
       )}
+
+      {/* ── "Make Song for Customer" — AI-extracted brief, human-confirmed ── */}
+      <MakeSongModal
+        open={!!makeSongModal}
+        onClose={() => setMakeSongModal(null)}
+        accessToken={accessToken}
+        conversation={selected}
+        turns={makeSongModal?.turns || []}
+        exchange={makeSongModal?.exchange || ''}
+        isDemo={isDemo}
+        // "Ask this in Spanish" drops the question straight into the composer so
+        // the missing detail gets chased instead of guessed.
+        onAskInSpanish={(text) => setReply(text)}
+      />
 
       {/* ── Admin "Ask AI" copilot — private, about the open order ── */}
       {copilotOpen && selected && (

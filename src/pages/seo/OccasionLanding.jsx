@@ -3,6 +3,7 @@ import { AppContext } from '../../App';
 import SEOHead, { generateOccasionStructuredData, generateBreadcrumbData, generateFAQStructuredData } from '../../components/SEOHead';
 import SEOLink from '../../components/SEOLink';
 import { getOccasionBySlug, getAllOccasions, getGenreBySlug, getAllGenres, DEFAULT_OCCASION_FAQS, COMBO_ROUTES } from '../../data/seoData';
+import { CenzoSignature } from '../../components/Cenzo';
 
 /**
  * OccasionLanding - SEO Landing Page for individual occasions
@@ -90,7 +91,7 @@ export default function OccasionLanding({ occasionSlug }) {
               <ol className="flex items-center justify-center gap-2 text-sm text-white/50">
                 {breadcrumbs.map((item, index) => (
                   <li key={item.path} className="flex items-center gap-2">
-                    {index > 0 && <span className="text-white/30">/</span>}
+                    {index > 0 && <span className="text-white/50">/</span>}
                     {index === breadcrumbs.length - 1 ? (
                       <span className="text-white/80 font-medium">{item.name}</span>
                     ) : (
@@ -128,9 +129,9 @@ export default function OccasionLanding({ occasionSlug }) {
               onClick={() => handleCreateSong()}
               className="px-10 py-4 rounded-full text-lg font-bold transition-all transform hover:scale-105 animate-pulse-glow"
               style={{
-                background: 'linear-gradient(135deg, #c9184a, #a01540)',
+                background: 'linear-gradient(135deg, #B44F35, #8E3A26)',
                 color: 'white',
-                boxShadow: '0 4px 30px rgba(201, 24, 74, 0.4)'
+                boxShadow: '0 4px 30px rgba(180,79,53, 0.4)'
               }}
             >
               🎵 Crear Canción para {occasion.name}
@@ -207,11 +208,11 @@ export default function OccasionLanding({ occasionSlug }) {
                       <h3 className="font-bold text-white group-hover:text-landing-primary transition-colors">
                         {genre.name}
                       </h3>
-                      <p className="text-sm text-white/40 line-clamp-2">
+                      <p className="text-sm text-white/55 line-clamp-2">
                         {genre.description}
                       </p>
                     </div>
-                    <span className="text-white/30 group-hover:text-white/60 group-hover:translate-x-1 transition-all flex-shrink-0">
+                    <span className="text-white/50 group-hover:text-white/60 group-hover:translate-x-1 transition-all flex-shrink-0">
                       →
                     </span>
                   </SEOLink>
@@ -247,7 +248,7 @@ export default function OccasionLanding({ occasionSlug }) {
                 <div key={step.num} className="text-center">
                   <div
                     className="w-14 h-14 rounded-full flex items-center justify-center text-xl font-bold mx-auto mb-4"
-                    style={{ background: 'linear-gradient(135deg, #c9184a, #a01540)', color: 'white' }}
+                    style={{ background: 'linear-gradient(135deg, #B44F35, #8E3A26)', color: 'white' }}
                   >
                     {step.num}
                   </div>
@@ -315,7 +316,7 @@ export default function OccasionLanding({ occasionSlug }) {
                 <p className="text-white/80 italic mb-4">
                   "Mi mamá lloró de la emoción. Nunca pensé que un regalo pudiera significar tanto. La canción mencionaba cosas que solo nosotros sabíamos."
                 </p>
-                <p className="text-white/40 text-sm">
+                <p className="text-white/55 text-sm">
                   — Cliente verificado, {occasion.name}
                 </p>
               </div>
@@ -345,9 +346,9 @@ export default function OccasionLanding({ occasionSlug }) {
                       <h3 className="font-bold text-white group-hover:text-landing-primary transition-colors">
                         {c.genre.name} para {occasion.name}
                       </h3>
-                      <p className="text-sm text-white/40">Canción personalizada desde $29.99</p>
+                      <p className="text-sm text-white/55">Canción personalizada desde $29.99</p>
                     </div>
-                    <span className="text-white/30 group-hover:text-white/60 transition-all">→</span>
+                    <span className="text-white/50 group-hover:text-white/60 transition-all">→</span>
                   </SEOLink>
                 ))}
               </div>
@@ -367,7 +368,7 @@ export default function OccasionLanding({ occasionSlug }) {
                 <details key={index} className="glass-morphism rounded-2xl p-6 group">
                   <summary className="font-bold text-white cursor-pointer flex justify-between items-center">
                     {faq.question}
-                    <span className="text-white/40 group-open:rotate-180 transition-transform ml-4 flex-shrink-0">▼</span>
+                    <span className="text-white/55 group-open:rotate-180 transition-transform ml-4 flex-shrink-0">▼</span>
                   </summary>
                   <p className="text-white/60 mt-4 leading-relaxed">
                     {faq.answer}
@@ -396,15 +397,15 @@ export default function OccasionLanding({ occasionSlug }) {
               onClick={() => handleCreateSong()}
               className="px-12 py-5 rounded-full text-xl font-bold transition-all transform hover:scale-105 animate-pulse-glow"
               style={{
-                background: 'linear-gradient(135deg, #c9184a, #a01540)',
+                background: 'linear-gradient(135deg, #B44F35, #8E3A26)',
                 color: 'white',
-                boxShadow: '0 4px 30px rgba(201, 24, 74, 0.4)'
+                boxShadow: '0 4px 30px rgba(180,79,53, 0.4)'
               }}
             >
               🎤 Crear Mi Canción Ahora
             </button>
 
-            <div className="mt-8 flex items-center justify-center gap-6 text-sm text-white/40">
+            <div className="mt-8 flex items-center justify-center gap-6 text-sm text-white/55">
               <span>✓ Desde $29.99</span>
               <span>✓ Listo en minutos</span>
               <span>✓ Garantía de corrección gratis</span>
@@ -445,8 +446,9 @@ export default function OccasionLanding({ occasionSlug }) {
 
         {/* Footer */}
         <footer className="py-10 px-6 border-t border-white/5 text-center">
-          <p className="text-white/30 text-sm">© {new Date().getFullYear()} RegalosQueCantan. Todos los derechos reservados.</p>
-          <p className="mt-2 text-white/20 text-sm">Canciones personalizadas en géneros latinos para cada ocasión especial.</p>
+          <CenzoSignature className="justify-center mb-3" />
+          <p className="text-white/50 text-sm">© {new Date().getFullYear()} RegalosQueCantan. Todos los derechos reservados.</p>
+          <p className="mt-2 text-white/55 text-sm">Canciones personalizadas en géneros latinos para cada ocasión especial.</p>
         </footer>
       </div>
     </>

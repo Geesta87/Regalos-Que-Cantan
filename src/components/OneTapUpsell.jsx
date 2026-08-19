@@ -10,10 +10,10 @@ import React, { useState, useRef, useEffect } from 'react';
 // Default export = self-contained DEMO (route /upsell-demo).
 // ─────────────────────────────────────────────────────────────────────────────
 
-const GOLD = '#f5b942';
-const PINK = '#f6589f';
+const GOLD = '#E8B44A';
+const PINK = '#E7699F';
 const GREEN = '#5fcf8a';
-const BLUE = '#3b82f6';
+const BLUE = '#8E90E8';
 const MEDIA_H = 200;
 
 export const CSS = `
@@ -39,15 +39,15 @@ function VideoMedia({ src, tall, pos }) {
     </span>
   );
   const sndBtn = (
-    <button onClick={toggle} style={{ position: 'absolute', bottom: 6, right: 6, border: 'none', cursor: 'pointer', background: muted ? 'rgba(247,77,166,0.92)' : 'rgba(0,0,0,0.6)', color: '#fff', fontSize: 11, fontWeight: 700, padding: '5px 9px', borderRadius: 20 }}>
+    <button onClick={toggle} style={{ position: 'absolute', bottom: 6, right: 6, border: 'none', cursor: 'pointer', background: muted ? 'rgba(231,105,159,0.92)' : 'rgba(0,0,0,0.6)', color: muted ? '#191A45' : '#fff', fontSize: 11, fontWeight: 700, padding: '5px 9px', borderRadius: 20 }}>
       {muted ? '🔇 oír' : '🔊'}
     </button>
   );
   // Detail view: show the full vertical video so nothing important is cropped.
   if (tall) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', background: '#0d0a12', padding: '14px 0' }}>
-        <div style={{ position: 'relative', width: 220, maxWidth: '66%', borderRadius: 13, overflow: 'hidden', border: '2px solid rgba(245,185,66,0.4)' }}>
+      <div style={{ display: 'flex', justifyContent: 'center', background: '#191A45', padding: '14px 0' }}>
+        <div style={{ position: 'relative', width: 220, maxWidth: '66%', borderRadius: 13, overflow: 'hidden', border: '2px solid rgba(232,180,74,0.4)' }}>
           <video ref={ref} src={src} muted loop playsInline autoPlay onClick={toggle} style={{ width: '100%', aspectRatio: '9/16', objectFit: 'cover', display: 'block', cursor: 'pointer' }} />
           {badge}{sndBtn}
         </div>
@@ -55,7 +55,7 @@ function VideoMedia({ src, tall, pos }) {
     );
   }
   return (
-    <div style={{ position: 'relative', height: MEDIA_H, background: '#0d0a12' }}>
+    <div style={{ position: 'relative', height: MEDIA_H, background: '#191A45' }}>
       <video ref={ref} src={src} muted loop playsInline autoPlay onClick={toggle} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: pos || 'center', display: 'block', cursor: 'pointer' }} />
       {badge}{sndBtn}
     </div>
@@ -67,7 +67,7 @@ function AbMedia() {
   const [sin, setSin] = useState(true);
   const bars = [12, 18, 24, 15, 27, 33, 21, 13, 29, 22, 31, 16, 24, 28, 12, 20];
   return (
-    <div onClick={(e) => { e.stopPropagation(); setSin((v) => !v); }} style={{ position: 'relative', height: MEDIA_H, background: 'linear-gradient(135deg,#241d2e,#15101c)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, cursor: 'pointer', padding: '0 10px' }}>
+    <div onClick={(e) => { e.stopPropagation(); setSin((v) => !v); }} style={{ position: 'relative', height: MEDIA_H, background: 'linear-gradient(135deg,#262756,#1B1C48)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, cursor: 'pointer', padding: '0 10px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 2, height: 38, width: '100%', justifyContent: 'center' }}>
         {bars.map((h, i) => {
           const voice = i % 3 === 0;
@@ -75,7 +75,7 @@ function AbMedia() {
         })}
       </div>
       <span style={{ fontSize: 10.5, fontWeight: 700, color: sin ? GOLD : PINK }}>{sin ? 'Sin voz · instrumental' : 'Con voz'}</span>
-      <span style={{ position: 'absolute', top: 6, right: 8, fontSize: 9, color: 'rgba(255,255,255,0.45)' }}>toca ▸</span>
+      <span style={{ position: 'absolute', top: 6, right: 8, fontSize: 9, color: 'rgba(255,255,255,0.68)' }}>toca ▸</span>
     </div>
   );
 }
@@ -85,14 +85,14 @@ function LyricsMedia() {
   const lines = ['Desde el día que llegaste', 'todo cambió para bien', 'y hoy te canto esta canción', 'con todo el corazón'];
   return (
     <div style={{ position: 'relative', height: MEDIA_H, background: 'linear-gradient(135deg,#2a1245,#120b22)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-      <span style={{ position: 'absolute', top: 6, left: 8, fontSize: 9, color: 'rgba(255,255,255,0.5)', fontWeight: 700 }}>♪ LETRA SINCRONIZADA</span>
+      <span style={{ position: 'absolute', top: 6, left: 8, fontSize: 9, color: 'rgba(255,255,255,0.7)', fontWeight: 700 }}>♪ LETRA SINCRONIZADA</span>
       <div style={{ position: 'relative', width: '100%', height: 24, textAlign: 'center' }}>
         {lines.map((l, i) => (
           <span key={i} style={{ position: 'absolute', left: 6, right: 6, fontSize: 13, fontWeight: 700, color: '#fff', textShadow: '0 1px 8px rgba(0,0,0,0.6)', opacity: 0, animation: `otuLyric 8s ease-in-out ${i * 2}s infinite` }}>{l}</span>
         ))}
       </div>
       <span style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 3, background: 'rgba(255,255,255,0.12)' }}>
-        <span style={{ display: 'block', height: '100%', width: '45%', background: 'linear-gradient(90deg,#a855f7,#f6589f)' }} />
+        <span style={{ display: 'block', height: '100%', width: '45%', background: 'linear-gradient(90deg,#8E90E8,#E7699F)' }} />
       </span>
     </div>
   );
@@ -108,13 +108,13 @@ function PhotosMedia() {
     'https://images.unsplash.com/photo-1581952976147-5a2d15560349?w=440&h=260&fit=crop',
   ];
   return (
-    <div style={{ position: 'relative', height: MEDIA_H, background: '#0a0015', overflow: 'hidden' }}>
+    <div style={{ position: 'relative', height: MEDIA_H, background: '#150E2E', overflow: 'hidden' }}>
       {imgs.map((s, i) => (
         <img key={i} src={s} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', opacity: 0, animation: `otuFade 9s ease-in-out ${i * 3}s infinite` }} />
       ))}
       <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg,rgba(10,0,21,0.12),rgba(10,0,21,0.72))' }} />
       <span style={{ position: 'absolute', top: 6, left: 8, fontSize: 9, color: 'rgba(255,255,255,0.65)', fontWeight: 700, letterSpacing: 0.5, zIndex: 2 }}>🎬 VIDEO CON FOTOS</span>
-      <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 2, width: 42, height: 42, borderRadius: '50%', background: 'rgba(124,58,237,0.92)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 0 7px rgba(124,58,237,0.18)' }}>
+      <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 2, width: 42, height: 42, borderRadius: '50%', background: 'rgba(74,76,168,0.92)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 0 7px rgba(74,76,168,0.18)' }}>
         <span style={{ color: '#fff', fontSize: 15, marginLeft: 2 }}>▶</span>
       </div>
       <span style={{ position: 'absolute', bottom: 8, left: 0, right: 0, textAlign: 'center', fontSize: 9.5, color: 'rgba(255,255,255,0.72)', fontWeight: 600, letterSpacing: 1.4, zIndex: 2 }}>TUS FOTOS AQUÍ</span>
@@ -140,7 +140,7 @@ const boxStyle = (done) => ({
 
 const addBtn = (processing) => ({
   width: '100%', border: 'none', borderRadius: 9, padding: '9px', marginTop: 8,
-  background: GOLD, color: '#3a2a06', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 700,
+  background: GOLD, color: '#3A2A22', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 700,
   cursor: processing ? 'default' : 'pointer', opacity: processing ? 0.85 : 1,
   display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
 });
@@ -207,20 +207,20 @@ function ProductBox({ item, status, onAdd, last4, selectMode, wide }) {
           : <Media media={media} />)}
         <div style={{ padding: wide ? '12px 16px' : 10, display: 'flex', flexDirection: 'column', flex: 1, justifyContent: wide ? 'center' : 'flex-start' }}>
           <p style={{ margin: 0, fontSize: 12.5, fontWeight: 700, color: '#fff', lineHeight: 1.25 }}>{title}</p>
-          {sub && <p style={{ margin: '3px 0 0', fontSize: 10.5, color: 'rgba(255,255,255,0.45)', lineHeight: 1.3 }}>{sub}</p>}
+          {sub && <p style={{ margin: '3px 0 0', fontSize: 10.5, color: 'rgba(255,255,255,0.68)', lineHeight: 1.3 }}>{sub}</p>}
           {!wide && <div style={{ flex: 1 }} />}
           <p style={{ margin: '8px 0 0', fontSize: 16, fontWeight: 800, color: GOLD }}>${price}</p>
           {done ? (
             selectMode ? (
               <>
                 <p style={{ margin: '8px 0 0', fontSize: 11.5, fontWeight: 700, color: GREEN }}>✓ Agregado al pedido</p>
-                <button onClick={() => onAdd(key)} style={{ marginTop: 5, alignSelf: 'flex-start', background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.4)', fontSize: 10.5, cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'underline', padding: 0 }}>Quitar</button>
+                <button onClick={() => onAdd(key)} style={{ marginTop: 5, alignSelf: 'flex-start', background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.65)', fontSize: 10.5, cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'underline', padding: 0 }}>Quitar</button>
               </>
             ) : (
               <p style={{ margin: '8px 0 0', fontSize: 11.5, fontWeight: 700, color: GREEN }}>✓ Agregado</p>
             )
           ) : needs ? (
-            <p style={{ margin: '8px 0 0', fontSize: 10.5, color: '#fcd34d', lineHeight: 1.35 }}>Tu banco pide confirmar. Escríbenos y lo agregamos.</p>
+            <p style={{ margin: '8px 0 0', fontSize: 10.5, color: '#F4D08A', lineHeight: 1.35 }}>Tu banco pide confirmar. Escríbenos y lo agregamos.</p>
           ) : (
             <button onClick={() => setOpen(true)} style={addBtn(false)}>Ver más · ${price}</button>
           )}
@@ -238,9 +238,9 @@ function ProductBox({ item, status, onAdd, last4, selectMode, wide }) {
           <span style={{ fontSize: 18, fontWeight: 800, color: GOLD }}>${price}</span>
         </div>
         <p style={{ margin: '0 0 12px', fontSize: 12, color: 'rgba(255,255,255,0.68)', lineHeight: 1.5 }}>{DESC[key] || sub}</p>
-        <p style={{ margin: '0 0 7px', fontSize: 10.5, fontWeight: 700, color: 'rgba(255,255,255,0.5)', letterSpacing: 0.6 }}>QUÉ INCLUYE</p>
+        <p style={{ margin: '0 0 7px', fontSize: 10.5, fontWeight: 700, color: 'rgba(255,255,255,0.7)', letterSpacing: 0.6 }}>QUÉ INCLUYE</p>
         <FeatureList keyName={key} />
-        <p style={{ margin: '0 0 13px', fontSize: 10.5, color: 'rgba(255,255,255,0.4)', lineHeight: 1.4 }}>🤚 {DELIVERY[key]}</p>
+        <p style={{ margin: '0 0 13px', fontSize: 10.5, color: 'rgba(255,255,255,0.65)', lineHeight: 1.4 }}>🤚 {DELIVERY[key]}</p>
         {DISCLAIMER[key] && (
           <p style={{ margin: '0 0 13px', fontSize: 10.5, color: 'rgba(255,255,255,0.42)', lineHeight: 1.45, fontStyle: 'italic', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8, padding: '8px 10px' }}>ℹ️ {DISCLAIMER[key]}</p>
         )}
@@ -252,16 +252,16 @@ function ProductBox({ item, status, onAdd, last4, selectMode, wide }) {
               Se suma <strong style={{ color: '#fff' }}>${price}</strong> a tu pedido · un solo pago con tu canción
             </p>
             <button onClick={() => { onAdd(key); setOpen(false); }} style={addBtn(false)}>+ Agregar al pedido · ${price}</button>
-            <button onClick={() => setOpen(false)} style={{ width: '100%', marginTop: 6, background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.45)', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>Cerrar</button>
+            <button onClick={() => setOpen(false)} style={{ width: '100%', marginTop: 6, background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.68)', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>Cerrar</button>
           </>
         ) : (
           <>
             <p style={{ margin: '0 0 7px', fontSize: 10.5, color: 'rgba(255,255,255,0.55)', textAlign: 'center' }}>
               Se cobra <strong style={{ color: '#fff' }}>${price}</strong> ahora a tu tarjeta {cardTxt}
             </p>
-            {error && <p style={{ margin: '0 0 7px', fontSize: 11, color: '#f3a0a0', textAlign: 'center' }}>No se pudo. Intenta de nuevo.</p>}
+            {error && <p style={{ margin: '0 0 7px', fontSize: 11, color: '#F2A98F', textAlign: 'center' }}>No se pudo. Intenta de nuevo.</p>}
             <button onClick={() => onAdd(key)} style={{ ...addBtn(false), background: BLUE, color: '#fff' }}>✓ Sí, cobrar ${price}</button>
-            <button onClick={() => setOpen(false)} style={{ width: '100%', marginTop: 6, background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.45)', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>Cancelar</button>
+            <button onClick={() => setOpen(false)} style={{ width: '100%', marginTop: 6, background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.68)', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>Cancelar</button>
           </>
         )}
       </div>
@@ -311,20 +311,20 @@ function GiftBox({ item, status, onAdd, recipientName, senderName, selectMode, w
           : <Media media={media} />)}
         <div style={{ padding: wide ? '12px 16px' : 10, display: 'flex', flexDirection: 'column', flex: 1, justifyContent: wide ? 'center' : 'flex-start' }}>
           <p style={{ margin: 0, fontSize: 12.5, fontWeight: 700, color: '#fff', lineHeight: 1.25 }}>{title}</p>
-          {sub && <p style={{ margin: '3px 0 0', fontSize: 10.5, color: 'rgba(255,255,255,0.45)', lineHeight: 1.3 }}>{sub}</p>}
+          {sub && <p style={{ margin: '3px 0 0', fontSize: 10.5, color: 'rgba(255,255,255,0.68)', lineHeight: 1.3 }}>{sub}</p>}
           {!wide && <div style={{ flex: 1 }} />}
           <p style={{ margin: '8px 0 0', fontSize: 16, fontWeight: 800, color: GOLD }}>${price}</p>
           {done ? (
             selectMode ? (
               <>
                 <p style={{ margin: '8px 0 0', fontSize: 11.5, fontWeight: 700, color: GREEN }}>✓ Agregado al pedido</p>
-                <button onClick={() => onAdd('gift')} style={{ marginTop: 5, alignSelf: 'flex-start', background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.4)', fontSize: 10.5, cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'underline', padding: 0 }}>Quitar</button>
+                <button onClick={() => onAdd('gift')} style={{ marginTop: 5, alignSelf: 'flex-start', background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.65)', fontSize: 10.5, cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'underline', padding: 0 }}>Quitar</button>
               </>
             ) : (
               <p style={{ margin: '8px 0 0', fontSize: 11.5, fontWeight: 700, color: GREEN }}>✓ Programado</p>
             )
           ) : needs ? (
-            <p style={{ margin: '8px 0 0', fontSize: 10.5, color: '#fcd34d', lineHeight: 1.35 }}>Tu banco pide confirmar. Escríbenos.</p>
+            <p style={{ margin: '8px 0 0', fontSize: 10.5, color: '#F4D08A', lineHeight: 1.35 }}>Tu banco pide confirmar. Escríbenos.</p>
           ) : (
             <button onClick={() => setOpen(true)} style={addBtn(false)}>Ver más · ${price}</button>
           )}
@@ -342,9 +342,9 @@ function GiftBox({ item, status, onAdd, recipientName, senderName, selectMode, w
           <span style={{ fontSize: 18, fontWeight: 800, color: GOLD }}>${price}</span>
         </div>
         <p style={{ margin: '0 0 12px', fontSize: 12, color: 'rgba(255,255,255,0.68)', lineHeight: 1.5 }}>{DESC.gift}</p>
-        <p style={{ margin: '0 0 7px', fontSize: 10.5, fontWeight: 700, color: 'rgba(255,255,255,0.5)', letterSpacing: 0.6 }}>QUÉ INCLUYE</p>
+        <p style={{ margin: '0 0 7px', fontSize: 10.5, fontWeight: 700, color: 'rgba(255,255,255,0.7)', letterSpacing: 0.6 }}>QUÉ INCLUYE</p>
         <FeatureList keyName="gift" />
-        <p style={{ margin: '0 0 13px', fontSize: 10.5, color: 'rgba(255,255,255,0.4)' }}>🤚 {DELIVERY.gift}</p>
+        <p style={{ margin: '0 0 13px', fontSize: 10.5, color: 'rgba(255,255,255,0.65)' }}>🤚 {DELIVERY.gift}</p>
         <input style={inp} type="tel" placeholder="Celular del destinatario" value={phone} onChange={(e) => setPhone(e.target.value)} />
         <input style={inp} placeholder="Nombre de quien recibe" value={rname} onChange={(e) => setRname(e.target.value)} />
         <input style={inp} placeholder="Tu nombre" value={buyer} onChange={(e) => setBuyer(e.target.value)} />
@@ -357,8 +357,8 @@ function GiftBox({ item, status, onAdd, recipientName, senderName, selectMode, w
           <input type="checkbox" checked={att} onChange={(e) => setAtt(e.target.checked)} style={{ marginTop: 2 }} />
           Confirmo que es un regalo bienvenido para esta persona.
         </label>
-        {(err || error) && <p style={{ margin: '0 0 9px', fontSize: 11.5, color: '#f3a0a0' }}>{err || 'No se pudo agregar. Revisa los datos e intenta de nuevo.'}</p>}
-        <button onClick={submit} disabled={processing} style={{ ...addBtn(processing), marginTop: 0, background: selectMode ? GOLD : BLUE, color: selectMode ? '#3a2a06' : '#fff' }}>
+        {(err || error) && <p style={{ margin: '0 0 9px', fontSize: 11.5, color: '#F2A98F' }}>{err || 'No se pudo agregar. Revisa los datos e intenta de nuevo.'}</p>}
+        <button onClick={submit} disabled={processing} style={{ ...addBtn(processing), marginTop: 0, background: selectMode ? GOLD : BLUE, color: selectMode ? '#3A2A22' : '#fff' }}>
           {processing ? <><Spinner color="#fff" /> Programando…</> : selectMode ? <>+ Agregar al pedido · ${price}</> : <>Programar y cobrar ${price} — un toque</>}
         </button>
       </div>
@@ -443,7 +443,7 @@ export function OneTapUpsell({ recipientName = 'tu ser querido', senderName = ''
             <span style={{ fontSize: 15, fontWeight: 700, color: 'rgba(255,255,255,0.85)' }}>Hazlo aún más especial</span>
             <span style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.1)' }} />
           </div>
-          <p style={{ margin: '0 0 14px', textAlign: 'center', fontSize: 11.5, color: 'rgba(255,255,255,0.45)' }}>
+          <p style={{ margin: '0 0 14px', textAlign: 'center', fontSize: 11.5, color: 'rgba(255,255,255,0.68)' }}>
             {selectMode
               ? <>Opcional · agrégalos y se pagan una sola vez junto con tu canción</>
               : last4 && last4 !== '••••'
@@ -483,7 +483,7 @@ export default function OneTapUpsellDemo() {
       <div style={{ maxWidth: 460, margin: '0 auto 22px', textAlign: 'center', color: '#fff' }}>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(95,207,138,0.12)', color: '#7fd99f', fontSize: 11.5, fontWeight: 600, padding: '5px 13px', borderRadius: 50 }}>✓ Pago confirmado</span>
         <h1 style={{ margin: '12px 0 2px', fontSize: 23, fontWeight: 800 }}>La canción de <span style={{ color: PINK }}>María</span> ya está lista</h1>
-        <p style={{ margin: 0, fontSize: 12.5, color: 'rgba(255,255,255,0.45)' }}>Descárgala, compártela — y si quieres, hazla aún más especial</p>
+        <p style={{ margin: 0, fontSize: 12.5, color: 'rgba(255,255,255,0.68)' }}>Descárgala, compártela — y si quieres, hazla aún más especial</p>
       </div>
       <OneTapUpsell recipientName="María" senderName="Gerardo" last4="4242" />
     </div>

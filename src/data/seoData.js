@@ -66,7 +66,7 @@ Ahora puedes regalar un corrido tumbado completamente personalizado. Creamos let
 Perfecto para cumpleaños, graduaciones, o simplemente para sorprender a alguien especial con un regalo que nunca olvidarán.`,
     artists: ['Peso Pluma', 'Junior H', 'Natanael Cano', 'Fuerza Regida', 'Eslabón Armado'],
     sampleLyrics: 'Ejemplo: "Esta canción va pa\' [Nombre], el más cabrón del barrio..."',
-    color: '#8B5CF6',
+    color: '#6668D2',
     icon: '🎤',
     popularFor: ['Cumpleaños', 'Graduaciones', 'Logros personales', 'Día del Padre'],
     reviewCount: 89,
@@ -115,7 +115,7 @@ Con RegalosQueCantan, puedes crear un corrido clásico que cuente la historia de
 
 Tu canción personalizada incluirá el nombre de tu ser querido, un mensaje especial, y todo el poder musical de la banda sinaloense. Perfecta para bodas, quinceañeras, cumpleaños y cualquier celebración que merezca música en grande.`,
     artists: ['Banda MS', 'Banda El Recodo', 'Julión Álvarez', 'La Adictiva'],
-    color: '#F59E0B',
+    color: '#C98A1B',
     icon: '🎷',
     popularFor: ['Bodas', 'Quinceañeras', 'Cumpleaños', 'Fiestas'],
     reviewCount: 124,
@@ -142,7 +142,7 @@ Tu canción personalizada incluirá el nombre de tu ser querido, un mensaje espe
 
 Crea una canción norteña personalizada que incluya el nombre de tu ser querido y un mensaje especial. Ya sea una canción de amor, de amistad, o de celebración, capturamos la esencia del género norteño.`,
     artists: ['Intocable', 'Ramón Ayala', 'Pesado', 'Los Invasores de Nuevo León'],
-    color: '#059669',
+    color: '#1F8C86',
     icon: '🪗',
     popularFor: ['Aniversarios', 'Declaraciones de amor', 'Día de las Madres', 'Serenatas'],
     reviewCount: 98
@@ -163,7 +163,7 @@ Crea una canción norteña personalizada que incluya el nombre de tu ser querido
 
 Tu cumbia personalizada incluirá el nombre de tu ser querido, un mensaje especial, y ese ritmo contagioso que no deja a nadie quieto. Perfecta para cualquier celebración donde quieras que todos bailen y celebren.`,
     artists: ['Grupo Cañaveral', 'Los Ángeles Azules', 'Sonora Dinamita'],
-    color: '#EC4899',
+    color: '#E7699F',
     icon: '💃',
     popularFor: ['Cumpleaños', 'Bodas', 'Fiestas', 'Quinceañeras'],
     reviewCount: 156,
@@ -206,7 +206,7 @@ Tu cumbia personalizada incluirá el nombre de tu ser querido, un mensaje especi
     description: 'La cumbia en su forma más tradicional, directa desde Colombia. Gaitas, tambores y el sabor caribeño.',
     definitionBlock: 'La cumbia colombiana personalizada trae el ritmo original de Colombia con gaitas, tambores y sabor caribeño. Creada exclusivamente, incluye el nombre de tu ser querido en una canción única que celebra con el sonido auténtico de los grandes como Aniceto Molina.',
     artists: ['Andrés Landero', 'Los Corraleros de Majagual', 'Aniceto Molina'],
-    color: '#FBBF24',
+    color: '#E8B44A',
     icon: '🥁',
     popularFor: ['Bodas', 'Aniversarios', 'Fiestas tropicales'],
     reviewCount: 38
@@ -224,7 +224,7 @@ Tu cumbia personalizada incluirá el nombre de tu ser querido, un mensaje especi
     description: 'La cumbia como se toca en Texas: teclados, sintetizadores y ese sabor único tex-mex.',
     definitionBlock: 'La cumbia texana personalizada captura el sonido único de Texas con teclados y sintetizadores al estilo de Selena y Kumbia Kings. Creada exclusivamente, incluye el nombre de tu ser querido en una canción con el sabor tex-mex que define a la comunidad latina en Texas.',
     artists: ['Selena', 'Kumbia Kings', 'La Mafia'],
-    color: '#8B5CF6',
+    color: '#6668D2',
     icon: '⭐',
     popularFor: ['Cumpleaños', 'Quinceañeras', 'Celebraciones tex-mex'],
     reviewCount: 52
@@ -245,7 +245,7 @@ Tu cumbia personalizada incluirá el nombre de tu ser querido, un mensaje especi
 
 Una serenata de mariachi es el regalo más romántico y tradicional. Con RegalosQueCantan, puedes crear una canción de mariachi personalizada que incluya el nombre de tu amor, un mensaje especial, y toda la emoción del género.`,
     artists: ['Vicente Fernández', 'Alejandro Fernández', 'Pedro Infante', 'Pepe Aguilar'],
-    color: '#1D4ED8',
+    color: '#3B3D8F',
     icon: '🎺',
     popularFor: ['Serenatas', 'Día de las Madres', 'Aniversarios', 'Propuestas de matrimonio'],
     reviewCount: 187,
@@ -272,7 +272,7 @@ Una serenata de mariachi es el regalo más romántico y tradicional. Con Regalos
 
 Una bachata personalizada es el regalo perfecto para esa persona especial. Incluye su nombre, menciona momentos especiales de su relación, y créale una canción de amor que nunca olvidará.`,
     artists: ['Romeo Santos', 'Prince Royce', 'Aventura', 'Juan Luis Guerra'],
-    color: '#BE185D',
+    color: '#96204F',
     icon: '💕',
     popularFor: ['San Valentín', 'Aniversarios', 'Declaraciones de amor', 'Propuestas'],
     reviewCount: 143,
@@ -297,7 +297,7 @@ Una bachata personalizada es el regalo perfecto para esa persona especial. Inclu
     description: 'El reggaeton es el género urbano latino por excelencia. Dembow, perreo y letras que ponen a bailar a todos.',
     definitionBlock: 'Un reggaeton personalizado es una canción urbana original con dembow y beats de perreo, creada exclusivamente al estilo de Bad Bunny y Daddy Yankee. Incluye el nombre de tu persona especial con letras únicas, ideal para cumpleaños, fiestas y despedidas. Lista en minutos desde $29.99.',
     artists: ['Bad Bunny', 'Daddy Yankee', 'J Balvin', 'Karol G'],
-    color: '#7C3AED',
+    color: '#4A4CA8',
     icon: '🔥',
     popularFor: ['Cumpleaños', 'Fiestas', 'Despedidas de soltero/a'],
     reviewCount: 94
@@ -357,7 +357,7 @@ Una bachata personalizada es el regalo perfecto para esa persona especial. Inclu
     description: 'La ranchera es el alma de México. Canciones de amor, desamor y orgullo mexicano.',
     definitionBlock: 'Una ranchera personalizada es una canción mexicana tradicional creada exclusivamente al estilo de José Alfredo Jiménez y Pedro Infante. Con mariachi, guitarra y sentimiento mexicano, incluye el nombre de tu ser querido y un mensaje de amor, orgullo o gratitud. Perfecta para el Día de las Madres y fiestas patrias. Desde $29.99.',
     artists: ['José Alfredo Jiménez', 'Pedro Infante', 'Javier Solís', 'Antonio Aguilar'],
-    color: '#166534',
+    color: '#12655F',
     icon: '🇲🇽',
     popularFor: ['Día de las Madres', 'Día del Padre', '15 de Septiembre', 'Homenajes'],
     reviewCount: 112
@@ -375,7 +375,7 @@ Una bachata personalizada es el regalo perfecto para esa persona especial. Inclu
     description: 'El regional mexicano abarca lo mejor de la música tradicional de México. Una fusión de sonidos auténticos.',
     definitionBlock: 'Una canción de regional mexicano personalizada fusiona los mejores estilos de la música mexicana — norteño, banda y sierreño — creada exclusivamente al estilo de Christian Nodal y Calibre 50. Incluye el nombre de tu ser querido, perfecta para cualquier celebración familiar. Lista en minutos desde $29.99.',
     artists: ['Christian Nodal', 'Calibre 50', 'Gerardo Ortiz'],
-    color: '#B45309',
+    color: '#C98A1B',
     icon: '🎵',
     popularFor: ['Todas las ocasiones', 'Fiestas mexicanas', 'Celebraciones familiares'],
     reviewCount: 134
@@ -411,7 +411,7 @@ Una bachata personalizada es el regalo perfecto para esa persona especial. Inclu
     description: 'La balada es emoción pura. Letras profundas, melodías emotivas y un mensaje que toca el corazón.',
     definitionBlock: 'Una balada personalizada es una canción emotiva con melodías profundas y letras que tocan el corazón, creada exclusivamente al estilo de Alejandro Sanz y Sin Bandera. Incluye el nombre de tu ser querido y un mensaje personal, perfecta para aniversarios, declaraciones de amor y momentos especiales. Desde $29.99.',
     artists: ['Alejandro Sanz', 'Laura Pausini', 'Ricardo Arjona', 'Sin Bandera'],
-    color: '#4F46E5',
+    color: '#4A4CA8',
     icon: '💜',
     popularFor: ['Aniversarios', 'Declaraciones', 'Momentos especiales'],
     reviewCount: 78
@@ -429,7 +429,7 @@ Una bachata personalizada es el regalo perfecto para esa persona especial. Inclu
     description: 'El vallenato es el orgullo de Colombia. Acordeón, caja y guacharaca para contar historias de amor.',
     definitionBlock: 'Un vallenato personalizado es una canción colombiana original con acordeón, caja y guacharaca, creada exclusivamente al estilo de Carlos Vives y Diomedes Díaz. Incluye el nombre de tu ser querido y cuenta tu historia de amor con el sabor auténtico de Colombia. Ideal para declaraciones y cumpleaños. Desde $29.99.',
     artists: ['Carlos Vives', 'Diomedes Díaz', 'Silvestre Dangond'],
-    color: '#15803D',
+    color: '#167A75',
     icon: '🪗',
     popularFor: ['Declaraciones de amor', 'Bodas', 'Cumpleaños'],
     reviewCount: 43
@@ -515,7 +515,7 @@ Con RegalosQueCantan, creas una canción de cumpleaños personalizada que incluy
 
 Imagina la cara de sorpresa cuando escuchen su nombre en una canción profesional. Es el regalo que nunca olvidarán.`,
     icon: '🎂',
-    color: '#F59E0B',
+    color: '#C98A1B',
     suggestedGenres: ['cumbia', 'banda-sinaloense', 'corridos-tumbados', 'reggaeton', 'mariachi'],
     ageGroups: ['Niños', 'Adolescentes', 'Adultos', 'Adultos mayores'],
     reviewCount: 234,
@@ -548,7 +548,7 @@ Una canción personalizada para mamá incluye:
 
 Ya sea mariachi tradicional, bolero romántico, o el género que ella prefiera, creamos la canción perfecta para tu mamá.`,
     icon: '👩‍👧',
-    color: '#EC4899',
+    color: '#E7699F',
     suggestedGenres: ['mariachi', 'bolero', 'ranchera', 'balada', 'norteno'],
     reviewCount: 312,
     featured: true,
@@ -576,7 +576,7 @@ Ya sea mariachi tradicional, bolero romántico, o el género que ella prefiera, 
 
 Crea un corrido que cuente sus logros, una ranchera que exprese tu admiración, o una banda que lo haga sonreír. El género que él prefiera, con su nombre y un mensaje de tu corazón.`,
     icon: '👨‍👧',
-    color: '#2563EB',
+    color: '#4A4CA8',
     suggestedGenres: ['corridos-tumbados', 'corrido-clasico', 'norteno', 'banda-sinaloense', 'ranchera'],
     reviewCount: 156,
     featured: true,
@@ -671,7 +671,7 @@ Una canción de XV años personalizada incluye:
 
 Puede ser un vals tradicional, una cumbia para después, o incluso un reggaeton para la fiesta. Todo personalizado para ella.`,
     icon: '👸',
-    color: '#A855F7',
+    color: '#8E90E8',
     suggestedGenres: ['balada', 'bachata', 'cumbia', 'pop-latino', 'mariachi'],
     reviewCount: 87,
     featured: true,
@@ -693,7 +693,7 @@ Puede ser un vals tradicional, una cumbia para después, o incluso un reggaeton 
     description: 'La graduación marca el fin de una etapa y el inicio de otra. Celebra su esfuerzo con una canción que mencione sus logros.',
     definitionBlock: 'Una canción de graduación personalizada es un regalo musical creado exclusivamente que celebra los logros del graduado. Incluye su nombre, carrera y un mensaje de orgullo, en corridos tumbados, cumbia, pop latino o banda. El reconocimiento que su esfuerzo merece, listo en minutos desde $29.99.',
     icon: '🎓',
-    color: '#1D4ED8',
+    color: '#3B3D8F',
     suggestedGenres: ['corridos-tumbados', 'cumbia', 'pop-latino', 'banda-sinaloense'],
     reviewCount: 56
   },
@@ -710,7 +710,7 @@ Puede ser un vals tradicional, una cumbia para después, o incluso un reggaeton 
     description: 'San Valentín es para celebrar el amor. Regala una canción que exprese todo lo que sientes con palabras que nunca encontrarías.',
     definitionBlock: 'Una canción de San Valentín personalizada es el regalo romántico perfecto para el 14 de febrero, creado exclusivamente. Incluye los nombres de la pareja y un mensaje de amor único, en bachata, bolero o balada. Más especial que flores o chocolates, lista en minutos desde $29.99.',
     icon: '❤️',
-    color: '#E11D48',
+    color: '#B44F35',
     suggestedGenres: ['bachata', 'bolero', 'balada', 'salsa'],
     reviewCount: 123,
     seasonal: true,
@@ -729,7 +729,7 @@ Puede ser un vals tradicional, una cumbia para después, o incluso un reggaeton 
     description: 'Crea un villancico personalizado que mencione a toda la familia. El regalo navideño que guardarán para siempre.',
     definitionBlock: 'Una canción navideña personalizada es un villancico único creado exclusivamente que menciona los nombres de toda la familia. En cumbia, pop latino, mariachi o balada, es el regalo de Navidad que guardarán para siempre y podrán escuchar cada diciembre. Desde $29.99.',
     icon: '🎄',
-    color: '#15803D',
+    color: '#167A75',
     suggestedGenres: ['cumbia', 'pop-latino', 'mariachi', 'balada'],
     reviewCount: 67,
     seasonal: true,
@@ -748,7 +748,7 @@ Puede ser un vals tradicional, una cumbia para después, o incluso un reggaeton 
     description: 'A veces las palabras no son suficientes. Una canción personalizada dice todo lo que sientes de una forma que nunca olvidará.',
     definitionBlock: 'Una canción para declarar tu amor es una canción romántica personalizada creada exclusivamente para esa persona especial, con su nombre y los detalles de su historia. En bachata, bolero, balada o mariachi, dice todo lo que tu corazón no puede expresar. Lista en minutos desde $29.99.',
     icon: '💌',
-    color: '#DB2777',
+    color: '#B62463',
     suggestedGenres: ['bachata', 'bolero', 'balada', 'norteno', 'mariachi'],
     reviewCount: 78
   },
@@ -765,7 +765,7 @@ Puede ser un vals tradicional, una cumbia para después, o incluso un reggaeton 
     description: 'Las despedidas son difíciles. Una canción personalizada expresa todo lo que significa esa persona para ti.',
     definitionBlock: 'Una canción de despedida personalizada es un regalo musical emotivo creado exclusivamente que expresa todo lo que esa persona significa para ti. Para jubilaciones, mudanzas o adioses, en bolero, balada o norteño, incluye su nombre y un mensaje del corazón. Desde $29.99.',
     icon: '👋',
-    color: '#64748B',
+    color: '#8A8BB0',
     suggestedGenres: ['bolero', 'balada', 'norteno', 'ranchera'],
     reviewCount: 34
   },

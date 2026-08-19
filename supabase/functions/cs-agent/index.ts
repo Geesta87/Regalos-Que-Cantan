@@ -555,11 +555,21 @@ serve(async (req) => {
     // Master switch — do nothing unless the owner has turned the bot on.
     const { data: settings } = await admin
       .from('cs_agent_settings')
-      .select('enabled, knowledge_doc, auto_send_enabled, auto_categories')
+      .select('enabled, knowledge_doc, auto_send_enabled, auto_categories, out_of_office')
       .eq('id', 1)
       .maybeSingle();
     if (!settings?.enabled) {
       return json({ ok: true, skipped: 'cs agent disabled' });
+    }
+    // Out of office — the owner is away. Bail HERE, before any Claude call: no
+    // send, and no draft either. Drafting while away would burn Claude tokens on
+    // replies nobody will read (owner, 2026-08-13: "no drafts should be
+    // generated to save claude responses"). The away auto-reply is the ONLY
+    // thing that goes out while the toggle is on, and the inbound webhooks send
+    // that themselves — see _shared/out-of-office.ts. They also skip calling us
+    // entirely; this is the backstop for every other way cs-agent gets woken.
+    if (settings?.out_of_office === true) {
+      return json({ ok: true, skipped: 'out of office' });
     }
     // Owner-editable knowledge (Bot Training panel). Falls back to the file
     // default when the owner hasn't customized it yet.

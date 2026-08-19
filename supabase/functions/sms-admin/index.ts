@@ -545,7 +545,7 @@ serve(async (req) => {
     if (action === 'list') {
       const { data: convos, error: cErr } = await admin
         .from('sms_conversations')
-        .select('id, customer_name, phone, order_id, unread, opted_out, last_message_at, channel, pinned_at')
+        .select('id, customer_name, phone, order_id, unread, opted_out, last_message_at, channel, pinned_at, awaiting_reply_since')
         // Pinned conversations first so they always make it under the row cap,
         // no matter how old their last message is.
         .order('pinned_at', { ascending: false, nullsFirst: false })
@@ -785,9 +785,14 @@ serve(async (req) => {
       // Give the client a signed URL so it can show the image right away.
       if (inserted && mediaSignedUrl) (inserted as Record<string, unknown>).media_url = mediaSignedUrl;
 
+      // A human just answered, so this thread leaves the Pending tab. Only on a
+      // successful send — a failed Twilio call means the customer still hasn't
+      // heard from anyone, and dropping them off the worklist would lose them.
+      const convoUpdate: Record<string, unknown> = { last_message_at: nowIso };
+      if (result.ok) convoUpdate.awaiting_reply_since = null;
       await admin
         .from('sms_conversations')
-        .update({ last_message_at: nowIso })
+        .update(convoUpdate)
         .eq('id', convoId);
 
       if (!result.ok) {
@@ -872,7 +877,10 @@ serve(async (req) => {
         .single();
       if (uErr) return json({ success: false, error: uErr.message }, 500);
 
-      await admin.from('sms_conversations').update({ last_message_at: nowIso }).eq('id', convoId);
+      // Approving a draft is a human answering — clears the Pending tab too.
+      const apprUpdate: Record<string, unknown> = { last_message_at: nowIso };
+      if (result.ok) apprUpdate.awaiting_reply_since = null;
+      await admin.from('sms_conversations').update(apprUpdate).eq('id', convoId);
 
       if (!result.ok) {
         return json({ success: false, error: result.error || 'Send failed', message: updated }, 502);
@@ -1080,7 +1088,10 @@ serve(async (req) => {
         .select('id, direction, body, status, created_at, channel, ai_generated, needs_human, media_path, media_type')
         .single();
       if (insErr) return json({ success: false, error: insErr.message }, 500);
-      await admin.from('sms_conversations').update({ last_message_at: nowIso, channel: sendCh }).eq('id', conversationId);
+      // Messaging the number directly also counts as answering them.
+      const newMsgUpdate: Record<string, unknown> = { last_message_at: nowIso, channel: sendCh };
+      if (result.ok) newMsgUpdate.awaiting_reply_since = null;
+      await admin.from('sms_conversations').update(newMsgUpdate).eq('id', conversationId);
 
       if (!result.ok) {
         return json({ success: false, error: result.error || 'Send failed', conversation_id: conversationId, message: inserted }, 502);

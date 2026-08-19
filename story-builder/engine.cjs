@@ -71,6 +71,52 @@ const dl = (url, file) => execFileSync('curl', ['-s', '-o', path.join(DIR, file)
 // out-urls.json so build.cjs can persist any newly generated scenes.
 const sceneUrls = (() => { try { return JSON.parse(fs.readFileSync(path.join(DIR, 'seed-urls.json'), 'utf8')); } catch { return {}; } })();
 
+// ---- incremental checkpointing ----
+// Artifacts used to be persisted only after the FINAL mp4 existed, so any death
+// mid-build threw away everything already paid for (2026-08-12: two consecutive
+// deaths on order f17d621b lost 20 scene images + a hero motion clip each time;
+// the images were only recoverable by hand-matching storage timestamps to logs).
+// When build.cjs passes an order id we now upload + record each artifact THE
+// MOMENT IT EXISTS, so the next attempt resumes instead of restarting. Every
+// checkpoint is best-effort: it must never fail a build that is otherwise fine.
+const ORDER_ID = process.env.STORY_ORDER_ID || null;
+const FINALIZE = `${BASE}/functions/v1/story-build-finalize`;
+const assetMap = {}; // image_id -> { image_url, motion_url }
+let morphUrl = null;
+(() => {
+  // seeded from the order's already-persisted assets so a checkpoint never drops
+  // a motion clip / morph this run reused rather than regenerated
+  try {
+    for (const a of JSON.parse(fs.readFileSync(path.join(DIR, 'seed-assets.json'), 'utf8')))
+      if (a && a.image_id) assetMap[a.image_id] = { image_url: a.image_url || null, motion_url: a.motion_url || null };
+  } catch {}
+  try { morphUrl = (fs.readFileSync(path.join(DIR, 'seed-morph.txt'), 'utf8').trim() || null); } catch {}
+})();
+
+async function finalize(body) {
+  const r = await fetch(FINALIZE, { method: 'POST', headers: { Authorization: `Bearer ${ANON}`, apikey: ANON, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  return r.json();
+}
+// upload a local artifact to storage, return its public url
+async function uploadAsset(localFile, contentType) {
+  const u = await finalize({ mode: 'asset-upload-url', story_video_order_id: ORDER_ID, file: localFile });
+  if (!u.success) throw new Error(u.error || 'no upload url');
+  const code = execFileSync('curl', ['-s', '-o', '_assetup.log', '-w', '%{http_code}', '-X', 'PUT', u.signed_url,
+    '-H', `Content-Type: ${contentType}`, '--data-binary', `@${localFile}`], { cwd: DIR }).toString().trim();
+  if (code !== '200') throw new Error(`PUT http=${code}`);
+  return u.public_url;
+}
+async function checkpoint(label) {
+  if (!ORDER_ID) return;
+  try {
+    for (const id of Object.keys(sceneUrls)) assetMap[id] = { ...(assetMap[id] || {}), image_url: sceneUrls[id] };
+    const scene_assets = Object.entries(assetMap)
+      .map(([image_id, a]) => ({ image_id, image_url: a.image_url || null, motion_url: a.motion_url || null }));
+    const r = await finalize({ mode: 'save-assets', story_video_order_id: ORDER_ID, scene_assets, morph_asset: morphUrl });
+    console.log(`  [checkpoint] ${label}: ${r.success ? `${scene_assets.length} scene(s)${morphUrl ? ' + morph' : ''} saved` : `save failed (${r.error})`}`);
+  } catch (e) { console.log(`  [checkpoint] ${label} failed (non-fatal): ${e.message}`); }
+}
+
 // GPT Image 2 (reference-conditioned, OpenAI images/edits) via the deployed gpt-image
 // edge fn -> uploads the render and returns a hosted public URL. Replaces Kie
 // nano-banana-edit for all image generation: fully-Pixar stylization, faithful
@@ -92,7 +138,7 @@ async function gptImage(prompt, refUrls, label) {
 
 // one scene image, resilient to content blocks: try as-written, then a strictly
 // child-safe rephrase, then give up (caller substitutes a fallback image).
-const PIXAR = ' Render as warm, fully-stylized Pixar-style 3D animation (not photorealistic), faithful to the character in the reference. Depict exactly the people described — do NOT duplicate anyone or add unrelated people.';
+const PIXAR = ' Render as warm, fully-stylized Pixar-style 3D animation (not photorealistic), faithful to the character in the reference. Depict exactly the people described — do NOT duplicate anyone or add unrelated people. The reference image defines each character\'s IDENTITY (face, hair, build) only — do NOT copy its pose, framing, or camera angle; follow the shot direction stated at the start of this prompt.';
 async function genOneImage(id, prompt) {
   try {
     const url = await gptImage(prompt + PIXAR, [CHAR_REF], id);
@@ -173,12 +219,28 @@ async function genHeroes(flat) {
       }
       // a seeded/persisted raw motion clip (revise flow / rebuild) skips the
       // Seedance call entirely — only the freeze-extend wrap is redone.
+      let freshMotion = false;
       if (!fs.existsSync(path.join(DIR, `motion-${id}.mp4`))) {
+        freshMotion = true;
         console.log(`animating hero ${id} (window ${L}s)...`);
-        const motionUrl = await kieRun('bytedance/seedance-2', 'Gentle warm cinematic motion that suits the scene, subtle and natural, soft camera, Pixar 3D animation, keep the character identical, no distortion.', { first_frame_url: url, resolution: '720p', aspect_ratio: '9:16', duration: 5, generate_audio: false }, `${id}-motion`);
+        // per-scene motion direction from the storyboard when present (hero scenes
+        // carry a one-line camera/subject move); generic gentle motion otherwise.
+        const custom = (sb.scenes.find((s) => s.image_id === id && s.motion_prompt)?.motion_prompt || '').trim();
+        const motionPrompt = custom
+          ? `${custom.replace(/\.?\s*$/, '.')} Subtle and natural, Pixar 3D animation, keep the character identical, no distortion.`
+          : 'Gentle warm cinematic motion that suits the scene, subtle and natural, soft camera, Pixar 3D animation, keep the character identical, no distortion.';
+        const motionUrl = await kieRun('bytedance/seedance-2', motionPrompt, { first_frame_url: url, resolution: '720p', aspect_ratio: '9:16', duration: 5, generate_audio: false }, `${id}-motion`);
         dl(motionUrl, `motion-${id}.mp4`);
       } else {
         console.log(`  hero ${id}: reusing existing motion clip`);
+      }
+      // persist the raw clip immediately — a Seedance take is the most expensive
+      // artifact in the build and used to be lost on any later crash
+      if (freshMotion && ORDER_ID) {
+        try {
+          assetMap[id] = { ...(assetMap[id] || {}), motion_url: await uploadAsset(`motion-${id}.mp4`, 'video/mp4') };
+          await checkpoint(`motion ${id}`);
+        } catch (e) { console.log(`  [checkpoint] motion ${id} upload failed (non-fatal): ${e.message}`); }
       }
       wrapHero(`motion-${id}.mp4`, `${id}_full.mp4`, L);
       console.log(`  hero ${id} done`);
@@ -233,6 +295,34 @@ async function genMorph() {
     'A real photograph slowly and magically transforms into a warm 3D Pixar-style animated version of the same subjects, keeping every person and the exact pose and framing. Smooth seamless morph, gentle glow. Wholesome.',
     { first_frame_url: cfg.recipient_photo_url, last_frame_url: MORPH_END, resolution: '720p', aspect_ratio: '3:4', duration: 5, generate_audio: false }, 'morph');
   dl(url, out); console.log('  morph ok');
+  if (ORDER_ID) {
+    try { morphUrl = await uploadAsset(out, 'video/mp4'); await checkpoint('morph'); }
+    catch (e) { console.log(`  [checkpoint] morph upload failed (non-fatal): ${e.message}`); }
+  }
+}
+
+// ---- guaranteed real-photo opening ----
+// The morph is generated with the customer's photo as its FIRST FRAME, but
+// Seedance does not always honour that — Ramón's video (2026-08-11) opened
+// already-animated and had to be re-rolled by hand. Holding the actual photo on
+// screen for ~1.2s and cross-fading into the morph makes the real->animated
+// reveal certain instead of luck. The short fade also hides the seam when the
+// morph's first frame HAS drifted. Falls back to the raw morph on any failure.
+function buildIntro() {
+  const W = 1080, H = 1920, FPS = 30, HOLD = 1.2, XFH = 0.35;
+  if (!cfg.recipient_photo_url) return 'BOOKEND.mp4';
+  const ff = (a) => execFileSync('ffmpeg', ['-y', '-hide_banner', '-loglevel', 'error', ...a], { cwd: DIR, stdio: 'inherit' });
+  const fit = `scale=${W}:${H}:force_original_aspect_ratio=increase:flags=lanczos,crop=${W}:${H},setsar=1,fps=${FPS},settb=1/${FPS},format=yuv420p`;
+  try {
+    if (!fs.existsSync(path.join(DIR, '_photo.png'))) dl(cfg.recipient_photo_url, '_photo.png');
+    // hold runs HOLD + XFH so the crossfade has material to work with
+    ff(['-loop', '1', '-t', String(HOLD + XFH), '-i', '_photo.png', '-vf', fit, '-an', '-c:v', 'libx264', '-preset', 'medium', '-crf', '20', '-pix_fmt', 'yuv420p', '_hold.mp4']);
+    ff(['-i', '_hold.mp4', '-i', 'BOOKEND.mp4', '-filter_complex',
+      `[0:v]${fit}[h];[1:v]${fit}[m];[h][m]xfade=transition=fade:duration=${XFH}:offset=${HOLD}[v]`,
+      '-map', '[v]', '-r', String(FPS), '-c:v', 'libx264', '-preset', 'medium', '-crf', '20', '-pix_fmt', 'yuv420p', '_intro.mp4']);
+    console.log(`  intro: real photo held ${HOLD}s before the morph`);
+    return '_intro.mp4';
+  } catch (e) { console.log(`  photo-hold intro failed, using raw morph: ${e.message}`); return 'BOOKEND.mp4'; }
 }
 
 // ---- 4. FFmpeg render ----
@@ -258,8 +348,12 @@ function render(flat, total) {
   ff([...inputs, '-filter_complex', fc.join(';'), '-map', '[vout]', '-map', '[aout]', '-r', String(FPS), '-c:v', 'libx264', '-preset', 'medium', '-crf', '20', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k', '-t', String(total), 'STORYBOOK.mp4']);
 }
 function prependMorph(total) {
-  const W = 1080, H = 1920, FPS = 30, MV = 5.0, XF = 1.0, OFF = +(MV - XF).toFixed(2);
-  const storyDur = parseFloat(execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', path.join(DIR, 'STORYBOOK.mp4')]).toString().trim());
+  const W = 1080, H = 1920, FPS = 30, XF = 1.0;
+  // the intro is the raw morph, or (preferred) the real photo held in front of it
+  const intro = buildIntro();
+  const probe = (f) => parseFloat(execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', path.join(DIR, f)]).toString().trim());
+  const MV = +probe(intro).toFixed(2), OFF = +(MV - XF).toFixed(2);
+  const storyDur = probe('STORYBOOK.mp4');
   const tot = +(OFF + storyDur).toFixed(2);
   const fc = [
     `[0:v]scale=${W}:${H}:force_original_aspect_ratio=increase:flags=lanczos,crop=${W}:${H},setsar=1,fps=${FPS},trim=duration=${MV},setpts=PTS-STARTPTS,settb=1/${FPS},format=yuv420p[mv]`,
@@ -269,18 +363,26 @@ function prependMorph(total) {
     `[1:a]adelay=${Math.round(OFF * 1000)}|${Math.round(OFF * 1000)}[sa]`,
     `[ma][sa]amix=inputs=2:duration=longest:normalize=0[a]`,
   ];
-  execFileSync('ffmpeg', ['-y', '-hide_banner', '-loglevel', 'error', '-stats', '-i', 'BOOKEND.mp4', '-i', 'STORYBOOK.mp4', '-i', 'song.mp3', '-filter_complex', fc.join(';'), '-map', '[v]', '-map', '[a]', '-r', String(FPS), '-c:v', 'libx264', '-preset', 'medium', '-crf', '20', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k', '-t', String(tot), 'FINAL-AUTO.mp4'], { cwd: DIR, stdio: 'inherit' });
+  execFileSync('ffmpeg', ['-y', '-hide_banner', '-loglevel', 'error', '-stats', '-i', intro, '-i', 'STORYBOOK.mp4', '-i', 'song.mp3', '-filter_complex', fc.join(';'), '-map', '[v]', '-map', '[a]', '-r', String(FPS), '-c:v', 'libx264', '-preset', 'medium', '-crf', '20', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k', '-t', String(tot), 'FINAL-AUTO.mp4'], { cwd: DIR, stdio: 'inherit' });
   console.log(`\nDONE -> ${path.join(DIR, 'FINAL-AUTO.mp4')} (${tot}s)`);
 }
 
 (async () => {
   await genImages();
+  await checkpoint('images');   // scenes are safe from here on, even if we die below
   const { flat, total } = windows();
   console.log(`${flat.length} render-scenes, ${total}s`);
-  if (WITH_MOTION) await genHeroes(flat);
-  await genMorph();
+  if (WITH_MOTION) await genHeroes(flat);  // checkpoints after each hero clip
+  await genMorph();                        // checkpoints the morph
   // persist the image-url map so build.cjs can save newly generated scenes
   fs.writeFileSync(path.join(DIR, 'out-urls.json'), JSON.stringify(sceneUrls));
+  // the fully-resolved asset map: build.cjs reuses these hosted urls instead of
+  // re-uploading the same clips at the end of the build
+  for (const id of Object.keys(sceneUrls)) assetMap[id] = { ...(assetMap[id] || {}), image_url: sceneUrls[id] };
+  fs.writeFileSync(path.join(DIR, 'out-assets.json'), JSON.stringify({
+    scene_assets: Object.entries(assetMap).map(([image_id, a]) => ({ image_id, image_url: a.image_url || null, motion_url: a.motion_url || null })),
+    morph_asset: morphUrl,
+  }));
   render(flat, total);
   prependMorph(total);
 })().catch((e) => { console.error('AUTO-BUILD FAILED:', e.message); process.exit(1); });

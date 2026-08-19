@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { CenzoSignature } from '../components/Cenzo';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Animado — customer-facing UI for the animated story-video upsell.
@@ -19,9 +20,9 @@ const PRICE = 29;          // beta price — 1 animated video
 const PRICE_BOTH = 44.99;  // both songs animated (bundle) — saves vs 2×$29
 const ANCHOR = 99;         // slashed "regular" anchor (per video)
 
-const GOLD = '#f5b942';
-const PINK = '#f74da6';
-const VIOLET = '#a855f7';
+const GOLD = '#E8B44A';
+const PINK = '#E7699F';
+const VIOLET = '#8E90E8';
 
 // ── The two character styles the customer chooses between (one or the other). ──
 // Each `img` is a real example produced by our pipeline so they see exactly what
@@ -51,7 +52,7 @@ const ANIM_CSS = `
   @keyframes aniShimmer { 0% { left: -60%; } 100% { left: 160%; } }
   @keyframes aniFloat { 0%, 100% { transform: translateY(0) rotate(-4deg); } 50% { transform: translateY(-7px) rotate(4deg); } }
   @keyframes aniPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.06); } }
-  @keyframes aniGlow { 0%, 100% { box-shadow: 0 0 0 2px rgba(245,185,66,0.45), 0 0 26px rgba(245,185,66,0.25); } 50% { box-shadow: 0 0 0 4px rgba(245,185,66,0.55), 0 0 50px rgba(247,77,166,0.45); } }
+  @keyframes aniGlow { 0%, 100% { box-shadow: 0 0 0 2px rgba(232,180,74,0.45), 0 0 26px rgba(232,180,74,0.25); } 50% { box-shadow: 0 0 0 4px rgba(232,180,74,0.55), 0 0 50px rgba(231,105,159,0.45); } }
   @keyframes scene1 { 0%,20%{opacity:1} 28%,100%{opacity:0} }
   @keyframes scene2 { 0%,20%{opacity:0} 28%,45%{opacity:1} 53%,100%{opacity:0} }
   @keyframes scene3 { 0%,45%{opacity:0} 53%,70%{opacity:1} 78%,100%{opacity:0} }
@@ -80,9 +81,9 @@ function VideoHero() {
   return (
     <div style={{
       position: 'relative', width: '100%', maxWidth: 268, margin: '0 auto',
-      borderRadius: 20, overflow: 'hidden', background: '#0d0a12',
-      border: '3px solid rgba(245,185,66,0.55)',
-      boxShadow: '0 0 0 1px rgba(0,0,0,0.4), 0 14px 40px rgba(247,77,166,0.28)',
+      borderRadius: 20, overflow: 'hidden', background: '#191A45',
+      border: '3px solid rgba(232,180,74,0.55)',
+      boxShadow: '0 0 0 1px rgba(0,0,0,0.4), 0 14px 40px rgba(231,105,159,0.28)',
       animation: 'aniGlow 3s ease-in-out infinite',
     }}>
       <video
@@ -103,13 +104,13 @@ function VideoHero() {
         background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)',
         padding: '4px 10px', borderRadius: 20, fontSize: 11, color: '#fff', fontWeight: 800,
       }}>
-        <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e', display: 'inline-block' }} />
+        <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#43C2BA', display: 'inline-block' }} />
         Muestra real
       </div>
       {/* sound toggle */}
       <button onClick={toggleSound} style={{
         position: 'absolute', bottom: 10, right: 10, border: 'none', cursor: 'pointer',
-        background: muted ? 'rgba(247,77,166,0.92)' : 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
+        background: muted ? 'rgba(231,105,159,0.92)' : 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
         color: '#fff', fontSize: 12, fontWeight: 800, padding: '7px 12px', borderRadius: 20,
         display: 'flex', alignItems: 'center', gap: 6,
       }}>
@@ -124,6 +125,7 @@ function VideoHero() {
       }}>
         🎨 Ilustraciones animadas + 🎬 movimiento
       </div>
+      <CenzoSignature className="justify-center my-6" />
     </div>
   );
 }
@@ -138,7 +140,7 @@ function StylePicker({ value, onChange }) {
       <p style={{ margin: '0 0 3px', fontSize: 14, fontWeight: 800, color: '#fff' }}>
         🎨 Elige el estilo del personaje
       </p>
-      <p style={{ margin: '0 0 12px', fontSize: 11.5, color: 'rgba(255,255,255,0.5)', lineHeight: 1.4 }}>
+      <p style={{ margin: '0 0 12px', fontSize: 11.5, color: 'rgba(255,255,255,0.7)', lineHeight: 1.4 }}>
         Tú decides cómo se ve. Ambos se animan con la misma historia y movimiento.
       </p>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
@@ -149,7 +151,7 @@ function StylePicker({ value, onChange }) {
               position: 'relative', padding: 0, cursor: 'pointer', textAlign: 'left',
               borderRadius: 14, overflow: 'hidden', background: 'rgba(0,0,0,0.3)',
               border: on ? `2.5px solid ${GOLD}` : '2.5px solid rgba(255,255,255,0.1)',
-              boxShadow: on ? '0 0 0 1px rgba(245,185,66,0.4), 0 8px 22px rgba(245,185,66,0.22)' : 'none',
+              boxShadow: on ? '0 0 0 1px rgba(232,180,74,0.4), 0 8px 22px rgba(232,180,74,0.22)' : 'none',
               transition: 'all 0.2s',
             }}>
               <div style={{ position: 'relative' }}>
@@ -174,7 +176,7 @@ function StylePicker({ value, onChange }) {
                 <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: on ? GOLD : '#fff' }}>
                   {s.emoji} {s.label}
                 </p>
-                <p style={{ margin: '3px 0 0', fontSize: 10.5, color: 'rgba(255,255,255,0.5)', lineHeight: 1.35 }}>
+                <p style={{ margin: '3px 0 0', fontSize: 10.5, color: 'rgba(255,255,255,0.7)', lineHeight: 1.35 }}>
                   {s.sub}
                 </p>
               </div>
@@ -218,9 +220,9 @@ export function AnimadoOffer({
   return (
     <div style={{
       background: 'linear-gradient(160deg, #1a1020 0%, #140d18 100%)',
-      border: added ? `2px solid #22c55e` : `2px solid rgba(245,185,66,0.55)`,
+      border: added ? `2px solid #43C2BA` : `2px solid rgba(232,180,74,0.55)`,
       borderRadius: 20, padding: 20, position: 'relative', overflow: 'hidden',
-      boxShadow: added ? '0 0 26px rgba(34,197,94,0.3)' : '0 10px 40px rgba(247,77,166,0.18)',
+      boxShadow: added ? '0 0 26px rgba(67,194,186,0.3)' : '0 10px 40px rgba(231,105,159,0.18)',
       animation: 'aniFade 0.6s ease-out both',
     }}>
       <style>{ANIM_CSS}</style>
@@ -248,8 +250,8 @@ export function AnimadoOffer({
 
       {/* Differentiator vs the $9.99 slideshow */}
       <div style={{
-        marginTop: 14, fontSize: 12, color: '#fde68a', background: 'rgba(245,185,66,0.08)',
-        border: '1px solid rgba(245,185,66,0.25)', borderRadius: 10, padding: '9px 12px', lineHeight: 1.45,
+        marginTop: 14, fontSize: 12, color: '#F4D08A', background: 'rgba(232,180,74,0.08)',
+        border: '1px solid rgba(232,180,74,0.25)', borderRadius: 10, padding: '9px 12px', lineHeight: 1.45,
       }}>
         💡 <strong>No es un video de fotos.</strong> Son ilustraciones animadas hechas a mano —
         que cobran vida con movimiento en los momentos más especiales.
@@ -269,7 +271,7 @@ export function AnimadoOffer({
             <span style={{ fontSize: 20, flexShrink: 0, lineHeight: 1 }}>{icon}</span>
             <div>
               <p style={{ margin: 0, fontSize: 13.5, fontWeight: 700, color: '#fff', lineHeight: 1.25 }}>{label}</p>
-              <p style={{ margin: '2px 0 0', fontSize: 11.5, color: 'rgba(255,255,255,0.45)', lineHeight: 1.4 }}>{sub}</p>
+              <p style={{ margin: '2px 0 0', fontSize: 11.5, color: 'rgba(255,255,255,0.68)', lineHeight: 1.4 }}>{sub}</p>
             </div>
           </div>
         ))}
@@ -278,33 +280,33 @@ export function AnimadoOffer({
       {/* Price + selection block */}
       <div style={{
         background: added
-          ? 'linear-gradient(90deg, rgba(34,197,94,0.18), rgba(34,197,94,0.08))'
-          : 'linear-gradient(90deg, rgba(245,185,66,0.12), rgba(247,77,166,0.1))',
-        border: `1px solid ${added ? 'rgba(34,197,94,0.4)' : 'rgba(245,185,66,0.3)'}`,
+          ? 'linear-gradient(90deg, rgba(67,194,186,0.18), rgba(67,194,186,0.08))'
+          : 'linear-gradient(90deg, rgba(232,180,74,0.12), rgba(231,105,159,0.1))',
+        border: `1px solid ${added ? 'rgba(67,194,186,0.4)' : 'rgba(232,180,74,0.3)'}`,
         borderRadius: 14, padding: 16,
       }}>
         {/* Price header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, marginBottom: 14 }}>
           {count === 2 ? (
             <>
-              <span style={{ fontSize: 15, color: 'rgba(255,255,255,0.35)', textDecoration: 'line-through' }}>${(PRICE * 2).toFixed(0)}</span>
+              <span style={{ fontSize: 15, color: 'rgba(255,255,255,0.6)', textDecoration: 'line-through' }}>${(PRICE * 2).toFixed(0)}</span>
               <span style={{ fontSize: 42, fontWeight: 900, lineHeight: 1, color: GOLD, display: 'inline-block' }}>${PRICE_BOTH}</span>
               <span style={{
-                fontSize: 12, fontWeight: 800, color: '#22c55e', background: 'rgba(34,197,94,0.15)',
-                padding: '3px 10px', borderRadius: 20, border: '1px solid rgba(34,197,94,0.25)', whiteSpace: 'nowrap',
+                fontSize: 12, fontWeight: 800, color: '#43C2BA', background: 'rgba(67,194,186,0.15)',
+                padding: '3px 10px', borderRadius: 20, border: '1px solid rgba(67,194,186,0.25)', whiteSpace: 'nowrap',
               }}>Ahorra ${(PRICE * 2 - PRICE_BOTH).toFixed(0)}</span>
             </>
           ) : (
             <>
-              <span style={{ fontSize: 15, color: 'rgba(255,255,255,0.35)', textDecoration: 'line-through' }}>${ANCHOR}</span>
+              <span style={{ fontSize: 15, color: 'rgba(255,255,255,0.6)', textDecoration: 'line-through' }}>${ANCHOR}</span>
               <span style={{ fontSize: 46, fontWeight: 900, lineHeight: 1, color: GOLD, animation: added ? 'none' : 'aniPulse 1.6s ease-in-out infinite', display: 'inline-block' }}>${PRICE}</span>
               <div style={{ textAlign: 'left' }}>
                 <span style={{
-                  display: 'block', fontSize: 12, fontWeight: 800, color: '#22c55e',
-                  background: 'rgba(34,197,94,0.15)', padding: '3px 10px', borderRadius: 20,
-                  border: '1px solid rgba(34,197,94,0.25)', marginBottom: 3, whiteSpace: 'nowrap',
+                  display: 'block', fontSize: 12, fontWeight: 800, color: '#43C2BA',
+                  background: 'rgba(67,194,186,0.15)', padding: '3px 10px', borderRadius: 20,
+                  border: '1px solid rgba(67,194,186,0.25)', marginBottom: 3, whiteSpace: 'nowrap',
                 }}>{isTwo ? `c/u · 2 = $${PRICE_BOTH}` : `Ahorra ${Math.round((1 - PRICE / ANCHOR) * 100)}%`}</span>
-                <span style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.4)' }}>precio de lanzamiento</span>
+                <span style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.65)' }}>precio de lanzamiento</span>
               </div>
             </>
           )}
@@ -326,7 +328,7 @@ export function AnimadoOffer({
                     style={{
                       width: '100%', padding: '12px 14px', borderRadius: 12, cursor: 'pointer', textAlign: 'left',
                       border: sel ? `2px solid ${c === 0 ? 'rgba(255,255,255,0.3)' : GOLD}` : '2px solid rgba(255,255,255,0.1)',
-                      background: sel ? (c === 0 ? 'rgba(255,255,255,0.06)' : 'rgba(245,185,66,0.14)') : 'rgba(255,255,255,0.04)',
+                      background: sel ? (c === 0 ? 'rgba(255,255,255,0.06)' : 'rgba(232,180,74,0.14)') : 'rgba(255,255,255,0.04)',
                       color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, transition: 'all 0.2s',
                     }}
                   >
@@ -339,7 +341,7 @@ export function AnimadoOffer({
                       }}>{sel && c !== 0 && <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#1a1020' }} />}</span>
                       <span>
                         <span style={{ display: 'block', fontSize: 13.5, fontWeight: 800 }}>{title}</span>
-                        <span style={{ display: 'block', fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>{sub}</span>
+                        <span style={{ display: 'block', fontSize: 11, color: 'rgba(255,255,255,0.7)' }}>{sub}</span>
                       </span>
                     </span>
                     {p && <span style={{ fontSize: 15, fontWeight: 900, color: GOLD, flexShrink: 0 }}>{p}</span>}
@@ -354,7 +356,7 @@ export function AnimadoOffer({
                           <button key={s.id} onClick={() => onChange(1, s.id)} style={{
                             flex: 1, padding: '9px', borderRadius: 10, cursor: 'pointer', fontSize: 12.5, fontWeight: 800,
                             border: on ? `2px solid ${PINK}` : '2px solid rgba(255,255,255,0.12)',
-                            background: on ? 'rgba(247,77,166,0.18)' : 'rgba(255,255,255,0.04)',
+                            background: on ? 'rgba(231,105,159,0.18)' : 'rgba(255,255,255,0.04)',
                             color: on ? '#fff' : 'rgba(255,255,255,0.6)', transition: 'all 0.2s',
                           }}>
                             {on ? '✓ ' : ''}{verLabel(s)}
@@ -374,8 +376,8 @@ export function AnimadoOffer({
             style={{
               width: '100%', padding: '15px', borderRadius: 14, border: 'none', cursor: 'pointer',
               fontSize: 16, fontWeight: 900, color: added ? '#fff' : '#1a1020',
-              background: added ? 'linear-gradient(135deg,#16a34a,#22c55e)' : `linear-gradient(135deg, ${GOLD}, ${PINK})`,
-              boxShadow: added ? '0 0 18px rgba(34,197,94,0.4)' : '0 6px 20px rgba(247,77,166,0.4)',
+              background: added ? 'linear-gradient(135deg,#1F8C86,#43C2BA)' : `linear-gradient(135deg, ${GOLD}, ${PINK})`,
+              boxShadow: added ? '0 0 18px rgba(67,194,186,0.4)' : '0 6px 20px rgba(231,105,159,0.4)',
               transition: 'all 0.25s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
             }}
           >
@@ -385,14 +387,14 @@ export function AnimadoOffer({
 
         {/* selected confirmation for 2-song mode */}
         {isTwo && added && (
-          <p style={{ margin: '12px 0 0', fontSize: 12, fontWeight: 700, color: '#4ade80', textAlign: 'center' }}>
+          <p style={{ margin: '12px 0 0', fontSize: 12, fontWeight: 700, color: '#89DAD4', textAlign: 'center' }}>
             ✓ Agregado a tu pedido — {count === 2 ? 'las 2 canciones' : verLabel(songs.find((s) => s.id === chosenSongId) || songs[0])} · ${price}
           </p>
         )}
       </div>
 
       {/* Trust line */}
-      <p style={{ margin: '12px 0 0', fontSize: 11.5, color: 'rgba(255,255,255,0.4)', textAlign: 'center', lineHeight: 1.5 }}>
+      <p style={{ margin: '12px 0 0', fontSize: 11.5, color: 'rgba(255,255,255,0.65)', textAlign: 'center', lineHeight: 1.5 }}>
         🤚 Hecho a mano y revisado por nuestro equipo antes de enviártelo · ⏱️ Listo en 1–2 días · ✅ Aprobación de calidad garantizada
       </p>
 
@@ -419,9 +421,9 @@ function PhotoDrop({ icon = '📸', title, hint, value, onPick, required = false
   }, [value]);
   return (
     <label style={{
-      display: 'block', cursor: 'pointer', border: `2px dashed ${name ? '#22c55e' : 'rgba(245,185,66,0.6)'}`,
+      display: 'block', cursor: 'pointer', border: `2px dashed ${name ? '#43C2BA' : 'rgba(232,180,74,0.6)'}`,
       borderRadius: 16, padding: name ? '12px' : '22px 16px', textAlign: 'center',
-      background: name ? 'rgba(34,197,94,0.08)' : 'rgba(245,185,66,0.05)', transition: 'all 0.2s',
+      background: name ? 'rgba(67,194,186,0.08)' : 'rgba(232,180,74,0.05)', transition: 'all 0.2s',
     }}>
       <input type="file" accept="image/*" style={{ display: 'none' }}
         onChange={(e) => onPick(e.target.files?.[0] || null)} />
@@ -433,10 +435,10 @@ function PhotoDrop({ icon = '📸', title, hint, value, onPick, required = false
       ) : (
         <div style={{ fontSize: 34, marginBottom: 6, animation: 'aniFloat 3s ease-in-out infinite' }}>{icon}</div>
       )}
-      <p style={{ margin: 0, fontSize: 14.5, fontWeight: 800, color: name ? '#22c55e' : '#fff' }}>
+      <p style={{ margin: 0, fontSize: 14.5, fontWeight: 800, color: name ? '#43C2BA' : '#fff' }}>
         {name ? '✓ Foto seleccionada' : title}{required && !name && <span style={{ color: PINK }}> *</span>}
       </p>
-      <p style={{ margin: '4px 0 0', fontSize: 11.5, color: 'rgba(255,255,255,0.45)', lineHeight: 1.4, wordBreak: 'break-word' }}>
+      <p style={{ margin: '4px 0 0', fontSize: 11.5, color: 'rgba(255,255,255,0.68)', lineHeight: 1.4, wordBreak: 'break-word' }}>
         {name ? `${name} · toca para cambiarla` : hint}
       </p>
     </label>
@@ -586,14 +588,14 @@ export function AnimadoPhotoUpload({ recipientName = 'Papá', isFamily = false, 
     return (
       <div style={{
         background: 'linear-gradient(160deg, #1a1020 0%, #140d18 100%)',
-        border: '2px solid rgba(245,185,66,0.5)', borderRadius: 20, padding: 22,
+        border: '2px solid rgba(232,180,74,0.5)', borderRadius: 20, padding: 22,
         animation: 'aniFade 0.5s ease-out both',
       }}>
         <style>{ANIM_CSS}</style>
         <div style={{ textAlign: 'center', marginBottom: 14 }}>
           <div style={{
             width: 54, height: 54, borderRadius: '50%', margin: '0 auto 12px',
-            background: 'rgba(245,185,66,0.15)', display: 'flex', alignItems: 'center',
+            background: 'rgba(232,180,74,0.15)', display: 'flex', alignItems: 'center',
             justifyContent: 'center', fontSize: 28,
           }}>⚠️</div>
           <h2 style={{ margin: '0 0 6px', fontSize: 20, fontWeight: 900, color: '#fff' }}>Esta foto podría no salir bien</h2>
@@ -608,16 +610,16 @@ export function AnimadoPhotoUpload({ recipientName = 'Papá', isFamily = false, 
           }} />
         )}
         {qualityIssues.length > 0 && (
-          <div style={{ background: 'rgba(245,185,66,0.08)', border: '1px solid rgba(245,185,66,0.3)', borderRadius: 12, padding: '11px 13px', marginBottom: 14 }}>
+          <div style={{ background: 'rgba(232,180,74,0.08)', border: '1px solid rgba(232,180,74,0.3)', borderRadius: 12, padding: '11px 13px', marginBottom: 14 }}>
             {qualityIssues.map((iss, i) => (
-              <p key={i} style={{ margin: i ? '5px 0 0' : 0, fontSize: 12.5, color: '#fde68a', lineHeight: 1.4 }}>• {iss}</p>
+              <p key={i} style={{ margin: i ? '5px 0 0' : 0, fontSize: 12.5, color: '#F4D08A', lineHeight: 1.4 }}>• {iss}</p>
             ))}
           </div>
         )}
         <button onClick={() => { setPhase('pick'); setSubmitting(false); }} style={{
           width: '100%', padding: 14, borderRadius: 14, border: 'none', cursor: 'pointer',
           fontSize: 15.5, fontWeight: 900, color: '#1a1020', background: `linear-gradient(135deg, ${GOLD}, ${PINK})`,
-          boxShadow: '0 6px 20px rgba(247,77,166,0.4)', transition: 'all 0.25s',
+          boxShadow: '0 6px 20px rgba(231,105,159,0.4)', transition: 'all 0.25s',
         }}>📷 Subir otra foto</button>
         <button onClick={() => proceedAfterQuality(cast)} disabled={submitting} style={{
           width: '100%', marginTop: 10, padding: 12, borderRadius: 12, border: '1.5px solid rgba(255,255,255,0.18)',
@@ -635,7 +637,7 @@ export function AnimadoPhotoUpload({ recipientName = 'Papá', isFamily = false, 
     return (
       <div style={{
         background: 'linear-gradient(160deg, #1a1020 0%, #140d18 100%)',
-        border: '2px solid rgba(245,185,66,0.45)', borderRadius: 20, padding: 22,
+        border: '2px solid rgba(232,180,74,0.45)', borderRadius: 20, padding: 22,
         animation: 'aniFade 0.5s ease-out both',
       }}>
         <style>{ANIM_CSS}</style>
@@ -660,7 +662,7 @@ export function AnimadoPhotoUpload({ recipientName = 'Papá', isFamily = false, 
               background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)',
               borderRadius: 12, padding: '12px 13px',
             }}>
-              <p style={{ margin: '0 0 9px', fontSize: 12.5, color: '#fde68a', lineHeight: 1.4, fontWeight: 600 }}>
+              <p style={{ margin: '0 0 9px', fontSize: 12.5, color: '#F4D08A', lineHeight: 1.4, fontWeight: 600 }}>
                 👤 {c.description || `Persona ${i + 1}`}
               </p>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
@@ -702,11 +704,11 @@ export function AnimadoPhotoUpload({ recipientName = 'Papá', isFamily = false, 
           cursor: allTagged && !submitting ? 'pointer' : 'not-allowed', fontSize: 16, fontWeight: 900,
           color: allTagged ? '#1a1020' : 'rgba(255,255,255,0.35)',
           background: allTagged ? `linear-gradient(135deg, ${GOLD}, ${PINK})` : 'rgba(255,255,255,0.06)',
-          boxShadow: allTagged && !submitting ? '0 6px 20px rgba(247,77,166,0.4)' : 'none', transition: 'all 0.25s',
+          boxShadow: allTagged && !submitting ? '0 6px 20px rgba(231,105,159,0.4)' : 'none', transition: 'all 0.25s',
         }}>
           {submitting ? 'Guardando…' : 'Confirmar y crear 🎬'}
         </button>
-        <p style={{ margin: '10px 0 0', fontSize: 11, color: 'rgba(255,255,255,0.4)', textAlign: 'center', lineHeight: 1.45 }}>
+        <p style={{ margin: '10px 0 0', fontSize: 11, color: 'rgba(255,255,255,0.65)', textAlign: 'center', lineHeight: 1.45 }}>
           Esto nos ayuda a animar a cada persona correctamente en tu video.
         </p>
       </div>
@@ -718,21 +720,21 @@ export function AnimadoPhotoUpload({ recipientName = 'Papá', isFamily = false, 
     return (
       <div style={{
         background: 'linear-gradient(160deg, #1a1020 0%, #140d18 100%)',
-        border: '2px solid rgba(34,197,94,0.5)', borderRadius: 20, padding: 26, textAlign: 'center',
+        border: '2px solid rgba(67,194,186,0.5)', borderRadius: 20, padding: 26, textAlign: 'center',
         animation: 'aniFade 0.6s ease-out both',
       }}>
         <style>{ANIM_CSS}</style>
         <div style={{
           width: 62, height: 62, borderRadius: '50%', margin: '0 auto 14px',
-          background: 'linear-gradient(135deg,#16a34a,#22c55e)', display: 'flex',
-          alignItems: 'center', justifyContent: 'center', fontSize: 32, boxShadow: '0 0 24px rgba(34,197,94,0.5)',
+          background: 'linear-gradient(135deg,#1F8C86,#43C2BA)', display: 'flex',
+          alignItems: 'center', justifyContent: 'center', fontSize: 32, boxShadow: '0 0 24px rgba(67,194,186,0.5)',
         }}>✓</div>
         <h2 style={{ margin: '0 0 8px', fontSize: 22, fontWeight: 900, color: '#fff' }}>¡Foto recibida! 🎬</h2>
         <p style={{ margin: '0 0 6px', fontSize: 14, color: 'rgba(255,255,255,0.65)', lineHeight: 1.55 }}>
           Ya empezamos a crear la película animada de <strong style={{ color: GOLD }}>{recipientName}</strong>.
           Te la enviaremos por email en <strong>1–2 días</strong>.
         </p>
-        <p style={{ margin: '14px 0 0', fontSize: 11, color: 'rgba(255,255,255,0.35)', lineHeight: 1.5 }}>
+        <p style={{ margin: '14px 0 0', fontSize: 11, color: 'rgba(255,255,255,0.6)', lineHeight: 1.5 }}>
           Si necesitamos una mejor foto, te escribimos. Hacemos nuestro mejor esfuerzo para
           lograr el parecido — al ser estilo animado (Pixar) puede no ser 100% exacta.
         </p>
@@ -743,7 +745,7 @@ export function AnimadoPhotoUpload({ recipientName = 'Papá', isFamily = false, 
   return (
     <div style={{
       background: 'linear-gradient(160deg, #1a1020 0%, #140d18 100%)',
-      border: '2px solid rgba(245,185,66,0.45)', borderRadius: 20, padding: 22,
+      border: '2px solid rgba(232,180,74,0.45)', borderRadius: 20, padding: 22,
       animation: 'aniFade 0.6s ease-out both',
     }}>
       <style>{ANIM_CSS}</style>
@@ -752,9 +754,9 @@ export function AnimadoPhotoUpload({ recipientName = 'Papá', isFamily = false, 
       <div style={{ textAlign: 'center', marginBottom: 18 }}>
         <div style={{
           width: 58, height: 58, borderRadius: '50%', margin: '0 auto 12px',
-          background: 'linear-gradient(135deg,#16a34a,#22c55e)', display: 'flex',
+          background: 'linear-gradient(135deg,#1F8C86,#43C2BA)', display: 'flex',
           alignItems: 'center', justifyContent: 'center', fontSize: 30,
-          boxShadow: '0 0 24px rgba(34,197,94,0.45)',
+          boxShadow: '0 0 24px rgba(67,194,186,0.45)',
         }}>✓</div>
         <h2 style={{ margin: '0 0 6px', fontSize: 22, fontWeight: 900, color: '#fff' }}>
           ¡Tu película animada está en camino! 🎬
@@ -791,9 +793,9 @@ export function AnimadoPhotoUpload({ recipientName = 'Papá', isFamily = false, 
       {isFamily && (
         <div style={{ marginTop: 16 }}>
           <p style={{ margin: '0 0 4px', fontSize: 13, fontWeight: 800, color: '#fff' }}>
-            👨‍👩‍👧‍👦 Foto familiar <span style={{ color: 'rgba(255,255,255,0.45)' }}>· recomendada</span>
+            👨‍👩‍👧‍👦 Foto familiar <span style={{ color: 'rgba(255,255,255,0.68)' }}>· recomendada</span>
           </p>
-          <p style={{ margin: '0 0 8px', fontSize: 12, color: '#fde68a', lineHeight: 1.45 }}>
+          <p style={{ margin: '0 0 8px', fontSize: 12, color: '#F4D08A', lineHeight: 1.45 }}>
             {otherPeople.length
               ? <>Tu canción también incluye a <strong>{formatNames(otherPeople)}</strong>. </>
               : <>¿Tu canción también incluye a tu <strong>familia, pareja o hijos</strong>? </>}
@@ -812,8 +814,8 @@ export function AnimadoPhotoUpload({ recipientName = 'Papá', isFamily = false, 
 
       {/* Good vs bad photo guidance */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, margin: '16px 0' }}>
-        <div style={{ background: 'rgba(34,197,94,0.07)', border: '1px solid rgba(34,197,94,0.25)', borderRadius: 12, padding: '11px 12px' }}>
-          <p style={{ margin: '0 0 7px', fontSize: 12.5, fontWeight: 800, color: '#4ade80' }}>✅ Sí funciona</p>
+        <div style={{ background: 'rgba(67,194,186,0.07)', border: '1px solid rgba(67,194,186,0.25)', borderRadius: 12, padding: '11px 12px' }}>
+          <p style={{ margin: '0 0 7px', fontSize: 12.5, fontWeight: 800, color: '#89DAD4' }}>✅ Sí funciona</p>
           {['De frente y bien iluminada', 'Rostro claro y cercano', isFamily ? 'Todos completos, sin cortar a nadie' : 'Una sola persona', 'Una foto reciente y nítida'].map((t, i) => (
             <p key={i} style={{ margin: '0 0 4px', fontSize: 11.5, color: 'rgba(255,255,255,0.6)', lineHeight: 1.35 }}>• {t}</p>
           ))}
@@ -831,7 +833,7 @@ export function AnimadoPhotoUpload({ recipientName = 'Papá', isFamily = false, 
       {askPhone && (
         <div style={{ marginBottom: 14 }}>
           <p style={{ margin: '0 0 6px', fontSize: 13, fontWeight: 800, color: '#fff' }}>
-            📱 Tu teléfono <span style={{ color: GOLD }}>· recomendado</span> <span style={{ color: 'rgba(255,255,255,0.45)' }}>· para avisarte cuando esté listo</span>
+            📱 Tu teléfono <span style={{ color: GOLD }}>· recomendado</span> <span style={{ color: 'rgba(255,255,255,0.68)' }}>· para avisarte cuando esté listo</span>
           </p>
           <input
             type="tel"
@@ -842,7 +844,7 @@ export function AnimadoPhotoUpload({ recipientName = 'Papá', isFamily = false, 
             style={{
               width: '100%', boxSizing: 'border-box', padding: '12px 14px',
               background: 'rgba(255,255,255,0.06)', color: '#fff', fontSize: 15, outline: 'none',
-              border: phone.replace(/\D/g, '').length >= 10 ? `1.5px solid #22c55e` : '1.5px solid rgba(255,255,255,0.12)',
+              border: phone.replace(/\D/g, '').length >= 10 ? `1.5px solid #43C2BA` : '1.5px solid rgba(255,255,255,0.12)',
               borderRadius: 10, transition: 'border-color 0.25s',
             }}
           />
@@ -859,7 +861,7 @@ export function AnimadoPhotoUpload({ recipientName = 'Papá', isFamily = false, 
         cursor: ready && !submitting ? 'pointer' : 'not-allowed', fontSize: 16, fontWeight: 900,
         color: ready ? '#1a1020' : 'rgba(255,255,255,0.35)',
         background: ready ? `linear-gradient(135deg, ${GOLD}, ${PINK})` : 'rgba(255,255,255,0.06)',
-        boxShadow: ready && !submitting ? '0 6px 20px rgba(247,77,166,0.4)' : 'none', transition: 'all 0.25s', marginBottom: 20,
+        boxShadow: ready && !submitting ? '0 6px 20px rgba(231,105,159,0.4)' : 'none', transition: 'all 0.25s', marginBottom: 20,
       }}>
         {submitting ? 'Subiendo…' : formatWarning === 'heic' ? 'Sube una foto JPG o PNG' : mainPhoto ? 'Enviar y empezar 🚀' : `Sube la foto de ${recipientName} para continuar`}
       </button>
@@ -877,7 +879,7 @@ export function AnimadoPhotoUpload({ recipientName = 'Papá', isFamily = false, 
             }}>{n}</div>
             <div>
               <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: '#fff', lineHeight: 1.3 }}>{t}</p>
-              <p style={{ margin: '1px 0 0', fontSize: 11.5, color: 'rgba(255,255,255,0.45)', lineHeight: 1.4 }}>{s}</p>
+              <p style={{ margin: '1px 0 0', fontSize: 11.5, color: 'rgba(255,255,255,0.68)', lineHeight: 1.4 }}>{s}</p>
             </div>
           </div>
         ))}
@@ -912,7 +914,7 @@ export default function AnimadoUpsell() {
   const pill = (active) => ({
     padding: '8px 14px', borderRadius: 20, fontSize: 12.5, fontWeight: 800, cursor: 'pointer',
     border: active ? `1px solid ${GOLD}` : '1px solid rgba(255,255,255,0.15)',
-    background: active ? 'rgba(245,185,66,0.15)' : 'transparent',
+    background: active ? 'rgba(232,180,74,0.15)' : 'transparent',
     color: active ? GOLD : 'rgba(255,255,255,0.6)', transition: 'all 0.2s',
   });
 
@@ -931,14 +933,14 @@ export default function AnimadoUpsell() {
         </div>
         {view === 'offer' && (
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)' }}>Pedido:</span>
+            <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)' }}>Pedido:</span>
             <button onClick={() => setScenario(1)} style={pill(orderSongs === 1)}>1 canción</button>
             <button onClick={() => setScenario(2)} style={pill(orderSongs === 2)}>2 canciones</button>
           </div>
         )}
         {view === 'upload' && (
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)' }}>Historia:</span>
+            <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)' }}>Historia:</span>
             <button onClick={() => setUploadFamily(false)} style={pill(!uploadFamily)}>Para 1 persona</button>
             <button onClick={() => setUploadFamily(true)} style={pill(uploadFamily)}>Para la familia</button>
           </div>

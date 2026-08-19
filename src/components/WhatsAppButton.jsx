@@ -31,12 +31,12 @@ export default function WhatsAppButton() {
         <div className="animate-fade-in bg-white rounded-2xl shadow-xl px-4 py-3 max-w-[200px] relative">
           <button
             onClick={() => setDismissed(true)}
-            className="absolute -top-2 -right-2 w-5 h-5 bg-gray-200 rounded-full flex items-center justify-center text-gray-500 text-xs hover:bg-gray-300 transition"
+            className="absolute -top-2 -right-2 w-5 h-5 bg-gray-200 rounded-full flex items-center justify-center text-ink-3 text-xs hover:bg-gray-300 transition"
           >
             ✕
           </button>
           <p className="text-gray-800 text-sm font-medium">¿Tienes preguntas? 💬</p>
-          <p className="text-gray-500 text-xs mt-1">¡Escríbenos por WhatsApp!</p>
+          <p className="text-ink-3 text-xs mt-1">¡Escríbenos por WhatsApp!</p>
         </div>
       )}
 

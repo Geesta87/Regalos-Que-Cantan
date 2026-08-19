@@ -6,10 +6,19 @@ import { OneTapUpsell } from '../components/OneTapUpsell';
 import { chargeUpsell } from '../services/api';
 import { forceDownload, isInAppBrowser } from '../utils/forceDownload';
 import { trackSongAccess } from '../utils/trackSongAccess';
+import { CenzoGuide } from '../components/Cenzo';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://yzbvajungshqcpusfiia.supabase.co';
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl6YnZhanVuZ3NocWNwdXNmaWlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg5NDM3MjAsImV4cCI6MjA4NDUxOTcyMH0.9cu9re38_Np3Q6xEcjGdEwctSiPAaaqo8W2c3HEx6k4';
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// Google Ads conversion tracking. The base gtag lives in index.html; this is the
+// Purchase conversion it reports to. The label comes from the conversion action
+// in Google Ads (Goals → Conversions → Purchase → "Install the tag yourself").
+// Until it is filled in, the conversion is skipped rather than fired wrong — a
+// send_to with a bad label records nothing and is invisible in Ads reporting.
+const GOOGLE_ADS_ID = 'AW-18397848550';
+const GOOGLE_ADS_CONVERSION_LABEL = 'zcUoCKOrhuQcEObH48RE';
 
 // Inlined video API helpers
 async function createVideoCheckout(songId, email) {
@@ -59,7 +68,7 @@ function Confetti({ intensity = 200 }) {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
     
-    const colors = ['#f74da6', '#e11d74', '#22c55e', '#3b82f6', '#a855f7', '#f97316', '#ec4899', '#fbbf24', '#06b6d4'];
+    const colors = ['#E7699F', '#C9603F', '#43C2BA', '#8E90E8', '#8E90E8', '#f97316', '#E7699F', '#E8B44A', '#06b6d4'];
     const particles = [];
     
     for (let i = 0; i < intensity; i++) {
@@ -155,8 +164,8 @@ function CountdownOverlay({ onComplete, recipientName }) {
     <div style={{
       position: 'fixed', inset: 0, zIndex: 200,
       background: phase === 'flash'
-        ? 'radial-gradient(circle, rgba(242,13,128,0.4), rgba(24,17,20,0.98))'
-        : 'linear-gradient(160deg, #110d0f 0%, #181114 40%, #1e1519 100%)',
+        ? 'radial-gradient(circle, rgba(228,121,90,0.4), rgba(24,17,20,0.98))'
+        : 'linear-gradient(160deg, #110d0f 0%, #1B1C48 40%, #1e1519 100%)',
       display: 'flex', flexDirection: 'column',
       alignItems: 'center', justifyContent: 'center',
       transition: 'all 0.4s ease',
@@ -167,14 +176,14 @@ function CountdownOverlay({ onComplete, recipientName }) {
         position: 'absolute',
         width: '400px', height: '400px',
         borderRadius: '50%',
-        background: 'radial-gradient(circle, rgba(242,13,128,0.08), transparent 70%)',
+        background: 'radial-gradient(circle, rgba(228,121,90,0.08), transparent 70%)',
         animation: 'pulseRing 2s ease-in-out infinite'
       }} />
       <div style={{
         position: 'absolute',
         width: '600px', height: '600px',
         borderRadius: '50%',
-        background: 'radial-gradient(circle, rgba(225,29,116,0.05), transparent 70%)',
+        background: 'radial-gradient(circle, rgba(201,96,63,0.05), transparent 70%)',
         animation: 'pulseRing 2.5s ease-in-out infinite 0.5s'
       }} />
 
@@ -204,7 +213,7 @@ function CountdownOverlay({ onComplete, recipientName }) {
         <>
           {/* Small context line */}
           <p style={{
-            color: 'rgba(255,255,255,0.4)',
+            color: 'rgba(255,255,255,0.65)',
             fontSize: '14px',
             letterSpacing: '4px',
             textTransform: 'uppercase',
@@ -223,11 +232,11 @@ function CountdownOverlay({ onComplete, recipientName }) {
               fontWeight: '900',
               lineHeight: 1,
               fontFamily: "'Montserrat', sans-serif",
-              background: 'linear-gradient(180deg, #f74da6 0%, #f20d80 50%, #c0095e 100%)',
+              background: 'linear-gradient(180deg, #E7699F 0%, #E4795A 50%, #c0095e 100%)',
               WebkitBackgroundClip: 'text',
               WebkitTextFillColor: 'transparent',
               textShadow: 'none',
-              filter: 'drop-shadow(0 0 40px rgba(242,13,128,0.4))',
+              filter: 'drop-shadow(0 0 40px rgba(228,121,90,0.4))',
               animation: 'countPop 0.7s cubic-bezier(0.34, 1.56, 0.64, 1)',
               position: 'relative'
             }}
@@ -239,7 +248,7 @@ function CountdownOverlay({ onComplete, recipientName }) {
           <p
             key={`sub-${count}`}
             style={{
-              color: 'rgba(255,255,255,0.5)',
+              color: 'rgba(255,255,255,0.7)',
               fontSize: '18px',
               marginTop: '20px',
               fontFamily: "'Montserrat', sans-serif",
@@ -258,13 +267,21 @@ function CountdownOverlay({ onComplete, recipientName }) {
         <div style={{
           width: '80px', height: '80px',
           borderRadius: '50%',
-          background: 'radial-gradient(circle, #f74da6, #f20d80)',
+          background: 'radial-gradient(circle, #E7699F, #E4795A)',
           animation: 'flashBurst 0.5s ease-out forwards'
         }} />
       )}
     </div>
   );
 }
+
+// Animado (story video) states that need no further work from us or the buyer.
+// Everything else — generating_likeness, building — is "in production" and keeps
+// the status card (and its poll) alive.
+const ANIMADO_TERMINAL = new Set(['delivered', 'deleted']);
+// Branded link for a finished film. vercel.json rewrites /animado/:orderId to the
+// final.mp4 in public storage, so this doubles as a <video> src and a download href.
+const animadoVideoUrl = (orderId) => `https://regalosquecantan.com/animado/${orderId}`;
 
 // ============================================================
 // MAIN SUCCESS PAGE
@@ -483,18 +500,37 @@ export default function SuccessPage() {
   // ------ ANIMADO: confirm the paid order(s) + handle photo upload ------
   // confirm-animado-order verifies (server-side, via Stripe) that this session
   // paid for Animado and returns the order(s) so we can ask for the photo.
+  // Re-polled while the film is still in production so the card below tracks it
+  // from photo upload → building → delivered without a page reload. The function's
+  // existing-order shortcut returns before any Stripe round-trip once the row
+  // exists, so repeat calls are cheap.
   useEffect(() => {
     const sessionId = urlParams.get('session_id');
-    if (!sessionId) return;
+    // The links customers KEEP (WhatsApp / email) carry song ids and no
+    // session_id — that parameter authorizes charge-upsell against the saved
+    // card, so it must never travel in a message. Ask by song id instead, or
+    // the film is invisible on the only link they still have.
+    const songIdsParam = urlParams.get('song_ids') || urlParams.get('song_id');
+    if (!sessionId && !songIdsParam) return;
+    const reqBody = sessionId ? { session_id: sessionId } : { song_ids: songIdsParam };
     let cancelled = false;
-    supabase.functions.invoke('confirm-animado-order', { body: { session_id: sessionId } })
-      .then(({ data }) => {
-        if (!cancelled && data?.eligible && Array.isArray(data.orders) && data.orders.length) {
-          setAnimadoOrders(data.orders.filter((o) => o.order_id));
-        }
-      })
-      .catch(() => {});
-    return () => { cancelled = true; };
+    let timer = null;
+    const pull = () => {
+      supabase.functions.invoke('confirm-animado-order', { body: reqBody })
+        .then(({ data }) => {
+          if (cancelled) return;
+          if (data?.eligible && Array.isArray(data.orders) && data.orders.length) {
+            const orders = data.orders.filter((o) => o.order_id);
+            setAnimadoOrders(orders);
+            if (orders.some((o) => !ANIMADO_TERMINAL.has(o.state))) {
+              timer = setTimeout(pull, 30000);
+            }
+          }
+        })
+        .catch(() => {});
+    };
+    pull();
+    return () => { cancelled = true; if (timer) clearTimeout(timer); };
   }, []);
 
   const uploadAnimadoFile = async (orderId, which, file) => {
@@ -587,6 +623,27 @@ export default function SuccessPage() {
         currency: 'USD'
       }, { event_id: sessionId }); // dedup with the server-side Events API CompletePayment
       console.log('[TikTok Pixel] CompletePayment fired:', purchaseValue, 'USD for session:', sessionId);
+    }
+
+    // Fire the Google Ads Purchase conversion (YouTube / Demand Gen optimizes
+    // on this). Unlike Meta/TikTok there is NO server-side twin, so this is the
+    // only signal Google gets — hence the real Stripe amount (amount_paid holds
+    // the FULL session total on every row of a bundle) rather than the 29.99/
+    // 39.99 approximation above, and enhanced conversions so ad-blocked and
+    // iOS sales still match. gtag SHA-256-hashes user_data in-browser before
+    // it leaves the device. transaction_id = the Stripe session id, which is
+    // what makes a refresh or a re-open of this page impossible to double-count.
+    if (GOOGLE_ADS_CONVERSION_LABEL && typeof window.gtag === 'function') {
+      const paidValue = Number(songs[0]?.amount_paid) || purchaseValue;
+      const buyerEmail = songs.find(s => s.email)?.email || '';
+      if (buyerEmail) window.gtag('set', 'user_data', { email: buyerEmail });
+      window.gtag('event', 'conversion', {
+        send_to: `${GOOGLE_ADS_ID}/${GOOGLE_ADS_CONVERSION_LABEL}`,
+        value: paidValue,
+        currency: 'USD',
+        transaction_id: sessionId
+      });
+      console.log('[Google Ads] Purchase conversion fired:', paidValue, 'USD for session:', sessionId);
     }
   }, [songs]);
 
@@ -754,6 +811,26 @@ export default function SuccessPage() {
       window.open(fileUrl, '_blank'); // fallback if the fetch is blocked
     }
   };
+
+  // One-tap download with visible feedback, for EVERY descargar button.
+  // Owner rule (2026-08-14): tapping "Descargar" saves the file right there —
+  // ⏳ while it saves, ✅ when done — never a hop to another page. Keyed per
+  // button so two downloads can run without sharing a spinner.
+  const [dlState, setDlState] = useState({}); // key -> 'busy' | 'done'
+  const downloadWithFeedback = async (key, url, filename) => {
+    if (!url || dlState[key] === 'busy') return;
+    setDlState((p) => ({ ...p, [key]: 'busy' }));
+    try {
+      await forceDownload(url, filename);
+    } catch {
+      window.open(url, '_blank'); // last resort — better than a dead button
+    }
+    setDlState((p) => ({ ...p, [key]: 'done' }));
+  };
+  const dlLabel = (key, idle) =>
+    dlState[key] === 'busy' ? '⏳ Descargando…'
+    : dlState[key] === 'done' ? '✅ Descargado · otra vez'
+    : idle;
 
   const handleDownloadAll = async () => {
     for (const song of songs) {
@@ -953,19 +1030,30 @@ export default function SuccessPage() {
   }, [selectedVideoSongIdx, videoOrdersMap, songs]);
 
   // Used on photo upload — guarantees we have a video_order to attach to.
+  // Runs on EVERY upload (no videoOrder shortcut): a pre-existing idle order in
+  // state is exactly how an over-entitlement upload slips past the check below.
   const ensureVideoOrderForSelectedSong = async () => {
-    if (videoOrder) return videoOrder;
     const song = songs[selectedVideoSongIdx];
     if (!song) return null;
     if (!songs.some(s => s?.has_video_addon)) return null;
 
-    // Reuse an existing paid, unused video order for this bundle before creating
-    // a new one. Each add-on entitles the customer to exactly one video, so a
-    // single-video bundle must never end up with two paid orders. A timing gap
-    // (videoOrder state still empty at upload time) used to make this function
-    // INSERT a second paid order, which then let the customer generate a free
-    // extra video. Look it up in the DB and reuse/repoint instead of inserting.
+    // ENTITLEMENT RULE — paid for N videos, can make N videos. Nothing subtler.
+    //
+    // The old reuse check searched only for paid orders that were still PENDING
+    // with zero photos. That answers "is there an empty order lying around?",
+    // not "has this customer used what they paid for?" — so the moment their
+    // video COMPLETED, nothing matched, and switching songs fell through to the
+    // insert below, minting another paid order and a free video. 5 customers
+    // got free videos in the 30 days to 2026-08-13 (Gladys 8286262a: paid for
+    // 1, made 2, had a 3rd order open), plus 19 phantom "paid, no photos" rows
+    // polluting the fulfillment queue.
+    //
+    // Now: count orders that CONSUMED the entitlement (photos uploaded, or past
+    // pending — completed/processing). Failed renders and empty pending rows
+    // don't count, so retries and the not-yet-used slot still work. At the cap,
+    // return the sentinel — never insert.
     const isDualVideo = (songs[0]?.video_addon_count ?? 1) >= 2 && songs.length >= 2;
+    const entitled = songs.find(s => s?.has_video_addon)?.video_addon_count ?? 1;
     try {
       const bundleSongIds = songs.map(s => s?.id).filter(Boolean);
       const { data: existing } = await supabase
@@ -973,11 +1061,20 @@ export default function SuccessPage() {
         .select('*')
         .in('song_id', bundleSongIds)
         .eq('paid', true)
-        .eq('status', 'pending')
         .order('created_at', { ascending: true });
-      const unused = (existing || []).filter(o => (o.photo_count || 0) === 0);
-      // Prefer an unused order already tied to the selected song.
-      let reusable = unused.find(o => o.song_id === song.id);
+      // Consumed = past 'pending' and not 'failed' (photos_uploaded / processing /
+      // completed). A pending order — even with photos already attached — is a
+      // video still being SET UP, so retrying it must not read as a second video.
+      const consumed = (existing || []).filter(o =>
+        o.status !== 'pending' && o.status !== 'failed');
+      if (consumed.length >= entitled) {
+        return { entitlementExhausted: true, entitled };
+      }
+      const pendings = (existing || []).filter(o => o.status === 'pending');
+      const unused = pendings.filter(o => (o.photo_count || 0) === 0);
+      // Prefer the selected song's own pending order (any photo count — a customer
+      // finishing a stalled upload continues the SAME order, never mints a new one).
+      let reusable = pendings.find(o => o.song_id === song.id);
       // Single-video bundle: the one order follows the customer's song choice, so
       // repoint an unused order from another song. Dual-video: each song keeps its
       // own order — do NOT steal the other song's order; fall through to insert.
@@ -996,10 +1093,15 @@ export default function SuccessPage() {
         return reusable;
       }
     } catch (e) {
-      console.error('Failed to reuse existing video order:', e);
+      // The entitlement check itself failed — we can't know whether the video
+      // was already used, so do NOT fall through to the insert (that re-opens
+      // the free-video hole on any network blip). The customer sees the generic
+      // error and retries.
+      console.error('Failed to check video entitlement:', e);
+      return null;
     }
 
-    // No reusable order — create one.
+    // Below entitlement and no reusable order — create one.
     try {
       const { data: newOrder, error: insertErr } = await supabase
         .from('video_orders')
@@ -1318,9 +1420,19 @@ export default function SuccessPage() {
       );
       if (!proceed) return;
     }
-    // Lazily create the video_order now that we know which song the customer
-    // selected for the video. This is the only path that creates a video_order.
-    const order = videoOrder?.id ? videoOrder : await ensureVideoOrderForSelectedSong();
+    // Always resolve through ensureVideoOrderForSelectedSong — it enforces the
+    // entitlement rule (paid for N videos → N videos) and returns the right
+    // order to attach to. Short-circuiting on videoOrder here is how uploads
+    // into leftover idle orders used to bypass the check.
+    const order = await ensureVideoOrderForSelectedSong();
+    if (order?.entitlementExhausted) {
+      // Paid for N videos, already made N. Say so plainly instead of minting a
+      // free order (the pre-2026-08-13 behavior) or a confusing generic error.
+      setVideoError(order.entitled >= 2
+        ? 'Tus 2 videos ya fueron creados — los encuentras en esta misma página. Si quieres otro video, escríbenos por WhatsApp.'
+        : 'El video de tu paquete ya fue creado — lo encuentras en esta misma página. Si quieres otro video, escríbenos por WhatsApp.');
+      return;
+    }
     if (!order?.id) {
       setVideoError('No se encontró la orden de video.');
       return;
@@ -1562,14 +1674,14 @@ export default function SuccessPage() {
     return (
       <div style={{
         ...S.fullScreenCenter,
-        background: 'radial-gradient(ellipse at 50% 0%, rgba(124,58,237,0.15) 0%, #0a0a0a 60%)',
+        background: 'radial-gradient(ellipse at 50% 0%, rgba(74,76,168,0.15) 0%, #191A45 60%)',
         overflow: 'hidden', position: 'relative',
       }}>
         <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800;900&display=swap" rel="stylesheet" />
         <style>{`
           @keyframes spin { to { transform: rotate(360deg); } }
           @keyframes checkPop { 0% { transform: scale(0) rotate(-45deg); opacity: 0; } 60% { transform: scale(1.2) rotate(0deg); } 100% { transform: scale(1) rotate(0deg); opacity: 1; } }
-          @keyframes ringPulse { 0% { box-shadow: 0 0 0 0 rgba(34,197,94,0.4); } 70% { box-shadow: 0 0 0 20px rgba(34,197,94,0); } 100% { box-shadow: 0 0 0 0 rgba(34,197,94,0); } }
+          @keyframes ringPulse { 0% { box-shadow: 0 0 0 0 rgba(67,194,186,0.4); } 70% { box-shadow: 0 0 0 20px rgba(67,194,186,0); } 100% { box-shadow: 0 0 0 0 rgba(67,194,186,0); } }
           @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
           @keyframes shimmer { 0% { background-position: -200% center; } 100% { background-position: 200% center; } }
           @keyframes progressGrow { 0% { width: 5%; } 40% { width: 45%; } 70% { width: 70%; } 90% { width: 85%; } 100% { width: 95%; } }
@@ -1581,16 +1693,16 @@ export default function SuccessPage() {
 
         {/* Floating confetti */}
         {[
-          { left: '10%', color: '#f74da6', delay: '0s', anim: 'confetti1', size: 8 },
-          { left: '25%', color: '#fbbf24', delay: '0.3s', anim: 'confetti2', size: 6 },
-          { left: '40%', color: '#22c55e', delay: '0.1s', anim: 'confetti3', size: 10 },
-          { left: '55%', color: '#8b5cf6', delay: '0.5s', anim: 'confetti1', size: 7 },
-          { left: '70%', color: '#f74da6', delay: '0.2s', anim: 'confetti2', size: 9 },
-          { left: '85%', color: '#fbbf24', delay: '0.4s', anim: 'confetti3', size: 6 },
-          { left: '15%', color: '#3b82f6', delay: '0.6s', anim: 'confetti1', size: 8 },
-          { left: '65%', color: '#22c55e', delay: '0.7s', anim: 'confetti2', size: 7 },
+          { left: '10%', color: '#E7699F', delay: '0s', anim: 'confetti1', size: 8 },
+          { left: '25%', color: '#E8B44A', delay: '0.3s', anim: 'confetti2', size: 6 },
+          { left: '40%', color: '#43C2BA', delay: '0.1s', anim: 'confetti3', size: 10 },
+          { left: '55%', color: '#6668D2', delay: '0.5s', anim: 'confetti1', size: 7 },
+          { left: '70%', color: '#E7699F', delay: '0.2s', anim: 'confetti2', size: 9 },
+          { left: '85%', color: '#E8B44A', delay: '0.4s', anim: 'confetti3', size: 6 },
+          { left: '15%', color: '#8E90E8', delay: '0.6s', anim: 'confetti1', size: 8 },
+          { left: '65%', color: '#43C2BA', delay: '0.7s', anim: 'confetti2', size: 7 },
           { left: '35%', color: '#ef4444', delay: '0.15s', anim: 'confetti3', size: 9 },
-          { left: '80%', color: '#8b5cf6', delay: '0.35s', anim: 'confetti1', size: 6 },
+          { left: '80%', color: '#6668D2', delay: '0.35s', anim: 'confetti1', size: 6 },
         ].map((c, i) => (
           <div key={i} style={{
             position: 'absolute', top: '-10px', left: c.left,
@@ -1607,10 +1719,10 @@ export default function SuccessPage() {
           <div style={{
             width: '90px', height: '90px', margin: '0 auto 24px',
             borderRadius: '50%',
-            background: 'linear-gradient(135deg, #22c55e, #16a34a)',
+            background: 'linear-gradient(135deg, #43C2BA, #1F8C86)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             animation: 'checkPop 0.6s ease-out, ringPulse 2s ease-out 0.6s infinite',
-            boxShadow: '0 8px 30px rgba(34,197,94,0.3)',
+            boxShadow: '0 8px 30px rgba(67,194,186,0.3)',
           }}>
             <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="20 6 9 17 4 12" />
@@ -1621,7 +1733,7 @@ export default function SuccessPage() {
           <h2 style={{
             fontSize: '26px', fontWeight: '900', margin: '0 0 8px',
             fontFamily: "'Montserrat', sans-serif", lineHeight: 1.2,
-            background: 'linear-gradient(90deg, #ffffff, #e2e8f0, #ffffff)',
+            background: 'linear-gradient(90deg, #ffffff, #E3E3F1, #ffffff)',
             backgroundSize: '200% auto',
             WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
             animation: 'slideUp 0.5s ease-out 0.3s both',
@@ -1647,8 +1759,8 @@ export default function SuccessPage() {
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px' }}>
               <div style={{
                 width: '36px', height: '36px', borderRadius: '50%',
-                border: '2px solid rgba(247,77,166,0.3)',
-                borderTopColor: '#f74da6',
+                border: '2px solid rgba(231,105,159,0.3)',
+                borderTopColor: '#E7699F',
                 animation: 'spin 0.8s linear infinite',
                 flexShrink: 0,
               }} />
@@ -1656,7 +1768,7 @@ export default function SuccessPage() {
                 <p style={{ fontSize: '14px', fontWeight: '700', color: 'white', margin: '0 0 2px', fontFamily: "'Montserrat', sans-serif" }}>
                   Preparando tu regalo...
                 </p>
-                <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.4)', margin: 0, fontFamily: "'Montserrat', sans-serif" }}>
+                <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.65)', margin: 0, fontFamily: "'Montserrat', sans-serif" }}>
                   {hasVideoAddonRef.current
                     ? 'En unos segundos podrás subir tus fotos'
                     : 'Te llevaremos a tu canción en unos segundos'}
@@ -1667,7 +1779,7 @@ export default function SuccessPage() {
             <div style={{ height: '6px', borderRadius: '3px', background: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
               <div style={{
                 height: '100%', borderRadius: '3px',
-                background: 'linear-gradient(90deg, #f74da6, #8b5cf6, #f74da6)',
+                background: 'linear-gradient(90deg, #E7699F, #6668D2, #E7699F)',
                 backgroundSize: '200% 100%',
                 animation: 'progressGrow 4s ease-out forwards, shimmer 2s linear infinite',
               }} />
@@ -1676,8 +1788,8 @@ export default function SuccessPage() {
 
           {/* Don't close warning — glass card */}
           <div style={{
-            background: 'rgba(251,191,36,0.08)',
-            border: '1px solid rgba(251,191,36,0.2)',
+            background: 'rgba(232,180,74,0.08)',
+            border: '1px solid rgba(232,180,74,0.2)',
             borderRadius: '16px', padding: '16px 20px',
             backdropFilter: 'blur(10px)',
             animation: 'slideUp 0.5s ease-out 0.9s both',
@@ -1686,13 +1798,13 @@ export default function SuccessPage() {
               <span style={{ fontSize: '24px' }}>🔒</span>
               <div style={{ textAlign: 'left' }}>
                 <p style={{
-                  fontSize: '14px', fontWeight: '700', color: '#fbbf24', margin: '0 0 2px',
+                  fontSize: '14px', fontWeight: '700', color: '#E8B44A', margin: '0 0 2px',
                   fontFamily: "'Montserrat', sans-serif",
                 }}>
                   No cierres esta ventana
                 </p>
                 <p style={{
-                  fontSize: '12px', color: 'rgba(255,255,255,0.5)', margin: 0,
+                  fontSize: '12px', color: 'rgba(255,255,255,0.7)', margin: 0,
                   fontFamily: "'Montserrat', sans-serif", lineHeight: 1.4
                 }}>
                   En segundos podrás descargar y compartir tu canción
@@ -1729,7 +1841,7 @@ export default function SuccessPage() {
 
           <div style={{
             background: 'rgba(255,255,255,0.04)',
-            border: '1px solid rgba(247, 77, 166, 0.25)',
+            border: '1px solid rgba(231,105,159, 0.25)',
             borderRadius: '14px',
             padding: '18px 16px',
             marginBottom: '20px',
@@ -1742,7 +1854,7 @@ export default function SuccessPage() {
               href="/mi-cancion"
               style={{
                 display: 'inline-block',
-                background: 'linear-gradient(90deg, #e11d74, #c026d3)',
+                background: 'linear-gradient(90deg, #C9603F, #B62463)',
                 color: 'white',
                 textDecoration: 'none',
                 fontWeight: 700,
@@ -1755,7 +1867,7 @@ export default function SuccessPage() {
             </a>
           </div>
 
-          <a href="/" style={{ color: 'rgba(255,255,255,0.5)', textDecoration: 'none', fontWeight: '600', fontFamily: "'Montserrat', sans-serif", fontSize: '13px' }}>← Volver al inicio</a>
+          <a href="/" style={{ color: 'rgba(255,255,255,0.7)', textDecoration: 'none', fontWeight: '600', fontFamily: "'Montserrat', sans-serif", fontSize: '13px' }}>← Volver al inicio</a>
         </div>
       </div>
     );
@@ -1778,7 +1890,7 @@ export default function SuccessPage() {
           <div style={{
             width: '80px', height: '80px', margin: '0 auto 24px',
             borderRadius: '50%',
-            background: 'linear-gradient(135deg, rgba(34,197,94,0.2), rgba(34,197,94,0.05))',
+            background: 'linear-gradient(135deg, rgba(67,194,186,0.2), rgba(67,194,186,0.05))',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             animation: 'pulse 2s ease-in-out infinite'
           }}>
@@ -1786,20 +1898,20 @@ export default function SuccessPage() {
           </div>
           <h1 style={{ fontSize: '22px', fontWeight: '800', marginBottom: '12px', fontFamily: "'Montserrat', sans-serif" }}>¡Pago Exitoso!</h1>
           <p style={{ color: 'rgba(255,255,255,0.6)', marginBottom: '28px', fontSize: '15px', fontFamily: "'Montserrat', sans-serif", lineHeight: '1.6' }}>
-            Tu canción para <span style={{ color: '#f74da6', fontWeight: '700' }}>{currentSong?.recipient_name}</span> está siendo creada.
+            Tu canción para <span style={{ color: '#E7699F', fontWeight: '700' }}>{currentSong?.recipient_name}</span> está siendo creada.
           </p>
-          <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.35)', marginBottom: '24px', fontFamily: "'Montserrat', sans-serif" }}>
+          <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.6)', marginBottom: '24px', fontFamily: "'Montserrat', sans-serif" }}>
             Recibirás un email cuando esté lista • ~2-5 min
           </p>
           <button
             onClick={loadSongs}
             style={{
               padding: '14px 32px',
-              background: 'linear-gradient(135deg, #22c55e, #16a34a)',
+              background: 'linear-gradient(135deg, #43C2BA, #1F8C86)',
               color: 'white', border: 'none', borderRadius: '50px',
               fontWeight: '700', fontSize: '15px', cursor: 'pointer',
               fontFamily: "'Montserrat', sans-serif",
-              boxShadow: '0 6px 25px rgba(34,197,94,0.35)'
+              boxShadow: '0 6px 25px rgba(67,194,186,0.35)'
             }}
           >
             🔄 Verificar Estado
@@ -1813,39 +1925,39 @@ export default function SuccessPage() {
   // ==================== TEMPLATE THEME ====================
   const themes = {
     golden_hour: {
-      bg: 'linear-gradient(160deg, #1a1408 0%, #2a1f10 25%, #1e1508 50%, #0f0c04 100%)',
-      accent: '#f4c025', accentRgb: '244,192,37',
-      accentGrad: 'linear-gradient(135deg, #f4c025, #fde68a)',
+      bg: 'linear-gradient(175deg, #191A45 0%, #262A63 34%, #241B3A 68%, #1B1C48 100%)',
+      accent: '#E8B44A', accentRgb: '232,180,74',
+      accentGrad: 'linear-gradient(135deg, #E8B44A, #F4D08A)',
       textPrimary: 'white', textSecondary: 'rgba(255,255,255,0.5)',
       cardBg: 'rgba(255,255,255,0.08)', cardBorder: 'rgba(255,255,255,0.12)',
       cardBlur: 'blur(20px)',
       font: "'Plus Jakarta Sans', sans-serif",
       fontImport: 'Plus+Jakarta+Sans:wght@300;400;500;600;700;800',
-      glowColor: 'rgba(244,192,37,0.06)', glowColor2: 'rgba(200,150,50,0.04)',
-      btnText: '#1a1408',
+      glowColor: 'rgba(232,180,74,0.08)', glowColor2: 'rgba(142,144,232,0.06)',
+      btnText: '#191A45',
     },
     lavender_dream: {
-      bg: 'radial-gradient(circle at top right, #fdfbf7 0%, #f0e9f7 50%, #e8dff5 100%)',
-      accent: '#9947eb', accentRgb: '153,71,235',
-      accentGrad: 'linear-gradient(135deg, #9947eb, #c084fc)',
-      textPrimary: '#0f172a', textSecondary: '#64748b',
-      cardBg: 'linear-gradient(135deg, #fff, #f7f2fb)', cardBorder: 'rgba(153,71,235,0.12)',
+      bg: 'radial-gradient(circle at top right, #FBF6EC 0%, #F1EEF9 50%, #E4E4F6 100%)',
+      accent: '#3B3D8F', accentRgb: '59,61,143',
+      accentGrad: 'linear-gradient(135deg, #3B3D8F, #8E90E8)',
+      textPrimary: '#2A1D18', textSecondary: '#8A8BB0',
+      cardBg: 'linear-gradient(135deg, #fff, #F6F4FC)', cardBorder: 'rgba(59,61,143,0.14)',
       cardBlur: 'none',
       font: "'Newsreader', serif",
       fontImport: 'Newsreader:ital,opsz,wght@0,6..72,200..800;1,6..72,200..800',
-      glowColor: 'rgba(153,71,235,0.05)', glowColor2: 'rgba(153,71,235,0.08)',
+      glowColor: 'rgba(59,61,143,0.05)', glowColor2: 'rgba(142,144,232,0.09)',
       btnText: 'white',
     },
     electric_magenta: {
-      bg: 'linear-gradient(160deg, #0a0507 0%, #150a10 50%, #0a0507 100%)',
-      accent: '#f20d59', accentRgb: '242,13,89',
-      accentGrad: 'linear-gradient(135deg, #f20d59, #ff5c93)',
+      bg: 'linear-gradient(160deg, #150E2E 0%, #2A1030 50%, #150E2E 100%)',
+      accent: '#E7699F', accentRgb: '231,105,159',
+      accentGrad: 'linear-gradient(135deg, #B62463, #E7699F)',
       textPrimary: 'white', textSecondary: 'rgba(255,255,255,0.45)',
-      cardBg: 'rgba(255,255,255,0.04)', cardBorder: 'rgba(242,13,89,0.15)',
+      cardBg: 'rgba(255,255,255,0.05)', cardBorder: 'rgba(231,105,159,0.18)',
       cardBlur: 'blur(12px)',
       font: "'Space Grotesk', sans-serif",
       fontImport: 'Space+Grotesk:wght@300;400;500;600;700',
-      glowColor: 'rgba(242,13,89,0.06)', glowColor2: 'rgba(242,13,89,0.04)',
+      glowColor: 'rgba(231,105,159,0.07)', glowColor2: 'rgba(67,194,186,0.05)',
       btnText: 'white',
     },
   };
@@ -1903,6 +2015,95 @@ export default function SuccessPage() {
     return res;
   };
 
+  // Video entitlement, page-wide: paid for N photo videos → the page renders N.
+  // Leftover idle orders past the cap (pre-2026-08-13 duplicate-order bug) must
+  // not draw an upload flow — the upload would be refused, so inviting it is a
+  // dead-end CTA (audit 2026-08-14, Gladys cs_live_b1Ih…).
+  const videoEntitled = songs.some((s) => s?.has_video_addon)
+    ? (songs.find((s) => s?.has_video_addon)?.video_addon_count ?? 1)
+    : 0;
+  const consumedVideoCount = Object.values(videoOrdersMap)
+    .filter((o) => o && o.status !== 'pending' && o.status !== 'failed').length;
+  // True when the current selection's order is an excess idle row we won't serve.
+  const videoOrderIsExcess = !!(videoOrder && videoOrder.status === 'pending'
+    && !(videoOrder.photo_count > 0) && videoEntitled > 0 && consumedVideoCount >= videoEntitled);
+
+  // Animado production/delivered card — rendered in the DELIVERABLES flow (the
+  // awaiting_photo uploader alone stays pinned to the top of the page).
+  const renderAnimadoStatusCards = () => animadoOrders.map((o) => {
+    if (o.state === 'deleted' || o.state === 'awaiting_photo') return null;
+    const delivered = o.state === 'delivered';
+    const name = o.recipient_name || 'tu ser querido';
+    return (
+      <div key={o.order_id} id="rqc-animado" style={{
+        marginBottom: '24px', padding: '20px',
+        borderRadius: '20px',
+        background: isLight
+          ? 'linear-gradient(160deg, #f5f0ff 0%, #ede8ff 100%)'
+          : 'linear-gradient(160deg, rgba(109,40,217,0.16) 0%, rgba(79,70,229,0.08) 100%)',
+        border: `1.5px solid ${isLight ? 'rgba(74,76,168,0.25)' : 'rgba(102,104,210,0.35)'}`,
+      }}>
+        <p style={{
+          margin: '0 0 6px', fontSize: '15px', fontWeight: 900,
+          color: isLight ? '#33357D' : '#BCBDF2',
+        }}>
+          🎬 {delivered ? `La película animada de ${name} ya está lista` : `Estamos creando la película animada de ${name}`}
+        </p>
+        <p style={{ margin: '0 0 14px', fontSize: '13px', color: ts.textSecondary, lineHeight: 1.5 }}>
+          {delivered
+            ? 'Tu película estilo Pixar quedó lista. Descárgala o compártela cuando quieras.'
+            : 'Ya recibimos tus fotos. Nuestro equipo la revisa a mano antes de enviártela — te avisamos por correo y WhatsApp en cuanto esté. Puedes cerrar esta página sin problema.'}
+        </p>
+        {delivered ? (
+          <>
+            {/* Films render 9:16, so an uncapped width:100% player is taller
+                than the viewport and buries the rest of the page. */}
+            <video
+              src={animadoVideoUrl(o.order_id)}
+              controls playsInline preload="metadata"
+              style={{
+                width: '100%', maxHeight: '60vh', objectFit: 'contain',
+                borderRadius: '14px', marginBottom: '12px', background: '#000',
+              }}
+            />
+            <button
+              onClick={() => downloadWithFeedback(`animado-${o.order_id}`, animadoVideoUrl(o.order_id), `pelicula-animada-${name}.mp4`)}
+              disabled={dlState[`animado-${o.order_id}`] === 'busy'}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                width: '100%', padding: '15px', boxSizing: 'border-box',
+                background: dlState[`animado-${o.order_id}`] === 'done'
+                  ? 'linear-gradient(135deg, #43C2BA, #1F8C86)'
+                  : 'linear-gradient(135deg, #6668D2, #3B3D8F)',
+                color: 'white', fontWeight: 800, fontSize: '16px',
+                border: 'none', borderRadius: '14px', cursor: 'pointer', fontFamily: ts.font,
+                opacity: dlState[`animado-${o.order_id}`] === 'busy' ? 0.75 : 1,
+                boxShadow: '0 8px 24px rgba(74,76,168,0.3)',
+              }}>
+              {dlLabel(`animado-${o.order_id}`, '⬇️ Descargar Película Animada (MP4)')}
+            </button>
+          </>
+        ) : (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '10px',
+            padding: '12px 14px', borderRadius: '12px',
+            background: isLight ? 'rgba(74,76,168,0.08)' : 'rgba(102,104,210,0.12)',
+          }}>
+            <span style={{
+              width: '18px', height: '18px', flexShrink: 0, borderRadius: '50%',
+              border: `2.5px solid ${isLight ? 'rgba(74,76,168,0.25)' : 'rgba(196,181,253,0.3)'}`,
+              borderTopColor: isLight ? '#4A4CA8' : '#BCBDF2',
+              animation: 'spin 0.9s linear infinite',
+            }} />
+            <span style={{ fontSize: '13px', fontWeight: 700, color: isLight ? '#33357D' : '#BCBDF2' }}>
+              En producción · normalmente 24–48 h
+            </span>
+          </div>
+        )}
+      </div>
+    );
+  });
+
   // ==================== MAIN SUCCESS PAGE ====================
   return (
     <div style={{
@@ -1914,6 +2115,10 @@ export default function SuccessPage() {
       position: 'relative',
     }}>
       <link href={`https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800;900&family=${ts.fontImport}&display=swap`} rel="stylesheet" />
+
+      <div style={{ textAlign: 'center', paddingTop: 18 }}>
+        <CenzoGuide size={156} />
+      </div>
 
       {/* --- COUNTDOWN OVERLAY --- */}
       {showCountdown && (
@@ -1947,6 +2152,8 @@ export default function SuccessPage() {
       <style>{`
         @keyframes fadeInUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes shimmerAccent { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+        /* The reveal screen defines its own spin, but that style tag unmounts with it. */
+        @keyframes spin { to { transform: rotate(360deg); } }
         @keyframes glowPulse {
           0%, 100% { box-shadow: 0 0 20px rgba(${ts.accentRgb},0.2), 0 0 60px rgba(${ts.accentRgb},0.08); }
           50% { box-shadow: 0 0 35px rgba(${ts.accentRgb},0.4), 0 0 80px rgba(${ts.accentRgb},0.15); }
@@ -1961,12 +2168,12 @@ export default function SuccessPage() {
           50% { box-shadow: 0 0 32px rgba(${ts.accentRgb},0.65), 0 4px 24px rgba(0,0,0,0.25); border-color: rgba(${ts.accentRgb},1); }
         }
         @keyframes songPulseGreen {
-          0%, 100% { box-shadow: 0 0 10px rgba(34,197,94,0.3), 0 0 0 0 rgba(34,197,94,0.25); border-color: rgba(34,197,94,0.7); }
-          50% { box-shadow: 0 0 24px rgba(34,197,94,0.7), 0 0 0 6px rgba(34,197,94,0.08); border-color: #22c55e; }
+          0%, 100% { box-shadow: 0 0 10px rgba(67,194,186,0.3), 0 0 0 0 rgba(67,194,186,0.25); border-color: rgba(67,194,186,0.7); }
+          50% { box-shadow: 0 0 24px rgba(67,194,186,0.7), 0 0 0 6px rgba(67,194,186,0.08); border-color: #43C2BA; }
         }
         @keyframes songPulsePurple {
-          0%, 100% { box-shadow: 0 0 10px rgba(168,85,247,0.3), 0 0 0 0 rgba(168,85,247,0.25); border-color: rgba(168,85,247,0.7); }
-          50% { box-shadow: 0 0 24px rgba(168,85,247,0.7), 0 0 0 6px rgba(168,85,247,0.08); border-color: #a855f7; }
+          0%, 100% { box-shadow: 0 0 10px rgba(142,144,232,0.3), 0 0 0 0 rgba(142,144,232,0.25); border-color: rgba(142,144,232,0.7); }
+          50% { box-shadow: 0 0 24px rgba(142,144,232,0.7), 0 0 0 6px rgba(142,144,232,0.08); border-color: #8E90E8; }
         }
         .sp-particle { position:absolute; animation:floatUp linear infinite; }
         button:active { transform:scale(0.97) !important; }
@@ -1993,21 +2200,28 @@ export default function SuccessPage() {
           position: 'relative', zIndex: 10,
         }}>
 
-          {/* ===== ANIMADO photo upload — shown when the customer bought the
-              animated story video. Time-sensitive, so it sits at the top. ===== */}
-          {animadoOrders.filter((o) => o.state === 'awaiting_photo').map((o) => (
-            <div key={o.order_id} style={{ marginBottom: '28px' }}>
-              <AnimadoPhotoUpload
-                recipientName={o.recipient_name || 'tu ser querido'}
-                isFamily={o.is_family !== false}
-                otherPeople={o.other_people || []}
-                askPhone={!o.has_phone}
-                onSubmit={(files) => submitAnimadoPhotos(o.order_id, files)}
-                onAnalyze={(files) => analyzeAnimadoPhotos(o.order_id, files)}
-                onConfirm={(payload) => confirmAnimadoCast(o.order_id, payload)}
-              />
-            </div>
-          ))}
+          {/* ===== ANIMADO — needs-your-photo state ONLY up here =====
+              The uploader is the one thing that blocks fulfillment, so it's the
+              only content allowed above the congratulation. Production/delivered
+              cards render further down, with the other deliverables (audit
+              2026-08-14: opening the page with a product card instead of the
+              greeting read as disorganized). ===== */}
+          {animadoOrders.map((o) => {
+            if (o.state !== 'awaiting_photo') return null;
+            return (
+              <div key={o.order_id} id="rqc-animado" style={{ marginBottom: '28px' }}>
+                <AnimadoPhotoUpload
+                  recipientName={o.recipient_name || 'tu ser querido'}
+                  isFamily={o.is_family !== false}
+                  otherPeople={o.other_people || []}
+                  askPhone={!o.has_phone}
+                  onSubmit={(files) => submitAnimadoPhotos(o.order_id, files)}
+                  onAnalyze={(files) => analyzeAnimadoPhotos(o.order_id, files)}
+                  onConfirm={(payload) => confirmAnimadoCast(o.order_id, payload)}
+                />
+              </div>
+            );
+          })}
 
           {/* ===== HERO HEADER ===== */}
           <div style={{ textAlign: 'center', marginBottom: '32px', animation: 'fadeInUp 0.7s ease-out' }}>
@@ -2082,7 +2296,7 @@ export default function SuccessPage() {
               border: '2px solid rgba(255,255,255,0.08)',
               boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
             }}>
-              <p style={{ margin: '0 0 3px 0', textAlign: 'center', fontSize: '11px', fontWeight: '800', color: 'rgba(255,255,255,0.5)', letterSpacing: '2px', textTransform: 'uppercase' }}>
+              <p style={{ margin: '0 0 3px 0', textAlign: 'center', fontSize: '11px', fontWeight: '800', color: 'rgba(255,255,255,0.7)', letterSpacing: '2px', textTransform: 'uppercase' }}>
                 🎁 Tu pedido incluye
               </p>
               <p style={{ margin: '0 0 18px 0', textAlign: 'center', fontSize: '24px', fontWeight: '900', color: '#fff', lineHeight: '1.2' }}>
@@ -2092,7 +2306,7 @@ export default function SuccessPage() {
                 {songs.map((song, index) => {
                   const isActive = currentSong.id === song.id;
                   const isGreen = index === 0;
-                  const color = isGreen ? '#22c55e' : '#a855f7';
+                  const color = isGreen ? '#43C2BA' : '#8E90E8';
                   const rgb = isGreen ? '34,197,94' : '168,85,247';
                   const animName = isGreen ? 'songPulseGreen' : 'songPulsePurple';
                   return (
@@ -2118,7 +2332,7 @@ export default function SuccessPage() {
                       </div>
                       {isActive ? (
                         <div style={{ fontSize: '12px', color, marginTop: '6px', fontWeight: '800', letterSpacing: '0.5px' }}>
-                          ▶ Escuchando ahora
+                          {isPlaying ? '▶ Escuchando ahora' : '✓ Seleccionada'}
                         </div>
                       ) : (
                         <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.7)', marginTop: '6px', fontWeight: '700' }}>
@@ -2131,6 +2345,159 @@ export default function SuccessPage() {
               </div>
             </div>
           )}
+
+          {/* ===== ORDER MANIFEST — every item the customer paid for, with live
+                status, on this one page. A Paquete Definitivo is six deliverables
+                across four sections that each appear only once their own data is
+                ready, so without this the buyer has no way to know whether an item
+                is missing or merely still rendering. Rows scroll to the section
+                that owns the item (and switch songs when that item belongs to the
+                other song). Only shown for genuinely multi-item orders — a single
+                song with no add-ons doesn't need a checklist. ===== */}
+          {(() => {
+            const READY = { label: 'Listo', color: '#43C2BA' };
+            const WORKING = { label: 'En proceso', color: '#C98A1B' };
+            const ACTION = { label: 'Te toca a ti', color: '#38bdf8' };
+            const FAILED = { label: 'Lo estamos revisando', color: '#f87171' };
+            const pill = (s) => (s === 'ready' ? READY : s === 'working' ? WORKING : s === 'action' ? ACTION : FAILED);
+
+            const multi = songs.length > 1;
+            const tag = (i) => (multi ? ` ${i + 1}` : '');
+            const items = [];
+
+            // Jump to a section, switching the active song first when the item
+            // lives on the song that isn't currently selected.
+            const jump = (anchor, songIdx) => () => {
+              if (typeof songIdx === 'number' && songs[songIdx]) {
+                setCurrentSong(songs[songIdx]);
+                setSelectedVideoSongIdx(songIdx);
+              }
+              setTimeout(() => {
+                document.getElementById(anchor)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              }, 60);
+            };
+
+            songs.forEach((s, i) => {
+              items.push({
+                key: `song-${s.id}`, icon: '🎵', label: `Canción${tag(i)}`,
+                status: s.audio_url ? 'ready' : 'working',
+                onClick: s.audio_url ? () => handleDownload(s) : undefined,
+                cta: !s.audio_url ? null
+                  : downloading ? '⏳…'
+                  : downloadComplete[s.id] ? '✅ Guardada'
+                  : 'Descargar',
+              });
+            });
+            songs.forEach((s, i) => {
+              const vo = videoOrdersMap[s.id];
+              if (!vo) return;
+              // Excess idle order beyond the paid entitlement (duplicate-order
+              // bug residue): don't list it — a "Sube tus fotos" row for a video
+              // they can't make is a dead-end prompt.
+              if (vo.status === 'pending' && !(vo.photo_count > 0)
+                && videoEntitled > 0 && consumedVideoCount >= videoEntitled) return;
+              const status = vo.status === 'completed' ? 'ready'
+                : vo.status === 'failed' ? 'failed'
+                : (vo.status === 'pending' && !(vo.photo_count > 0)) ? 'action'
+                : 'working';
+              items.push({
+                key: `vid-${s.id}`, icon: '🎬', label: `Video con fotos${tag(i)}`,
+                status,
+                hint: status === 'action' ? 'Sube tus fotos' : null,
+                onClick: jump('rqc-video', i), cta: 'Ver',
+              });
+            });
+            songs.forEach((s, i) => {
+              if (!s.karaoke_status) return;
+              items.push({
+                key: `kar-${s.id}`, icon: '🎤', label: `Pista instrumental${tag(i)}`,
+                status: s.karaoke_status === 'ready' ? 'ready' : s.karaoke_status === 'failed' ? 'failed' : 'working',
+                onClick: jump('rqc-karaoke'), cta: 'Ver',
+              });
+            });
+            const lyricSong = songs.find((s) => s?.lyric_video_status);
+            if (lyricSong) {
+              items.push({
+                key: 'lyricvid', icon: '📝', label: 'Video con letra',
+                status: lyricSong.lyric_video_status === 'ready' ? 'ready' : lyricSong.lyric_video_status === 'failed' ? 'failed' : 'working',
+                onClick: jump('rqc-musicvideo'), cta: 'Ver',
+              });
+            }
+            const karVidSong = songs.find((s) => s?.karaoke_video_status);
+            if (karVidSong) {
+              items.push({
+                key: 'karvid', icon: '🎤', label: 'Video karaoke',
+                status: karVidSong.karaoke_video_status === 'ready' ? 'ready' : karVidSong.karaoke_video_status === 'failed' ? 'failed' : 'working',
+                onClick: jump('rqc-musicvideo'), cta: 'Ver',
+              });
+            }
+            animadoOrders.forEach((o) => {
+              if (o.state === 'deleted') return;
+              items.push({
+                key: `animado-${o.order_id}`, icon: '🎬', label: 'Película animada',
+                status: o.state === 'delivered' ? 'ready' : o.state === 'awaiting_photo' ? 'action' : 'working',
+                hint: o.state === 'awaiting_photo' ? 'Sube tus fotos' : null,
+                onClick: jump('rqc-animado'), cta: 'Ver',
+              });
+            });
+
+            if (items.length < 3) return null;
+            const pending = items.filter((it) => it.status !== 'ready').length;
+
+            return (
+              <div style={{
+                background: 'linear-gradient(135deg, rgba(16,10,30,0.95), rgba(10,20,16,0.95))',
+                borderRadius: '24px', padding: '20px 16px 16px',
+                marginBottom: '20px',
+                border: '2px solid rgba(255,255,255,0.08)',
+                boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+              }}>
+                <p style={{ margin: '0 0 3px', textAlign: 'center', fontSize: '11px', fontWeight: 800, color: 'rgba(255,255,255,0.7)', letterSpacing: '2px', textTransform: 'uppercase' }}>
+                  ✨ Todo tu paquete, aquí mismo
+                </p>
+                <p style={{ margin: '0 0 14px', textAlign: 'center', fontSize: '13px', color: 'rgba(255,255,255,0.65)', lineHeight: 1.45 }}>
+                  {pending === 0
+                    ? 'Todo está listo — descarga lo que quieras desde esta página.'
+                    : 'Nada se pierde: lo que aún no está listo aparece aquí en cuanto lo esté.'}
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {items.map((it) => {
+                    const p = pill(it.status);
+                    return (
+                      <button key={it.key} onClick={it.onClick} disabled={!it.onClick}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: '10px',
+                          width: '100%', padding: '12px 14px', borderRadius: '14px',
+                          background: 'rgba(255,255,255,0.05)',
+                          border: `1px solid ${it.status === 'action' ? 'rgba(56,189,248,0.45)' : 'rgba(255,255,255,0.08)'}`,
+                          cursor: it.onClick ? 'pointer' : 'default',
+                          fontFamily: ts.font, textAlign: 'left',
+                        }}>
+                        <span style={{ fontSize: '20px', flexShrink: 0 }}>{it.icon}</span>
+                        <span style={{ flex: 1, minWidth: 0 }}>
+                          <span style={{ display: 'block', fontSize: '14px', fontWeight: 700, color: '#fff' }}>
+                            {it.label}
+                          </span>
+                          <span style={{ display: 'block', fontSize: '11.5px', fontWeight: 600, color: p.color, marginTop: '2px' }}>
+                            {it.status === 'ready' ? '✅' : it.status === 'action' ? '👉' : '⏳'} {it.hint || p.label}
+                          </span>
+                        </span>
+                        {it.cta && it.onClick && (
+                          <span style={{
+                            flexShrink: 0, fontSize: '12px', fontWeight: 800,
+                            color: 'rgba(255,255,255,0.85)', padding: '7px 12px',
+                            borderRadius: '999px', background: 'rgba(255,255,255,0.1)',
+                          }}>
+                            {it.cta}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
 
           {/* ===== SHARE VIDEO — the auto-rendered branded gift video
                 (songs.share_video_url). When it exists it IS the player: the
@@ -2204,9 +2571,13 @@ export default function SuccessPage() {
             </div>
           )}
 
-          {/* ===== PLAYER CARD — hidden when has_video_addon OR when the share
-                video is present (in both cases a video replaces it) ===== */}
-          {!currentSong?.has_video_addon && !currentSong?.share_video_url && (<>
+          {/* ===== PLAYER CARD — the song always plays here. Video buyers used
+                to lose this card entirely ("the video IS the player"), which
+                left full bundles with NO way to hear the song by itself and a
+                tab claiming "Escuchando ahora" over nothing (audit 2026-08-14).
+                Only the auto-rendered share video still replaces it — that one
+                is the same song, just wrapped in branding. ===== */}
+          {!currentSong?.share_video_url && (<>
           <div style={{
             background: ts.cardBg,
             borderRadius: '24px', padding: '28px 24px',
@@ -2315,8 +2686,11 @@ export default function SuccessPage() {
 
           </>)}{/* end player card conditional */}
 
-          {/* ===== DOWNLOAD & SHARE SECTION — hidden entirely when has_video_addon ===== */}
-          {!currentSong?.has_video_addon && (
+          {/* ===== DOWNLOAD & SHARE SECTION — for EVERYONE. This is the MP3's one
+                home (Paso 1) . Video buyers used to get their MP3 through a
+                different button inside the video card instead — third door to
+                the same file (audit 2026-08-14). ===== */}
+          {(
           <div style={{ marginBottom: '24px', animation: 'fadeInUp 0.7s ease-out 0.35s both' }}>
 
             {/* Step indicator header */}
@@ -2342,14 +2716,14 @@ export default function SuccessPage() {
               style={{
                 width: '100%', padding: '20px',
                 background: downloadComplete[currentSong?.id]
-                  ? (isLight ? 'linear-gradient(135deg, #22c55e, #16a34a)' : 'linear-gradient(135deg, #22c55e, #16a34a)')
+                  ? (isLight ? 'linear-gradient(135deg, #43C2BA, #1F8C86)' : 'linear-gradient(135deg, #43C2BA, #1F8C86)')
                   : ts.accentGrad,
                 color: downloadComplete[currentSong?.id] ? 'white' : ts.btnText,
                 fontWeight: '800', fontSize: '18px',
                 border: 'none', borderRadius: '16px', cursor: downloading ? 'wait' : 'pointer',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
                 boxShadow: downloadComplete[currentSong?.id]
-                  ? '0 8px 30px rgba(34,197,94,0.35)'
+                  ? '0 8px 30px rgba(67,194,186,0.35)'
                   : `0 8px 30px rgba(${ts.accentRgb},0.35)`,
                 opacity: downloading ? 0.7 : 1, transition: 'all 0.3s',
                 marginBottom: '10px',
@@ -2388,6 +2762,7 @@ export default function SuccessPage() {
                 Shows only when the customer bought the karaoke add-on
                 (karaoke_status will be 'pending' → 'ready' → optionally 'failed').
                 Polled by the useEffect above so 'pending' auto-updates. */}
+          <div id="rqc-karaoke">
             {(() => {
               // One box per song that has the instrumental add-on. A 2-song order
               // can have an instrumental for each song (chosen at checkout), so we
@@ -2408,13 +2783,13 @@ export default function SuccessPage() {
                     <div key={ks.id} style={{
                       marginTop: '12px', marginBottom: '10px',
                       padding: '16px',
-                      background: isLight ? 'rgba(245,158,11,0.06)' : 'rgba(245,158,11,0.10)',
-                      border: `1.5px solid ${isLight ? 'rgba(245,158,11,0.25)' : 'rgba(245,158,11,0.4)'}`,
+                      background: isLight ? 'rgba(201,138,27,0.06)' : 'rgba(201,138,27,0.10)',
+                      border: `1.5px solid ${isLight ? 'rgba(201,138,27,0.25)' : 'rgba(201,138,27,0.4)'}`,
                       borderRadius: '16px',
                     }}>
                       <p style={{
                         margin: '0 0 8px', fontSize: '14px', fontWeight: 800,
-                        color: isLight ? '#92400e' : '#fbbf24',
+                        color: isLight ? '#7A5410' : '#E8B44A',
                         display: 'flex', alignItems: 'center', gap: '6px',
                       }}>
                         🎤 Tu pista instrumental está lista{label}
@@ -2425,23 +2800,23 @@ export default function SuccessPage() {
                       }}>
                         La canción sin la voz — para cantarla tú en familia, fiestas o redes.
                       </p>
-                      <a href={url}
-                         onClick={(e) => {
-                           e.preventDefault();
-                           handleDownloadFile(url, `pista-instrumental-${fileTag}para-${ks.recipient_name || 'ti'}.mp3`);
-                         }}
+                      <button
+                         onClick={() => downloadWithFeedback(`kar-${ks.id}`, url, `pista-instrumental-${fileTag}para-${ks.recipient_name || 'ti'}.mp3`)}
+                         disabled={dlState[`kar-${ks.id}`] === 'busy'}
                          style={{
                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
                            width: '100%', padding: '14px',
-                           background: 'linear-gradient(135deg, #f59e0b, #fbbf24)',
+                           background: dlState[`kar-${ks.id}`] === 'done'
+                             ? 'linear-gradient(135deg, #43C2BA, #1F8C86)'
+                             : 'linear-gradient(135deg, #C98A1B, #E8B44A)',
                            color: 'white', fontWeight: 800, fontSize: '15px',
-                           border: 'none', borderRadius: '14px',
-                           textDecoration: 'none',
-                           boxShadow: '0 6px 20px rgba(245,158,11,0.35)',
+                           border: 'none', borderRadius: '14px', cursor: 'pointer',
+                           boxShadow: '0 6px 20px rgba(201,138,27,0.35)',
+                           opacity: dlState[`kar-${ks.id}`] === 'busy' ? 0.75 : 1,
                            fontFamily: ts.font,
                          }}>
-                        ⬇️ Descargar Pista Instrumental (sin voz){label}
-                      </a>
+                        {dlLabel(`kar-${ks.id}`, `⬇️ Descargar Pista Instrumental (sin voz)${label}`)}
+                      </button>
                     </div>
                   );
                 }
@@ -2451,14 +2826,14 @@ export default function SuccessPage() {
                     <div key={ks.id} style={{
                       marginTop: '12px', marginBottom: '10px',
                       padding: '14px 16px',
-                      background: isLight ? 'rgba(245,158,11,0.05)' : 'rgba(245,158,11,0.08)',
-                      border: `1px dashed ${isLight ? 'rgba(245,158,11,0.3)' : 'rgba(245,158,11,0.35)'}`,
+                      background: isLight ? 'rgba(201,138,27,0.05)' : 'rgba(201,138,27,0.08)',
+                      border: `1px dashed ${isLight ? 'rgba(201,138,27,0.3)' : 'rgba(201,138,27,0.35)'}`,
                       borderRadius: '14px',
                       textAlign: 'center',
                     }}>
                       <p style={{
                         margin: '0 0 4px', fontSize: '13px', fontWeight: 700,
-                        color: isLight ? '#92400e' : '#fbbf24',
+                        color: isLight ? '#7A5410' : '#E8B44A',
                       }}>
                         🎤 Preparando tu pista instrumental{label}…
                       </p>
@@ -2488,7 +2863,9 @@ export default function SuccessPage() {
                 return null;
               });
             })()}
+          </div>{/* end #rqc-karaoke */}
 
+          <div id="rqc-musicvideo">
             {/* ===== MUSIC VIDEO DELIVERY (lyric + karaoke video addons) =====
                 Each shows only if purchased: status 'pending' → 'ready' → 'failed'.
                 Attached to the FIRST song in the order (per stripe-webhook),
@@ -2529,13 +2906,13 @@ export default function SuccessPage() {
                   return (
                     <div key={p.key} style={{
                       marginTop: '12px', marginBottom: '10px', padding: '16px',
-                      background: isLight ? 'rgba(34,197,94,0.06)' : 'rgba(34,197,94,0.10)',
-                      border: `1.5px solid ${isLight ? 'rgba(34,197,94,0.25)' : 'rgba(34,197,94,0.4)'}`,
+                      background: isLight ? 'rgba(67,194,186,0.06)' : 'rgba(67,194,186,0.10)',
+                      border: `1.5px solid ${isLight ? 'rgba(67,194,186,0.25)' : 'rgba(67,194,186,0.4)'}`,
                       borderRadius: '16px',
                     }}>
                       <p style={{
                         margin: '0 0 8px', fontSize: '14px', fontWeight: 800,
-                        color: isLight ? '#166534' : '#4ade80',
+                        color: isLight ? '#12655F' : '#89DAD4',
                         display: 'flex', alignItems: 'center', gap: '6px',
                       }}>
                         {p.emoji} {p.title} está listo
@@ -2544,16 +2921,20 @@ export default function SuccessPage() {
                         width: '100%', maxHeight: '360px', borderRadius: '12px',
                         background: '#000', marginBottom: '12px', display: 'block',
                       }} />
-                      <a href={url} download={`${p.fileLabel}-para-${name}.mp4`} style={{
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-                        width: '100%', padding: '14px',
-                        background: 'linear-gradient(135deg, #16a34a, #22c55e)',
-                        color: 'white', fontWeight: 800, fontSize: '15px',
-                        border: 'none', borderRadius: '14px', textDecoration: 'none',
-                        boxShadow: '0 6px 20px rgba(34,197,94,0.35)', fontFamily: ts.font,
-                      }}>
-                        ⬇️ Descargar {p.title.replace('Tu ', '')} (MP4)
-                      </a>
+                      <button
+                        onClick={() => downloadWithFeedback(`mv-${p.key}`, url, `${p.fileLabel}-para-${name}.mp4`)}
+                        disabled={dlState[`mv-${p.key}`] === 'busy'}
+                        style={{
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                          width: '100%', padding: '14px',
+                          background: 'linear-gradient(135deg, #1F8C86, #43C2BA)',
+                          color: 'white', fontWeight: 800, fontSize: '15px',
+                          border: 'none', borderRadius: '14px', cursor: 'pointer',
+                          opacity: dlState[`mv-${p.key}`] === 'busy' ? 0.75 : 1,
+                          boxShadow: '0 6px 20px rgba(67,194,186,0.35)', fontFamily: ts.font,
+                        }}>
+                        {dlLabel(`mv-${p.key}`, `⬇️ Descargar ${p.title.replace('Tu ', '')} (MP4)`)}
+                      </button>
                     </div>
                   );
                 }
@@ -2562,11 +2943,11 @@ export default function SuccessPage() {
                   return (
                     <div key={p.key} style={{
                       marginTop: '12px', marginBottom: '10px', padding: '14px 16px',
-                      background: isLight ? 'rgba(34,197,94,0.05)' : 'rgba(34,197,94,0.08)',
-                      border: `1px dashed ${isLight ? 'rgba(34,197,94,0.3)' : 'rgba(34,197,94,0.35)'}`,
+                      background: isLight ? 'rgba(67,194,186,0.05)' : 'rgba(67,194,186,0.08)',
+                      border: `1px dashed ${isLight ? 'rgba(67,194,186,0.3)' : 'rgba(67,194,186,0.35)'}`,
                       borderRadius: '14px', textAlign: 'center',
                     }}>
-                      <p style={{ margin: '0 0 4px', fontSize: '13px', fontWeight: 700, color: isLight ? '#166534' : '#4ade80' }}>
+                      <p style={{ margin: '0 0 4px', fontSize: '13px', fontWeight: 700, color: isLight ? '#12655F' : '#89DAD4' }}>
                         {p.emoji} {p.prep}
                       </p>
                       <p style={{ margin: 0, fontSize: '11px', color: ts.textSecondary }}>
@@ -2593,10 +2974,11 @@ export default function SuccessPage() {
                 return null;
               });
             })()}
+          </div>{/* end #rqc-musicvideo */}
 
-          {!currentSong?.has_video_addon && (
+          {(
           <div style={{ marginBottom: '24px', animation: 'fadeInUp 0.7s ease-out 0.35s both' }}>
-            {/* WhatsApp Share - Step 2 */}
+            {/* WhatsApp Share - Step 2 — the ONE share block on the page */}
             <div style={{
               textAlign: 'center', marginTop: '16px',
               padding: '12px 16px',
@@ -2651,23 +3033,8 @@ export default function SuccessPage() {
           </div>
           )}{/* end download section conditional */}
 
-          {/* ===== ONE-TAP SECONDARY UPSELL (Animado / instrumental) — saved-card,
-              no second checkout. The song/reveal lands first; this sits below it.
-              Gated on session_id (the post-purchase moment + the charge's auth). ===== */}
-          {oneTapSessionId && oneTapItems.length > 0 && (
-            <div style={{ marginBottom: '28px' }}>
-              <OneTapUpsell
-                recipientName={oneTapSong?.recipient_name || 'tu ser querido'}
-                senderName={oneTapSong?.sender_name || ''}
-                last4={oneTapSong?.stripe_card_last4 || ''}
-                items={oneTapItems}
-                onCharge={handleUpsellCharge}
-              />
-            </div>
-          )}
-
           {/* Step timeline for video addon flow */}
-          {currentSong?.has_video_addon && videoOrder && videoOrder.status === 'pending' && (
+          {!videoOrderIsExcess && currentSong?.has_video_addon && videoOrder && videoOrder.status === 'pending' && (
             <div style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               gap: '0', marginBottom: '20px', padding: '0 10px',
@@ -2682,23 +3049,23 @@ export default function SuccessPage() {
                   {i > 0 && (
                     <div style={{
                       width: '40px', height: '2px',
-                      background: step.active ? 'rgba(139,92,246,0.5)' : 'rgba(255,255,255,0.1)',
+                      background: step.active ? 'rgba(102,104,210,0.5)' : 'rgba(255,255,255,0.1)',
                     }} />
                   )}
                   <div style={{ textAlign: 'center', minWidth: '60px' }}>
                     <div style={{
                       width: '40px', height: '40px', borderRadius: '50%', margin: '0 auto 4px',
                       background: step.active
-                        ? 'linear-gradient(135deg, #7c3aed, #a855f7)'
+                        ? 'linear-gradient(135deg, #4A4CA8, #8E90E8)'
                         : 'rgba(255,255,255,0.06)',
                       border: step.active ? 'none' : '1.5px solid rgba(255,255,255,0.1)',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       fontSize: '18px',
-                      boxShadow: step.active ? '0 4px 15px rgba(124,58,237,0.4)' : 'none',
+                      boxShadow: step.active ? '0 4px 15px rgba(74,76,168,0.4)' : 'none',
                     }}>{step.icon}</div>
                     <span style={{
                       fontSize: '10px', fontWeight: '700',
-                      color: step.active ? '#a78bfa' : 'rgba(255,255,255,0.3)',
+                      color: step.active ? '#A9AAEE' : 'rgba(255,255,255,0.3)',
                     }}>{step.label}</span>
                   </div>
                 </React.Fragment>
@@ -2706,10 +3073,17 @@ export default function SuccessPage() {
             </div>
           )}
 
-          {/* ===== VIDEO UPSELL SECTION ===== */}
-          <div style={{
+          {/* ===== VIDEO UPSELL SECTION =====
+              When the selected song's order is an excess idle row beyond the
+              paid entitlement, the upload/upsell states are suppressed (the
+              entitlement rule would refuse the upload — dead-end CTA, audit
+              2026-08-14). But FINISHED videos always render, regardless of
+              which song is selected — the completed stack below is keyed to
+              the whole bundle, not the selection. ===== */}
+          {(!videoOrderIsExcess || Object.values(videoOrdersMap).some((o) => o?.status === 'completed' && o?.video_url)) && (
+          <div id="rqc-video" style={{
             borderRadius: '24px', padding: '24px',
-            border: '1px solid rgba(139,92,246,0.25)',
+            border: '1px solid rgba(102,104,210,0.25)',
             marginBottom: '24px',
             background: isLight
               ? 'linear-gradient(160deg, #f5f0ff 0%, #ede8ff 100%)'
@@ -2717,64 +3091,27 @@ export default function SuccessPage() {
             backdropFilter: ts.cardBlur,
             animation: 'fadeInUp 0.7s ease-out 0.4s both',
             overflow: 'hidden', position: 'relative',
-            boxShadow: isLight ? '0 8px 30px rgba(124,58,237,0.1)' : '0 8px 40px rgba(109,40,217,0.12)',
+            boxShadow: isLight ? '0 8px 30px rgba(74,76,168,0.1)' : '0 8px 40px rgba(109,40,217,0.12)',
           }}>
             {/* Shimmer top border */}
             <div style={{
               position: 'absolute', top: 0, left: 0, right: 0, height: '2px',
-              background: 'linear-gradient(90deg, transparent, #8b5cf6, #a78bfa, #8b5cf6, transparent)',
+              background: 'linear-gradient(90deg, transparent, #6668D2, #A9AAEE, #6668D2, transparent)',
               backgroundSize: '200% 100%',
               animation: 'shimmerAccent 3s linear infinite',
             }} />
 
-            {/* ===== SONG IS ALWAYS DOWNLOADABLE =====
-                The main download & share section (above) is hidden for video-addon
-                buyers, so without this card they'd have NO way to get the MP3 until
-                the video is finished. Show it in every not-yet-done state (pending /
-                photos_uploaded / processing) so the song is available even before any
-                photos are uploaded. The 'completed' state has its own MP3 button. */}
-            {currentSong?.audio_url && videoOrder
-              && videoOrder.status !== 'completed' && videoOrder.status !== 'failed' && (
-              <div style={{
-                background: isLight ? 'rgba(34,197,94,0.07)' : 'rgba(34,197,94,0.10)',
-                border: `1.5px solid ${isLight ? 'rgba(34,197,94,0.28)' : 'rgba(34,197,94,0.4)'}`,
-                borderRadius: '16px', padding: '16px', marginBottom: '20px',
-              }}>
-                <p style={{ margin: '0 0 4px', fontSize: '14px', fontWeight: 800, color: isLight ? '#166534' : '#4ade80' }}>
-                  ✅ Tu canción ya está lista
-                </p>
-                <p style={{ margin: '0 0 12px', fontSize: '12.5px', color: ts.textSecondary, lineHeight: 1.45 }}>
-                  Puedes descargarla ahora mismo — no necesitas esperar al video. Tu video se generará abajo cuando subas tus fotos.
-                </p>
-                <button onClick={() => handleDownload(currentSong)} disabled={downloading}
-                  style={{
-                    width: '100%', padding: '15px',
-                    background: downloadComplete[currentSong?.id]
-                      ? 'linear-gradient(135deg, #22c55e, #16a34a)'
-                      : 'linear-gradient(135deg, #22c55e, #16a34a)',
-                    color: 'white', fontWeight: 800, fontSize: '16px',
-                    border: 'none', borderRadius: '14px', cursor: downloading ? 'wait' : 'pointer',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-                    boxShadow: '0 8px 24px rgba(34,197,94,0.3)',
-                    opacity: downloading ? 0.7 : 1, transition: 'all 0.3s', fontFamily: ts.font,
-                  }}>
-                  {downloading ? '⏳ Descargando...' : downloadComplete[currentSong?.id] ? '✅ Descargar de nuevo' : '⬇️ Descargar tu canción (MP3)'}
-                </button>
-                {isInAppBrowser() && (
-                  <p style={{ fontSize: '11.5px', color: ts.textSecondary, margin: '10px 0 0', textAlign: 'center', lineHeight: 1.4 }}>
-                    💡 ¿No se descarga? Toca el menú <strong>⋯</strong> arriba y elige <strong>"Abrir en el navegador"</strong>
-                  </p>
-                )}
-              </div>
-            )}
+            {/* (The green "Tu canción ya está lista" MP3 card that lived here was
+                removed 2026-08-14 — the main download section above now renders
+                for video buyers too, so this was a second door to the same file.) */}
 
             {/* STATE: No video order yet — Show upsell CTA */}
-            {!videoOrder && (
+            {!videoOrderIsExcess && !videoOrder && (
               <>
                 {/* Film strip decoration */}
                 <div style={{ display: 'flex', gap: '3px', marginBottom: '18px', overflow: 'hidden', height: '6px', opacity: 0.35 }}>
                   {Array.from({ length: 24 }).map((_, i) => (
-                    <div key={i} style={{ flex: 1, borderRadius: '2px', background: i % 3 === 0 ? '#8b5cf6' : 'rgba(139,92,246,0.25)' }} />
+                    <div key={i} style={{ flex: 1, borderRadius: '2px', background: i % 3 === 0 ? '#6668D2' : 'rgba(102,104,210,0.25)' }} />
                   ))}
                 </div>
 
@@ -2782,20 +3119,20 @@ export default function SuccessPage() {
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: '14px', marginBottom: '20px' }}>
                   <div style={{
                     width: '54px', height: '54px', minWidth: '54px', borderRadius: '16px',
-                    background: 'linear-gradient(135deg, #7c3aed, #4f46e5)',
+                    background: 'linear-gradient(135deg, #4A4CA8, #4A4CA8)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     fontSize: '26px',
-                    boxShadow: '0 8px 24px rgba(124,58,237,0.4)',
+                    boxShadow: '0 8px 24px rgba(74,76,168,0.4)',
                     flexShrink: 0,
                   }}>🎬</div>
                   <div>
-                    <h3 style={{ fontSize: '26px', fontWeight: '900', marginBottom: '8px', color: isLight ? '#4c1d95' : '#e9d5ff', lineHeight: 1.15, letterSpacing: '-0.03em' }}>
+                    <h3 style={{ fontSize: '26px', fontWeight: '900', marginBottom: '8px', color: isLight ? '#2B2D6B' : '#DCDCF8', lineHeight: 1.15, letterSpacing: '-0.03em' }}>
                       Ya tienes la canción... ahora hazla inolvidable
                     </h3>
                     <p style={{ fontSize: '14px', color: ts.textSecondary, lineHeight: '1.5', margin: '0 0 10px' }}>
                       Convierte su canción en un video con sus fotos favoritas. El regalo que los hará llorar de emoción 🥹
                     </p>
-                    <p style={{ fontSize: '12px', color: '#a78bfa', fontWeight: '600', margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <p style={{ fontSize: '12px', color: '#A9AAEE', fontWeight: '600', margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <span style={{ fontSize: '14px' }}>💜</span> Ya 2,400+ familias han creado su video personalizado
                     </p>
                   </div>
@@ -2805,9 +3142,9 @@ export default function SuccessPage() {
                 <div style={{
                   position: 'relative', borderRadius: '16px', overflow: 'hidden',
                   marginBottom: '24px', aspectRatio: '16/9',
-                  border: `2px solid rgba(139,92,246,0.3)`,
-                  boxShadow: '0 8px 32px rgba(124,58,237,0.25)',
-                  background: '#0a0015',
+                  border: `2px solid rgba(102,104,210,0.3)`,
+                  boxShadow: '0 8px 32px rgba(74,76,168,0.25)',
+                  background: '#150E2E',
                 }}>
                   {/* Animated Ken Burns slideshow with sample images */}
                   <style>{`
@@ -2860,9 +3197,9 @@ export default function SuccessPage() {
                   <div style={{
                     position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
                     width: '56px', height: '56px', borderRadius: '50%',
-                    background: 'rgba(124,58,237,0.85)', backdropFilter: 'blur(8px)',
+                    background: 'rgba(74,76,168,0.85)', backdropFilter: 'blur(8px)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    boxShadow: '0 4px 20px rgba(124,58,237,0.5)',
+                    boxShadow: '0 4px 20px rgba(74,76,168,0.5)',
                   }}>
                     <span style={{ fontSize: '22px', marginLeft: '3px', color: 'white' }}>▶</span>
                   </div>
@@ -2874,56 +3211,56 @@ export default function SuccessPage() {
                     background: 'linear-gradient(180deg, transparent, rgba(10,0,21,0.9))',
                   }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ fontSize: '13px', color: '#c4b5fd', fontWeight: 700 }}>Vista previa</span>
+                      <span style={{ fontSize: '13px', color: '#BCBDF2', fontWeight: 700 }}>Vista previa</span>
                       <span style={{ fontSize: '11px', color: 'rgba(196,181,253,0.6)' }}>•</span>
                       <span style={{ fontSize: '11px', color: 'rgba(196,181,253,0.6)' }}>Tus fotos + su canción</span>
                     </div>
-                    <span style={{ fontSize: '11px', color: '#a78bfa', fontWeight: 600, background: 'rgba(124,58,237,0.3)', padding: '3px 8px', borderRadius: '6px' }}>HD 1080p</span>
+                    <span style={{ fontSize: '11px', color: '#A9AAEE', fontWeight: 600, background: 'rgba(74,76,168,0.3)', padding: '3px 8px', borderRadius: '6px' }}>HD 1080p</span>
                   </div>
 
                   {/* Animated progress bar at very bottom */}
-                  <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '3px', background: 'rgba(124,58,237,0.2)' }}>
-                    <div style={{ height: '100%', background: 'linear-gradient(90deg, #7c3aed, #a78bfa)', animation: 'progressPreview 28s linear infinite' }} />
+                  <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '3px', background: 'rgba(74,76,168,0.2)' }}>
+                    <div style={{ height: '100%', background: 'linear-gradient(90deg, #4A4CA8, #A9AAEE)', animation: 'progressPreview 28s linear infinite' }} />
                   </div>
                 </div>
 
                 {/* How it works — 2 easy steps */}
                 <div style={{ marginBottom: '24px' }}>
-                  <p style={{ fontSize: '11px', fontWeight: '700', color: '#a78bfa', textTransform: 'uppercase', letterSpacing: '0.1em', margin: '0 0 10px', textAlign: 'center' }}>Así de fácil</p>
+                  <p style={{ fontSize: '11px', fontWeight: '700', color: '#A9AAEE', textTransform: 'uppercase', letterSpacing: '0.1em', margin: '0 0 10px', textAlign: 'center' }}>Así de fácil</p>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0' }}>
                     {/* Step 1 */}
                     <div style={{
                       flex: 1, display: 'flex', alignItems: 'center', gap: '10px',
                       padding: '12px 14px', borderRadius: '14px',
-                      background: isLight ? 'rgba(139,92,246,0.07)' : 'rgba(139,92,246,0.1)',
+                      background: isLight ? 'rgba(102,104,210,0.07)' : 'rgba(102,104,210,0.1)',
                     }}>
                       <div style={{
                         width: '38px', height: '38px', minWidth: '38px', borderRadius: '12px',
-                        background: 'linear-gradient(135deg, #7c3aed, #4f46e5)',
+                        background: 'linear-gradient(135deg, #4A4CA8, #4A4CA8)',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontSize: '18px', boxShadow: '0 4px 12px rgba(124,58,237,0.35)',
+                        fontSize: '18px', boxShadow: '0 4px 12px rgba(74,76,168,0.35)',
                       }}>📸</div>
                       <div>
-                        <p style={{ fontSize: '13px', fontWeight: '800', color: isLight ? '#4c1d95' : '#e9d5ff', margin: 0, lineHeight: 1.2 }}>Sube tus fotos</p>
+                        <p style={{ fontSize: '13px', fontWeight: '800', color: isLight ? '#2B2D6B' : '#DCDCF8', margin: 0, lineHeight: 1.2 }}>Sube tus fotos</p>
                         <p style={{ fontSize: '11px', color: ts.textSecondary, margin: '2px 0 0', lineHeight: 1.3 }}>Los momentos especiales</p>
                       </div>
                     </div>
                     {/* Arrow connector */}
-                    <div style={{ padding: '0 6px', fontSize: '16px', color: '#7c3aed', fontWeight: '900', flexShrink: 0 }}>→</div>
+                    <div style={{ padding: '0 6px', fontSize: '16px', color: '#4A4CA8', fontWeight: '900', flexShrink: 0 }}>→</div>
                     {/* Step 2 */}
                     <div style={{
                       flex: 1, display: 'flex', alignItems: 'center', gap: '10px',
                       padding: '12px 14px', borderRadius: '14px',
-                      background: isLight ? 'rgba(139,92,246,0.07)' : 'rgba(139,92,246,0.1)',
+                      background: isLight ? 'rgba(102,104,210,0.07)' : 'rgba(102,104,210,0.1)',
                     }}>
                       <div style={{
                         width: '38px', height: '38px', minWidth: '38px', borderRadius: '12px',
-                        background: 'linear-gradient(135deg, #7c3aed, #4f46e5)',
+                        background: 'linear-gradient(135deg, #4A4CA8, #4A4CA8)',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontSize: '18px', boxShadow: '0 4px 12px rgba(124,58,237,0.35)',
+                        fontSize: '18px', boxShadow: '0 4px 12px rgba(74,76,168,0.35)',
                       }}>✨</div>
                       <div>
-                        <p style={{ fontSize: '13px', fontWeight: '800', color: isLight ? '#4c1d95' : '#e9d5ff', margin: 0, lineHeight: 1.2 }}>Recibe tu video</p>
+                        <p style={{ fontSize: '13px', fontWeight: '800', color: isLight ? '#2B2D6B' : '#DCDCF8', margin: 0, lineHeight: 1.2 }}>Recibe tu video</p>
                         <p style={{ fontSize: '11px', color: ts.textSecondary, margin: '2px 0 0', lineHeight: 1.3 }}>Canción + fotos = magia</p>
                       </div>
                     </div>
@@ -2940,9 +3277,9 @@ export default function SuccessPage() {
                       return (
                         <button key={s.id} onClick={() => setSelectedVideoSongIdx(i)} style={{
                           flex: 1, padding: '10px 12px', borderRadius: '10px', cursor: 'pointer',
-                          border: isActive ? '2px solid #7c3aed' : `1px solid ${isLight ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.12)'}`,
-                          background: isActive ? (isLight ? 'rgba(124,58,237,0.1)' : 'rgba(124,58,237,0.2)') : (isLight ? 'rgba(0,0,0,0.02)' : 'rgba(255,255,255,0.04)'),
-                          color: isActive ? (isLight ? '#4c1d95' : '#c4b5fd') : ts.textSecondary,
+                          border: isActive ? '2px solid #4A4CA8' : `1px solid ${isLight ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.12)'}`,
+                          background: isActive ? (isLight ? 'rgba(74,76,168,0.1)' : 'rgba(74,76,168,0.2)') : (isLight ? 'rgba(0,0,0,0.02)' : 'rgba(255,255,255,0.04)'),
+                          color: isActive ? (isLight ? '#2B2D6B' : '#BCBDF2') : ts.textSecondary,
                           fontSize: '13px', fontWeight: isActive ? '700' : '500',
                           fontFamily: ts.font, transition: 'all 0.2s',
                           display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
@@ -2958,10 +3295,10 @@ export default function SuccessPage() {
                 {songs.length > 1 && !videoOrder && (songs[0]?.video_addon_count ?? 1) < 2 && (
                   <div style={{
                     marginBottom: '20px', padding: '12px 14px', borderRadius: '12px',
-                    background: isLight ? 'rgba(139,92,246,0.06)' : 'rgba(139,92,246,0.1)',
-                    border: `1px solid ${isLight ? 'rgba(139,92,246,0.15)' : 'rgba(139,92,246,0.2)'}`,
+                    background: isLight ? 'rgba(102,104,210,0.06)' : 'rgba(102,104,210,0.1)',
+                    border: `1px solid ${isLight ? 'rgba(102,104,210,0.15)' : 'rgba(102,104,210,0.2)'}`,
                   }}>
-                    <p style={{ fontSize: '12px', fontWeight: '700', color: isLight ? '#4c1d95' : '#c4b5fd', margin: '0 0 8px' }}>
+                    <p style={{ fontSize: '12px', fontWeight: '700', color: isLight ? '#2B2D6B' : '#BCBDF2', margin: '0 0 8px' }}>
                       🎵 ¿Para cuál canción quieres el video?
                     </p>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -2971,18 +3308,18 @@ export default function SuccessPage() {
                             display: 'flex', alignItems: 'center', gap: '10px',
                             padding: '10px 12px', borderRadius: '10px',
                             background: selectedVideoSongIdx === i
-                              ? (isLight ? 'rgba(124,58,237,0.12)' : 'rgba(124,58,237,0.2)')
+                              ? (isLight ? 'rgba(74,76,168,0.12)' : 'rgba(74,76,168,0.2)')
                               : (isLight ? 'rgba(0,0,0,0.02)' : 'rgba(255,255,255,0.04)'),
                             border: selectedVideoSongIdx === i
-                              ? '2px solid rgba(124,58,237,0.5)'
+                              ? '2px solid rgba(74,76,168,0.5)'
                               : `1px solid ${isLight ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.1)'}`,
                             cursor: 'pointer', fontFamily: ts.font, textAlign: 'left',
                             transition: 'all 0.2s',
                           }}>
                           <span style={{
                             width: '20px', height: '20px', borderRadius: '50%',
-                            border: selectedVideoSongIdx === i ? '2px solid #7c3aed' : `2px solid ${isLight ? '#ccc' : '#555'}`,
-                            background: selectedVideoSongIdx === i ? '#7c3aed' : 'transparent',
+                            border: selectedVideoSongIdx === i ? '2px solid #4A4CA8' : `2px solid ${isLight ? '#ccc' : '#555'}`,
+                            background: selectedVideoSongIdx === i ? '#4A4CA8' : 'transparent',
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
                             flexShrink: 0,
                           }}>
@@ -3004,8 +3341,8 @@ export default function SuccessPage() {
 
                 {/* Price strip — deal pricing */}
                 <div style={{
-                  background: isLight ? 'linear-gradient(135deg, rgba(109,40,217,0.08), rgba(79,70,229,0.04))' : 'linear-gradient(135deg, rgba(124,58,237,0.15), rgba(79,70,229,0.08))',
-                  border: '1px solid rgba(139,92,246,0.25)',
+                  background: isLight ? 'linear-gradient(135deg, rgba(109,40,217,0.08), rgba(79,70,229,0.04))' : 'linear-gradient(135deg, rgba(74,76,168,0.15), rgba(79,70,229,0.08))',
+                  border: '1px solid rgba(102,104,210,0.25)',
                   borderRadius: '16px', padding: '16px 18px', marginBottom: '20px',
                   position: 'relative', overflow: 'hidden',
                 }}>
@@ -3019,18 +3356,18 @@ export default function SuccessPage() {
                   }}>OFERTA</div>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <div>
-                      <p style={{ fontSize: '10px', color: '#a78bfa', margin: '0 0 4px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Precio especial de lanzamiento</p>
+                      <p style={{ fontSize: '10px', color: '#A9AAEE', margin: '0 0 4px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Precio especial de lanzamiento</p>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                         <span style={{ fontSize: '22px', fontWeight: '700', color: isLight ? '#999' : '#777', textDecoration: 'line-through', lineHeight: 1 }}>$29.99</span>
-                        <span style={{ fontSize: '36px', fontWeight: '900', color: isLight ? '#6d28d9' : '#c4b5fd', lineHeight: 1 }}>$9.99</span>
+                        <span style={{ fontSize: '36px', fontWeight: '900', color: isLight ? '#3B3D8F' : '#BCBDF2', lineHeight: 1 }}>$9.99</span>
                         <span style={{ fontSize: '12px', color: ts.textSecondary }}>USD</span>
                       </div>
                       <p style={{ fontSize: '11px', color: '#ef4444', fontWeight: '700', margin: '4px 0 0' }}>Ahorras $20 — 67% de descuento</p>
-                      <p style={{ fontSize: '10px', color: '#facc15', fontWeight: '700', margin: '6px 0 0', letterSpacing: '0.05em' }}>⏳ Precio de lanzamiento — por tiempo limitado</p>
+                      <p style={{ fontSize: '10px', color: '#E8B44A', fontWeight: '700', margin: '6px 0 0', letterSpacing: '0.05em' }}>⏳ Precio de lanzamiento — por tiempo limitado</p>
                     </div>
                     <div style={{ textAlign: 'right' }}>
                       {['✓ Sin suscripción', '✓ Descarga inmediata', '✓ Tuyo para siempre'].map((t, i) => (
-                        <p key={i} style={{ fontSize: '11px', color: '#a78bfa', margin: '0 0 3px', fontWeight: 600 }}>{t}</p>
+                        <p key={i} style={{ fontSize: '11px', color: '#A9AAEE', margin: '0 0 3px', fontWeight: 600 }}>{t}</p>
                       ))}
                     </div>
                   </div>
@@ -3041,8 +3378,8 @@ export default function SuccessPage() {
                   style={{
                     width: '100%', padding: '18px 24px',
                     background: videoPurchasing
-                      ? 'rgba(124,58,237,0.4)'
-                      : 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 50%, #4f46e5 100%)',
+                      ? 'rgba(74,76,168,0.4)'
+                      : 'linear-gradient(135deg, #4A4CA8 0%, #3B3D8F 50%, #4A4CA8 100%)',
                     color: 'white', fontWeight: '800', fontSize: '17px', letterSpacing: '-0.01em',
                     border: 'none', borderRadius: '16px',
                     cursor: videoPurchasing ? 'wait' : 'pointer',
@@ -3067,24 +3404,24 @@ export default function SuccessPage() {
             )}
 
             {/* STATE: Paid, pending photos (status: pending) */}
-            {videoOrder && videoOrder.status === 'pending' && (
+            {!videoOrderIsExcess && videoOrder && videoOrder.status === 'pending' && (
               <>
                 {/* Film strip decoration */}
                 <div style={{ display: 'flex', gap: '3px', marginBottom: '18px', overflow: 'hidden', height: '6px', opacity: 0.35 }}>
                   {Array.from({ length: 24 }).map((_, i) => (
-                    <div key={i} style={{ flex: 1, borderRadius: '2px', background: i % 3 === 0 ? '#8b5cf6' : 'rgba(139,92,246,0.25)' }} />
+                    <div key={i} style={{ flex: 1, borderRadius: '2px', background: i % 3 === 0 ? '#6668D2' : 'rgba(102,104,210,0.25)' }} />
                   ))}
                 </div>
 
                 {/* ===== 3-STEP GUIDE — clear, simple instructions ===== */}
                 <div style={{
-                  background: 'linear-gradient(135deg, rgba(124,58,237,0.12), rgba(79,70,229,0.08))',
-                  border: '1px solid rgba(139,92,246,0.25)',
+                  background: 'linear-gradient(135deg, rgba(74,76,168,0.12), rgba(79,70,229,0.08))',
+                  border: '1px solid rgba(102,104,210,0.25)',
                   borderRadius: '16px',
                   padding: '16px 14px',
                   marginBottom: '20px',
                 }}>
-                  <p style={{ margin: '0 0 12px 0', textAlign: 'center', fontSize: '11px', fontWeight: '800', color: '#a78bfa', letterSpacing: '1.5px', textTransform: 'uppercase' }}>
+                  <p style={{ margin: '0 0 12px 0', textAlign: 'center', fontSize: '11px', fontWeight: '800', color: '#A9AAEE', letterSpacing: '1.5px', textTransform: 'uppercase' }}>
                     📋 3 pasos rápidos
                   </p>
                   {[
@@ -3095,10 +3432,10 @@ export default function SuccessPage() {
                     <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: i < 2 ? '10px' : 0 }}>
                       <div style={{
                         width: '32px', height: '32px', minWidth: '32px', borderRadius: '50%',
-                        background: 'linear-gradient(135deg, #7c3aed, #4f46e5)',
+                        background: 'linear-gradient(135deg, #4A4CA8, #4A4CA8)',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         fontSize: '15px', fontWeight: '900', color: 'white',
-                        boxShadow: '0 4px 12px rgba(124,58,237,0.4)',
+                        boxShadow: '0 4px 12px rgba(74,76,168,0.4)',
                       }}>{step.num}</div>
                       <div style={{ flex: 1 }}>
                         <p style={{ margin: 0, fontSize: '14px', fontWeight: '800', color: ts.textPrimary, lineHeight: 1.2 }}>{step.title}</p>
@@ -3114,7 +3451,7 @@ export default function SuccessPage() {
                 {animadoOrders.some((o) => o.state === 'awaiting_photo') && (
                   <div style={{
                     display: 'flex', alignItems: 'flex-start', gap: '10px',
-                    background: 'rgba(245,185,66,0.1)', border: '1px solid rgba(245,185,66,0.3)',
+                    background: 'rgba(232,180,74,0.1)', border: '1px solid rgba(232,180,74,0.3)',
                     borderRadius: '12px', padding: '12px 14px', marginBottom: '16px',
                   }}>
                     <span style={{ fontSize: '16px', lineHeight: 1 }}>💡</span>
@@ -3128,10 +3465,10 @@ export default function SuccessPage() {
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: '14px', marginBottom: '20px' }}>
                   <div style={{
                     width: '54px', height: '54px', minWidth: '54px', borderRadius: '16px',
-                    background: 'linear-gradient(135deg, #7c3aed, #4f46e5)',
+                    background: 'linear-gradient(135deg, #4A4CA8, #4A4CA8)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     fontSize: '26px',
-                    boxShadow: '0 8px 24px rgba(124,58,237,0.45)',
+                    boxShadow: '0 8px 24px rgba(74,76,168,0.45)',
                     flexShrink: 0,
                   }}>📸</div>
                   <div>
@@ -3139,7 +3476,7 @@ export default function SuccessPage() {
                       ¡Sube tus fotos!
                     </h3>
                     <p style={{ fontSize: '13px', color: ts.textSecondary, lineHeight: '1.5', margin: 0 }}>
-                      Selecciona de <span style={{ color: '#a78bfa', fontWeight: '700' }}>3 a 15 fotos</span> para tu video cinematográfico
+                      Selecciona de <span style={{ color: '#A9AAEE', fontWeight: '700' }}>3 a 15 fotos</span> para tu video cinematográfico
                     </p>
                   </div>
                 </div>
@@ -3153,21 +3490,21 @@ export default function SuccessPage() {
                     {videoPhotos.map((photo, i) => (
                       <div key={i} style={{
                         position: 'relative', aspectRatio: '1', borderRadius: '12px', overflow: 'hidden',
-                        border: '2px solid rgba(139,92,246,0.3)',
-                        boxShadow: '0 4px 12px rgba(124,58,237,0.2)',
+                        border: '2px solid rgba(102,104,210,0.3)',
+                        boxShadow: '0 4px 12px rgba(74,76,168,0.2)',
                       }}>
                         <img src={photo.preview} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                         <button onClick={() => removeVideoPhoto(i)} style={{
                           position: 'absolute', top: '4px', right: '4px',
                           width: '22px', height: '22px', borderRadius: '50%',
-                          background: 'linear-gradient(135deg, #7c3aed, #6d28d9)', border: 'none', color: 'white',
+                          background: 'linear-gradient(135deg, #4A4CA8, #3B3D8F)', border: 'none', color: 'white',
                           fontSize: '11px', cursor: 'pointer', display: 'flex',
                           alignItems: 'center', justifyContent: 'center',
-                          boxShadow: '0 2px 8px rgba(124,58,237,0.5)',
+                          boxShadow: '0 2px 8px rgba(74,76,168,0.5)',
                         }}>✕</button>
                         <div style={{
                           position: 'absolute', bottom: '4px', left: '4px',
-                          background: 'linear-gradient(135deg, rgba(124,58,237,0.85), rgba(79,70,229,0.85))',
+                          background: 'linear-gradient(135deg, rgba(74,76,168,0.85), rgba(79,70,229,0.85))',
                           borderRadius: '8px',
                           padding: '2px 7px', fontSize: '10px', color: 'white', fontWeight: '700',
                           backdropFilter: 'blur(4px)',
@@ -3191,9 +3528,9 @@ export default function SuccessPage() {
                   <button onClick={() => videoPhotoInputRef.current?.click()}
                     style={{
                       width: '100%', padding: '16px',
-                      background: isLight ? 'rgba(139,92,246,0.06)' : 'rgba(139,92,246,0.08)',
-                      color: isLight ? '#6d28d9' : '#c4b5fd', fontWeight: '700', fontSize: '15px',
-                      border: '2px dashed rgba(139,92,246,0.3)', borderRadius: '14px',
+                      background: isLight ? 'rgba(102,104,210,0.06)' : 'rgba(102,104,210,0.08)',
+                      color: isLight ? '#3B3D8F' : '#BCBDF2', fontWeight: '700', fontSize: '15px',
+                      border: '2px dashed rgba(102,104,210,0.3)', borderRadius: '14px',
                       cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
                       fontFamily: ts.font, marginBottom: '14px',
                       transition: 'all 0.3s',
@@ -3204,20 +3541,20 @@ export default function SuccessPage() {
 
                 {/* Photo count strip */}
                 <div style={{
-                  background: isLight ? 'rgba(109,40,217,0.07)' : 'rgba(124,58,237,0.12)',
-                  border: '1px solid rgba(139,92,246,0.2)',
+                  background: isLight ? 'rgba(109,40,217,0.07)' : 'rgba(74,76,168,0.12)',
+                  border: '1px solid rgba(102,104,210,0.2)',
                   borderRadius: '12px', padding: '12px 16px', marginBottom: '14px',
                   display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <div style={{
                       width: '8px', height: '8px', borderRadius: '50%',
-                      background: videoPhotos.length >= 3 ? '#22c55e' : '#a78bfa',
-                      boxShadow: videoPhotos.length >= 3 ? '0 0 8px rgba(34,197,94,0.5)' : 'none',
+                      background: videoPhotos.length >= 3 ? '#43C2BA' : '#A9AAEE',
+                      boxShadow: videoPhotos.length >= 3 ? '0 0 8px rgba(67,194,186,0.5)' : 'none',
                     }} />
                     <span style={{
                       fontSize: '13px', fontWeight: '700',
-                      color: videoPhotos.length >= 3 ? '#22c55e' : '#a78bfa',
+                      color: videoPhotos.length >= 3 ? '#43C2BA' : '#A9AAEE',
                     }}>
                       {videoPhotos.length}/15 fotos
                     </span>
@@ -3230,12 +3567,12 @@ export default function SuccessPage() {
                 {/* Progress bar for count */}
                 <div style={{
                   width: '100%', height: '4px', borderRadius: '2px',
-                  background: isLight ? '#e2e8f0' : 'rgba(255,255,255,0.06)',
+                  background: isLight ? '#E3E3F1' : 'rgba(255,255,255,0.06)',
                   marginBottom: '16px', overflow: 'hidden',
                 }}>
                   <div style={{
                     width: `${Math.min(100, (videoPhotos.length / 3) * 100)}%`, height: '100%', borderRadius: '2px',
-                    background: videoPhotos.length >= 3 ? 'linear-gradient(90deg, #22c55e, #16a34a)' : 'linear-gradient(90deg, #7c3aed, #a78bfa)',
+                    background: videoPhotos.length >= 3 ? 'linear-gradient(90deg, #43C2BA, #1F8C86)' : 'linear-gradient(90deg, #4A4CA8, #A9AAEE)',
                     transition: 'width 0.4s ease',
                   }} />
                 </div>
@@ -3244,10 +3581,10 @@ export default function SuccessPage() {
                 {(
                   <div style={{
                     marginBottom: '16px', borderRadius: '16px', overflow: 'hidden',
-                    border: `1px solid ${recordedMessage ? 'rgba(34,197,94,0.3)' : 'rgba(139,92,246,0.2)'}`,
+                    border: `1px solid ${recordedMessage ? 'rgba(67,194,186,0.3)' : 'rgba(102,104,210,0.2)'}`,
                     background: recordedMessage
-                      ? (isLight ? 'rgba(34,197,94,0.05)' : 'rgba(34,197,94,0.08)')
-                      : (isLight ? 'rgba(139,92,246,0.04)' : 'rgba(139,92,246,0.06)'),
+                      ? (isLight ? 'rgba(67,194,186,0.05)' : 'rgba(67,194,186,0.08)')
+                      : (isLight ? 'rgba(102,104,210,0.04)' : 'rgba(102,104,210,0.06)'),
                     transition: 'all 0.3s',
                   }}>
                     {/* Header — always visible */}
@@ -3261,11 +3598,11 @@ export default function SuccessPage() {
                       <div style={{
                         width: '44px', height: '44px', minWidth: '44px', borderRadius: '14px',
                         background: recordedMessage
-                          ? 'linear-gradient(135deg, #22c55e, #16a34a)'
-                          : 'linear-gradient(135deg, #ec4899, #db2777)',
+                          ? 'linear-gradient(135deg, #43C2BA, #1F8C86)'
+                          : 'linear-gradient(135deg, #E7699F, #B62463)',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         fontSize: '22px',
-                        boxShadow: recordedMessage ? '0 4px 16px rgba(34,197,94,0.3)' : '0 4px 16px rgba(236,72,153,0.3)',
+                        boxShadow: recordedMessage ? '0 4px 16px rgba(67,194,186,0.3)' : '0 4px 16px rgba(236,72,153,0.3)',
                       }}>
                         {recordedMessage ? '✓' : '🎤'}
                       </div>
@@ -3281,7 +3618,7 @@ export default function SuccessPage() {
                         </p>
                       </div>
                       <span style={{
-                        fontSize: '11px', color: '#ec4899', fontWeight: '700',
+                        fontSize: '11px', color: '#E7699F', fontWeight: '700',
                         background: 'rgba(236,72,153,0.1)', padding: '4px 10px', borderRadius: '8px',
                         whiteSpace: 'nowrap',
                       }}>
@@ -3300,7 +3637,7 @@ export default function SuccessPage() {
                         <div style={{ display: 'flex', gap: '10px', marginBottom: '12px' }}>
                           <button onClick={() => openCamera('video')} style={{
                             flex: 1, padding: '14px', borderRadius: '14px',
-                            background: 'linear-gradient(135deg, #ec4899, #db2777)',
+                            background: 'linear-gradient(135deg, #E7699F, #B62463)',
                             color: 'white', fontWeight: '700', fontSize: '14px',
                             border: 'none', cursor: 'pointer', fontFamily: ts.font,
                             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
@@ -3310,9 +3647,9 @@ export default function SuccessPage() {
                           </button>
                           <button onClick={() => startAudioRecording()} style={{
                             flex: 1, padding: '14px', borderRadius: '14px',
-                            background: isLight ? 'rgba(139,92,246,0.08)' : 'rgba(139,92,246,0.15)',
-                            color: isLight ? '#7c3aed' : '#c4b5fd', fontWeight: '700', fontSize: '14px',
-                            border: '1.5px solid rgba(139,92,246,0.3)', cursor: 'pointer', fontFamily: ts.font,
+                            background: isLight ? 'rgba(102,104,210,0.08)' : 'rgba(102,104,210,0.15)',
+                            color: isLight ? '#4A4CA8' : '#BCBDF2', fontWeight: '700', fontSize: '14px',
+                            border: '1.5px solid rgba(102,104,210,0.3)', cursor: 'pointer', fontFamily: ts.font,
                             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
                           }}>
                             🎙️ Solo Audio
@@ -3336,8 +3673,8 @@ export default function SuccessPage() {
                           width: '100%', maxWidth: '300px', margin: '0 auto 14px',
                           borderRadius: '16px', overflow: 'hidden',
                           background: '#000',
-                          border: '3px solid #a855f7',
-                          boxShadow: '0 0 20px rgba(168,85,247,0.3)',
+                          border: '3px solid #8E90E8',
+                          boxShadow: '0 0 20px rgba(142,144,232,0.3)',
                         }}>
                           <video ref={videoPreviewRef} muted playsInline style={{
                             width: '100%', display: 'block',
@@ -3387,7 +3724,7 @@ export default function SuccessPage() {
                             width: '100%', maxWidth: '300px', margin: '0 auto 14px',
                             borderRadius: '16px', overflow: 'hidden',
                             background: '#000',
-                            border: '3px solid #ec4899',
+                            border: '3px solid #E7699F',
                             boxShadow: '0 0 30px rgba(236,72,153,0.3)',
                           }}>
                             <video ref={videoPreviewRef} muted playsInline style={{
@@ -3399,8 +3736,8 @@ export default function SuccessPage() {
                         {messageMode === 'audio' && (
                           <div style={{
                             width: '120px', height: '120px', borderRadius: '50%', margin: '0 auto 14px',
-                            background: 'linear-gradient(135deg, rgba(124,58,237,0.2), rgba(236,72,153,0.2))',
-                            border: '3px solid #ec4899',
+                            background: 'linear-gradient(135deg, rgba(74,76,168,0.2), rgba(236,72,153,0.2))',
+                            border: '3px solid #E7699F',
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
                             fontSize: '48px',
                             boxShadow: '0 0 30px rgba(236,72,153,0.3)',
@@ -3430,7 +3767,7 @@ export default function SuccessPage() {
                           <div style={{
                             width: `${(recordingTime / MAX_MESSAGE_SECONDS) * 100}%`,
                             height: '100%', borderRadius: '2px',
-                            background: recordingTime > 25 ? '#ef4444' : 'linear-gradient(90deg, #ec4899, #a855f7)',
+                            background: recordingTime > 25 ? '#ef4444' : 'linear-gradient(90deg, #E7699F, #8E90E8)',
                             transition: 'width 1s linear',
                           }} />
                         </div>
@@ -3454,8 +3791,8 @@ export default function SuccessPage() {
                         {recordedMessage.audioOnly && (
                           <div style={{
                             marginBottom: '12px', padding: '10px 14px', borderRadius: '10px',
-                            background: 'rgba(251,191,36,0.12)', border: '1px solid rgba(251,191,36,0.3)',
-                            color: '#fbbf24', fontSize: '12px', lineHeight: '1.5',
+                            background: 'rgba(232,180,74,0.12)', border: '1px solid rgba(232,180,74,0.3)',
+                            color: '#E8B44A', fontSize: '12px', lineHeight: '1.5',
                           }}>
                             📱 <strong>Tu cámara no grabó video</strong> — solo se guardó tu voz. Tu mensaje de voz aparecerá al final del video sobre una foto. Si quieres que tu cara salga, intenta desde una computadora.
                           </div>
@@ -3482,10 +3819,10 @@ export default function SuccessPage() {
                           </button>
                           <button onClick={() => setShowMessageRecorder(false)} style={{
                             flex: 1, padding: '12px', borderRadius: '12px',
-                            background: 'linear-gradient(135deg, #22c55e, #16a34a)', color: 'white',
+                            background: 'linear-gradient(135deg, #43C2BA, #1F8C86)', color: 'white',
                             fontWeight: '700', fontSize: '13px', border: 'none',
                             cursor: 'pointer', fontFamily: ts.font,
-                            boxShadow: '0 4px 16px rgba(34,197,94,0.3)',
+                            boxShadow: '0 4px 16px rgba(67,194,186,0.3)',
                           }}>
                             ✓ Usar este mensaje
                           </button>
@@ -3502,8 +3839,8 @@ export default function SuccessPage() {
                   style={{
                     width: '100%', padding: '18px 24px',
                     background: videoPhotos.length >= 3
-                      ? (uploadingVideoPics ? 'rgba(124,58,237,0.4)' : 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 50%, #4f46e5 100%)')
-                      : isLight ? '#e2e8f0' : 'rgba(255,255,255,0.06)',
+                      ? (uploadingVideoPics ? 'rgba(74,76,168,0.4)' : 'linear-gradient(135deg, #4A4CA8 0%, #3B3D8F 50%, #4A4CA8 100%)')
+                      : isLight ? '#E3E3F1' : 'rgba(255,255,255,0.06)',
                     color: videoPhotos.length >= 3 ? 'white' : ts.textSecondary,
                     fontWeight: '800', fontSize: '17px', letterSpacing: '-0.01em',
                     border: 'none', borderRadius: '16px',
@@ -3537,7 +3874,7 @@ export default function SuccessPage() {
                 {/* Film strip decoration */}
                 <div style={{ display: 'flex', gap: '3px', marginBottom: '18px', overflow: 'hidden', height: '6px', opacity: 0.35 }}>
                   {Array.from({ length: 24 }).map((_, i) => (
-                    <div key={i} style={{ flex: 1, borderRadius: '2px', background: i % 3 === 0 ? '#8b5cf6' : 'rgba(139,92,246,0.25)' }} />
+                    <div key={i} style={{ flex: 1, borderRadius: '2px', background: i % 3 === 0 ? '#6668D2' : 'rgba(102,104,210,0.25)' }} />
                   ))}
                 </div>
 
@@ -3545,10 +3882,10 @@ export default function SuccessPage() {
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: '14px', marginBottom: '22px' }}>
                   <div style={{
                     width: '54px', height: '54px', minWidth: '54px', borderRadius: '16px',
-                    background: 'linear-gradient(135deg, #7c3aed, #4f46e5)',
+                    background: 'linear-gradient(135deg, #4A4CA8, #4A4CA8)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     fontSize: '26px',
-                    boxShadow: '0 8px 24px rgba(124,58,237,0.45)',
+                    boxShadow: '0 8px 24px rgba(74,76,168,0.45)',
                     flexShrink: 0,
                     animation: 'pulse 2s ease-in-out infinite',
                   }}>🎬</div>
@@ -3573,20 +3910,20 @@ export default function SuccessPage() {
                     <div key={i} style={{
                       display: 'flex', alignItems: 'center', gap: '10px',
                       padding: '10px 14px', borderRadius: '12px',
-                      background: step.active ? (isLight ? 'rgba(139,92,246,0.06)' : 'rgba(139,92,246,0.08)') : 'transparent',
-                      border: step.active ? '1px solid rgba(139,92,246,0.15)' : '1px solid transparent',
+                      background: step.active ? (isLight ? 'rgba(102,104,210,0.06)' : 'rgba(102,104,210,0.08)') : 'transparent',
+                      border: step.active ? '1px solid rgba(102,104,210,0.15)' : '1px solid transparent',
                     }}>
                       <span style={{ fontSize: '16px', width: '22px', textAlign: 'center' }}>
                         {step.done ? '✅' : (step.active ? '⏳' : <span style={{ opacity: 0.3 }}>{step.icon}</span>)}
                       </span>
                       <span style={{
                         fontSize: '13px', fontWeight: step.active ? '700' : '600',
-                        color: step.done ? '#22c55e' : (step.active ? '#a78bfa' : ts.textSecondary),
+                        color: step.done ? '#43C2BA' : (step.active ? '#A9AAEE' : ts.textSecondary),
                       }}>{step.label}</span>
                       {step.active && (
                         <div style={{
                           marginLeft: 'auto', width: '16px', height: '16px',
-                          border: '2px solid rgba(139,92,246,0.3)', borderTopColor: '#a78bfa',
+                          border: '2px solid rgba(102,104,210,0.3)', borderTopColor: '#A9AAEE',
                           borderRadius: '50%', animation: 'spin 0.8s linear infinite',
                         }} />
                       )}
@@ -3598,17 +3935,17 @@ export default function SuccessPage() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px' }}>
                   <div style={{
                     flex: 1, height: '8px', borderRadius: '4px',
-                    background: isLight ? '#e2e8f0' : 'rgba(255,255,255,0.06)',
+                    background: isLight ? '#E3E3F1' : 'rgba(255,255,255,0.06)',
                     overflow: 'hidden',
                   }}>
                     <div style={{
                       width: `${videoProgress}%`, height: '100%', borderRadius: '4px',
-                      background: 'linear-gradient(90deg, #7c3aed, #a78bfa)',
+                      background: 'linear-gradient(90deg, #4A4CA8, #A9AAEE)',
                       transition: 'width 2s ease-out',
                     }} />
                   </div>
                   <span style={{
-                    fontSize: '14px', fontWeight: '800', color: '#a78bfa',
+                    fontSize: '14px', fontWeight: '800', color: '#A9AAEE',
                     minWidth: '40px', textAlign: 'right',
                     fontVariantNumeric: 'tabular-nums',
                   }}>
@@ -3618,26 +3955,32 @@ export default function SuccessPage() {
 
                 {/* Info strip */}
                 <div style={{
-                  background: isLight ? 'rgba(109,40,217,0.07)' : 'rgba(124,58,237,0.12)',
-                  border: '1px solid rgba(139,92,246,0.2)',
+                  background: isLight ? 'rgba(109,40,217,0.07)' : 'rgba(74,76,168,0.12)',
+                  border: '1px solid rgba(102,104,210,0.2)',
                   borderRadius: '12px', padding: '12px 16px',
                   display: 'flex', alignItems: 'center', gap: '10px',
                 }}>
                   <span style={{ fontSize: '16px' }}>☕</span>
-                  <p style={{ fontSize: '12px', color: '#a78bfa', margin: 0, fontWeight: 600, lineHeight: 1.5 }}>
+                  <p style={{ fontSize: '12px', color: '#A9AAEE', margin: 0, fontWeight: 600, lineHeight: 1.5 }}>
                     Puedes esperar aquí sin cerrar esta página y tu video aparecerá automáticamente. También te lo enviaremos por email cuando esté listo.
                   </p>
                 </div>
               </>
             )}
 
-            {/* STATE: Completed — Show video player + download */}
-            {videoOrder && videoOrder.status === 'completed' && videoOrder.video_url && (
+            {/* STATE: Completed — EVERY finished video, stacked =====
+                Owner call 2026-08-14: each song's video gets its own player and
+                its own download, visible together — no switching songs 2,000px
+                up just to reach video #2. The selected song's video leads.
+                Keyed to the BUNDLE (any completed order), not the selected song —
+                otherwise a selection sitting on a pending/excess order hid every
+                finished video (Gladys's page opened on exactly that). */}
+            {Object.values(videoOrdersMap).some((o) => o?.status === 'completed' && o?.video_url) && (
               <>
                 {/* Film strip decoration */}
                 <div style={{ display: 'flex', gap: '3px', marginBottom: '18px', overflow: 'hidden', height: '6px', opacity: 0.35 }}>
                   {Array.from({ length: 24 }).map((_, i) => (
-                    <div key={i} style={{ flex: 1, borderRadius: '2px', background: i % 3 === 0 ? '#8b5cf6' : 'rgba(139,92,246,0.25)' }} />
+                    <div key={i} style={{ flex: 1, borderRadius: '2px', background: i % 3 === 0 ? '#6668D2' : 'rgba(102,104,210,0.25)' }} />
                   ))}
                 </div>
 
@@ -3645,15 +3988,18 @@ export default function SuccessPage() {
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: '14px', marginBottom: '18px' }}>
                   <div style={{
                     width: '54px', height: '54px', minWidth: '54px', borderRadius: '16px',
-                    background: 'linear-gradient(135deg, #7c3aed, #4f46e5)',
+                    background: 'linear-gradient(135deg, #4A4CA8, #4A4CA8)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     fontSize: '26px',
-                    boxShadow: '0 8px 24px rgba(124,58,237,0.45)',
+                    boxShadow: '0 8px 24px rgba(74,76,168,0.45)',
                     flexShrink: 0,
                   }}>🎉</div>
                   <div>
                     <h3 style={{ fontSize: '19px', fontWeight: '900', marginBottom: '5px', color: ts.textPrimary, lineHeight: 1.15, letterSpacing: '-0.02em' }}>
-                      ¡Tu video está listo!
+                      {(() => {
+                        const doneCount = songs.filter((s) => videoOrdersMap[s.id]?.status === 'completed' && videoOrdersMap[s.id]?.video_url).length;
+                        return doneCount > 1 ? '¡Tus videos están listos!' : '¡Tu video está listo!';
+                      })()}
                     </h3>
                     <p style={{ fontSize: '13px', color: ts.textSecondary, lineHeight: '1.5', margin: 0 }}>
                       Tu recuerdo cinematográfico quedó increíble
@@ -3661,86 +4007,72 @@ export default function SuccessPage() {
                   </div>
                 </div>
 
-                {/* Video player */}
-                <div style={{
-                  borderRadius: '16px', overflow: 'hidden', marginBottom: '16px',
-                  border: '2px solid rgba(139,92,246,0.25)',
-                  boxShadow: '0 12px 40px rgba(109,40,217,0.3)',
-                }}>
-                  <video
-                    src={videoOrder.video_url}
-                    controls
-                    style={{ width: '100%', display: 'block' }}
-                    poster=""
-                  />
-                </div>
+                {/* One player + one download PER finished video. Selected song's
+                    video first, then the rest in song order. */}
+                {(() => {
+                  const done = songs
+                    .map((s, i) => ({ s, i, o: videoOrdersMap[s.id] }))
+                    .filter(({ o }) => o?.status === 'completed' && o?.video_url);
+                  done.sort((a, b) => (a.s.id === currentSong?.id ? -1 : b.s.id === currentSong?.id ? 1 : a.i - b.i));
+                  const multi = done.length > 1;
+                  return done.map(({ s, i, o }) => {
+                    const key = `pv-${o.id}`;
+                    const filename = `video-${multi ? `cancion-${i + 1}-` : ''}para-${s.recipient_name || 'ti'}.mp4`;
+                    const proxyUrl = `${SUPABASE_URL}/functions/v1/download-video?url=${encodeURIComponent(o.video_url)}&filename=${encodeURIComponent(filename)}`;
+                    return (
+                      <div key={key} style={{ marginBottom: '18px' }}>
+                        {multi && (
+                          <p style={{ margin: '0 0 8px', fontSize: '13px', fontWeight: 800, color: '#A9AAEE' }}>
+                            🎬 Video de la Canción {i + 1}
+                          </p>
+                        )}
+                        <div style={{
+                          borderRadius: '16px', overflow: 'hidden', marginBottom: '12px',
+                          border: '2px solid rgba(102,104,210,0.25)',
+                          boxShadow: '0 12px 40px rgba(109,40,217,0.3)',
+                        }}>
+                          <video src={o.video_url} controls preload="metadata" style={{ width: '100%', display: 'block' }} />
+                        </div>
+                        <button
+                          onClick={() => downloadWithFeedback(key, proxyUrl, filename)}
+                          disabled={dlState[key] === 'busy'}
+                          style={{
+                            width: '100%', padding: '18px 24px',
+                            background: dlState[key] === 'done'
+                              ? 'linear-gradient(135deg, #43C2BA, #1F8C86)'
+                              : 'linear-gradient(135deg, #4A4CA8 0%, #3B3D8F 50%, #4A4CA8 100%)',
+                            color: 'white', fontWeight: '800', fontSize: '17px', letterSpacing: '-0.01em',
+                            border: 'none', borderRadius: '16px', cursor: dlState[key] === 'busy' ? 'wait' : 'pointer',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
+                            boxShadow: '0 8px 32px rgba(109,40,217,0.5), inset 0 1px 0 rgba(255,255,255,0.15)',
+                            transition: 'all 0.3s', fontFamily: ts.font,
+                            opacity: dlState[key] === 'busy' ? 0.8 : 1,
+                          }}>
+                          {dlLabel(key, `⬇️ Descargar Video${multi ? ` ${i + 1}` : ''} (MP4)`)}
+                        </button>
+                      </div>
+                    );
+                  });
+                })()}
 
                 {/* Feature chips */}
                 <div style={{ display: 'flex', gap: '6px', marginBottom: '16px', flexWrap: 'wrap', justifyContent: 'center' }}>
                   {['🎞️ HD', '🎵 Con tu canción', '📸 Tus fotos', '✨ Efecto Ken Burns'].map((chip, i) => (
                     <span key={i} style={{
                       padding: '5px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '600',
-                      background: isLight ? 'rgba(139,92,246,0.06)' : 'rgba(139,92,246,0.08)',
-                      border: '1px solid rgba(139,92,246,0.15)',
-                      color: '#a78bfa',
+                      background: isLight ? 'rgba(102,104,210,0.06)' : 'rgba(102,104,210,0.08)',
+                      border: '1px solid rgba(102,104,210,0.15)',
+                      color: '#A9AAEE',
                     }}>{chip}</span>
                   ))}
                 </div>
 
-                {/* Download CTA */}
-                <button onClick={handleVideoDownload}
-                  disabled={videoDownloading}
-                  style={{
-                    width: '100%', padding: '18px 24px',
-                    background: videoDownloading
-                      ? 'linear-gradient(135deg, #6b7280 0%, #4b5563 100%)'
-                      : 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 50%, #4f46e5 100%)',
-                    color: 'white', fontWeight: '800', fontSize: '17px', letterSpacing: '-0.01em',
-                    border: 'none', borderRadius: '16px', cursor: videoDownloading ? 'wait' : 'pointer',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
-                    boxShadow: videoDownloading
-                      ? '0 4px 16px rgba(0,0,0,0.3)'
-                      : '0 8px 32px rgba(109,40,217,0.5), inset 0 1px 0 rgba(255,255,255,0.15)',
-                    transition: 'all 0.3s', fontFamily: ts.font,
-                    opacity: videoDownloading ? 0.8 : 1,
-                  }}>
-                  <span style={{ fontSize: '20px' }}>{videoDownloading ? '⏳' : '⬇️'}</span>
-                  <span>{videoDownloading ? 'Descargando...' : 'Descargar Video MP4'}</span>
-                  {!videoDownloading && <span style={{ marginLeft: 'auto', fontSize: '18px', opacity: 0.7 }}>→</span>}
-                </button>
-
-                {/* MP3 download — also available when video is complete */}
-                {currentSong?.audio_url && (
-                  <a href={currentSong.audio_url} download={`cancion-para-${recipientName}.mp3`}
-                    style={{
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
-                      width: '100%', padding: '14px 24px', marginTop: '10px',
-                      background: isLight ? 'rgba(139,92,246,0.06)' : 'rgba(139,92,246,0.1)',
-                      color: '#a78bfa', fontWeight: '700', fontSize: '15px',
-                      border: '1.5px solid rgba(139,92,246,0.2)', borderRadius: '14px',
-                      textDecoration: 'none', fontFamily: ts.font,
-                      transition: 'all 0.3s',
-                    }}>
-                    <span style={{ fontSize: '18px' }}>🎵</span>
-                    <span>Descargar Canción MP3</span>
-                  </a>
-                )}
-
-                {/* Share via WhatsApp — one-touch (video view had no button before) */}
-                <button onClick={handleShareWhatsAppSingle}
-                  style={{
-                    width: '100%', padding: '14px 24px', marginTop: '10px',
-                    background: 'linear-gradient(135deg, #25d366, #128c7e)',
-                    color: 'white', fontWeight: '800', fontSize: '15px',
-                    border: 'none', borderRadius: '14px', cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
-                    boxShadow: '0 6px 20px rgba(37,211,102,0.35)',
-                    transition: 'all 0.3s', fontFamily: ts.font,
-                  }}>
-                  💬 Compartir por WhatsApp
-                </button>
+                {/* (The MP3 and WhatsApp-share buttons that lived here were removed
+                    2026-08-14 — the MP3's one home is Paso 1 above, and the page's
+                    single share block is Paso 2. This card keeps ONE primary
+                    action: download the video.) */}
                 <p style={{ textAlign: 'center', fontSize: '12px', color: ts.textSecondary, marginTop: '10px', fontWeight: 600 }}>
-                  💡 Descarga el video para enviarlo, o comparte el enlace para sorprender a {recipientName}
+                  💡 Descarga el video para enviarlo — tu canción MP3 y el botón de compartir están arriba
                 </p>
               </>
             )}
@@ -3751,7 +4083,7 @@ export default function SuccessPage() {
                 {/* Film strip decoration */}
                 <div style={{ display: 'flex', gap: '3px', marginBottom: '18px', overflow: 'hidden', height: '6px', opacity: 0.35 }}>
                   {Array.from({ length: 24 }).map((_, i) => (
-                    <div key={i} style={{ flex: 1, borderRadius: '2px', background: i % 3 === 0 ? '#8b5cf6' : 'rgba(139,92,246,0.25)' }} />
+                    <div key={i} style={{ flex: 1, borderRadius: '2px', background: i % 3 === 0 ? '#6668D2' : 'rgba(102,104,210,0.25)' }} />
                   ))}
                 </div>
 
@@ -3759,10 +4091,10 @@ export default function SuccessPage() {
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: '14px', marginBottom: '18px' }}>
                   <div style={{
                     width: '54px', height: '54px', minWidth: '54px', borderRadius: '16px',
-                    background: 'linear-gradient(135deg, #7c3aed, #4f46e5)',
+                    background: 'linear-gradient(135deg, #4A4CA8, #4A4CA8)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     fontSize: '26px',
-                    boxShadow: '0 8px 24px rgba(124,58,237,0.45)',
+                    boxShadow: '0 8px 24px rgba(74,76,168,0.45)',
                     flexShrink: 0,
                   }}>⚠️</div>
                   <div>
@@ -3792,22 +4124,22 @@ export default function SuccessPage() {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '16px' }}>
                   <div style={{
                     padding: '14px 12px', borderRadius: '12px',
-                    background: isLight ? 'rgba(139,92,246,0.06)' : 'rgba(139,92,246,0.08)',
-                    border: '1px solid rgba(139,92,246,0.15)',
+                    background: isLight ? 'rgba(102,104,210,0.06)' : 'rgba(102,104,210,0.08)',
+                    border: '1px solid rgba(102,104,210,0.15)',
                     textAlign: 'center',
                   }}>
                     <span style={{ fontSize: '20px', display: 'block', marginBottom: '6px' }}>🔄</span>
-                    <p style={{ fontSize: '11px', fontWeight: '700', color: isLight ? '#4c1d95' : '#c4b5fd', margin: '0 0 2px' }}>Reintentar</p>
+                    <p style={{ fontSize: '11px', fontWeight: '700', color: isLight ? '#2B2D6B' : '#BCBDF2', margin: '0 0 2px' }}>Reintentar</p>
                     <p style={{ fontSize: '10px', color: ts.textSecondary, margin: 0 }}>Sin costo extra</p>
                   </div>
                   <div style={{
                     padding: '14px 12px', borderRadius: '12px',
-                    background: isLight ? 'rgba(139,92,246,0.06)' : 'rgba(139,92,246,0.08)',
-                    border: '1px solid rgba(139,92,246,0.15)',
+                    background: isLight ? 'rgba(102,104,210,0.06)' : 'rgba(102,104,210,0.08)',
+                    border: '1px solid rgba(102,104,210,0.15)',
                     textAlign: 'center',
                   }}>
                     <span style={{ fontSize: '20px', display: 'block', marginBottom: '6px' }}>💰</span>
-                    <p style={{ fontSize: '11px', fontWeight: '700', color: isLight ? '#4c1d95' : '#c4b5fd', margin: '0 0 2px' }}>Reembolso</p>
+                    <p style={{ fontSize: '11px', fontWeight: '700', color: isLight ? '#2B2D6B' : '#BCBDF2', margin: '0 0 2px' }}>Reembolso</p>
                     <p style={{ fontSize: '10px', color: ts.textSecondary, margin: 0 }}>100% garantizado</p>
                   </div>
                 </div>
@@ -3816,7 +4148,7 @@ export default function SuccessPage() {
                 <a href="mailto:soporte@regalosquecantan.com" style={{ textDecoration: 'none', display: 'block' }}>
                   <button style={{
                     width: '100%', padding: '18px 24px',
-                    background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 50%, #4f46e5 100%)',
+                    background: 'linear-gradient(135deg, #4A4CA8 0%, #3B3D8F 50%, #4A4CA8 100%)',
                     color: 'white', fontWeight: '800', fontSize: '17px', letterSpacing: '-0.01em',
                     border: 'none', borderRadius: '16px', cursor: 'pointer',
                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
@@ -3831,16 +4163,34 @@ export default function SuccessPage() {
               </>
             )}
           </div>
+          )}{/* end videoOrderIsExcess conditional */}
 
-          {/* Share + Template sections removed */}
+          {/* ===== ANIMADO — in production / delivered (deliverables flow) ===== */}
+          {renderAnimadoStatusCards()}
 
-          {/* ===== GIFT TEXT UPSELL ($5) — scheduled surprise SMS to a loved one ===== */}
-          {currentSong?.id && (currentSong?.paid || currentSong?.payment_status === 'paid') && (
+          {/* ===== THE upsell — exactly one, and only after every deliverable =====
+              Audit 2026-08-14: the page pitched the $5 gift message TWICE (this
+              one-tap card mid-page + the old GiftTextUpsell at the bottom) and
+              the mid-page placement put an ad between the buyer and their photo
+              video. One pitch, after everything is delivered. When there's no
+              session (durable email link), fall back to the old gift card so
+              the offer still exists — but never both. ===== */}
+          {oneTapSessionId && oneTapItems.length > 0 ? (
+            <div style={{ marginBottom: '28px' }}>
+              <OneTapUpsell
+                recipientName={oneTapSong?.recipient_name || 'tu ser querido'}
+                senderName={oneTapSong?.sender_name || ''}
+                last4={oneTapSong?.stripe_card_last4 || ''}
+                items={oneTapItems}
+                onCharge={handleUpsellCharge}
+              />
+            </div>
+          ) : (currentSong?.id && (currentSong?.paid || currentSong?.payment_status === 'paid') && (
             <GiftTextUpsell song={currentSong} supabaseUrl={SUPABASE_URL} anonKey={SUPABASE_ANON_KEY} />
-          )}
+          ))}
 
           {/* ===== FOOTER ===== */}
-          {!(currentSong?.has_video_addon && videoOrder && videoOrder.status !== 'completed' && videoOrder.status !== 'failed') && (
+          {!(currentSong?.has_video_addon && videoOrder && !videoOrderIsExcess && videoOrder.status !== 'completed' && videoOrder.status !== 'failed') && (
           <div style={{ textAlign: 'center', marginBottom: '24px', animation: 'fadeInUp 0.7s ease-out 0.65s both' }}>
             <p style={{
               fontSize: '15px', color: ts.textSecondary,
@@ -3853,7 +4203,7 @@ export default function SuccessPage() {
           )}
 
           {/* ===== CREATE ANOTHER SONG CTA — hidden during video upload flow ===== */}
-          {!(currentSong?.has_video_addon && videoOrder && videoOrder.status !== 'completed' && videoOrder.status !== 'failed') && (
+          {!(currentSong?.has_video_addon && videoOrder && !videoOrderIsExcess && videoOrder.status !== 'completed' && videoOrder.status !== 'failed') && (
           <div style={{
             background: ts.cardBg, borderRadius: '24px', padding: '24px',
             border: `1px solid ${ts.cardBorder}`, marginBottom: '24px',
@@ -3882,10 +4232,10 @@ export default function SuccessPage() {
           </div>
           )}
 
-          <p style={{ textAlign: 'center', marginTop: '30px', color: isLight ? '#94a3b8' : 'rgba(255,255,255,0.2)', fontSize: '10px', lineHeight: 1.6, maxWidth: 340, margin: '30px auto 0' }}>
+          <p style={{ textAlign: 'center', marginTop: '30px', color: isLight ? '#BFC0DE' : 'rgba(255,255,255,0.2)', fontSize: '10px', lineHeight: 1.6, maxWidth: 340, margin: '30px auto 0' }}>
             Todas las ventas son finales. Al comprar, aceptas que escuchaste la vista previa antes de realizar tu compra. No se ofrecen reembolsos una vez completada la transacción.
           </p>
-          <p style={{ textAlign: 'center', marginTop: '12px', color: isLight ? '#cbd5e1' : 'rgba(255,255,255,0.15)', fontSize: '11px' }}>
+          <p style={{ textAlign: 'center', marginTop: '12px', color: isLight ? '#D6D7EA' : 'rgba(255,255,255,0.15)', fontSize: '11px' }}>
             RegalosQueCantan © {new Date().getFullYear()}
           </p>
         </div>
@@ -3899,7 +4249,7 @@ export default function SuccessPage() {
 // ============================================================
 const S = {
   fullScreenCenter: {
-    background: 'linear-gradient(160deg, #110d0f 0%, #181114 35%, #1e1519 65%, #151015 100%)',
+    background: 'linear-gradient(175deg, #191A45 0%, #262A63 34%, #241B3A 68%, #1B1C48 100%)',
     color: 'white',
     minHeight: '100vh',
     display: 'flex',

@@ -4,6 +4,7 @@ import { AppContext } from '../App';
 import genres from '../config/genres';
 import { trackStep } from '../services/tracking';
 import { checkEmail } from '../services/emailValidation';
+import { CenzoMark } from '../components/Cenzo';
 
 // /crear — Heyflow-style micro-step funnel.
 // One decision per full screen. Single-select tiles auto-advance after a short
@@ -265,18 +266,18 @@ export default function SimpleCreateFlow() {
       onClick={onClick}
       className={`sc-tile group relative flex items-center gap-3.5 w-full rounded-xl border bg-white px-4 py-4 text-left transition-all duration-150 ${
         selected
-          ? 'border-primary ring-2 ring-primary/25 shadow-[0_4px_20px_rgba(242,13,128,0.12)]'
+          ? 'border-primary ring-2 ring-primary/25 shadow-[0_4px_20px_rgba(228,121,90,0.12)]'
           : 'border-neutral-200 hover:border-neutral-300 hover:shadow-sm'
       }`}
     >
       <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-colors ${
-        selected ? 'bg-primary text-white' : 'bg-neutral-100 text-neutral-500 group-hover:text-neutral-700'
+        selected ? 'bg-primary text-white' : 'bg-neutral-100 text-ink-3 group-hover:text-neutral-700'
       }`}>
         <span className="material-symbols-outlined text-[22px]">{icon}</span>
       </span>
       <span className="min-w-0 flex-1">
         <span className="block text-[15px] font-semibold leading-snug text-neutral-900">{label}</span>
-        {sub && <span className="mt-0.5 block text-[13px] leading-snug text-neutral-500">{sub}</span>}
+        {sub && <span className="mt-0.5 block text-[13px] leading-snug text-ink-3">{sub}</span>}
       </span>
       <span className={`material-symbols-outlined shrink-0 text-[20px] transition-opacity ${
         selected ? 'text-primary opacity-100' : 'opacity-0'
@@ -288,7 +289,7 @@ export default function SimpleCreateFlow() {
     <div>
       {kicker && <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.18em] text-primary">{kicker}</p>}
       <h1 className="font-display text-[28px] md:text-[34px] font-bold leading-[1.15] text-neutral-900">{title}</h1>
-      {sub && <p className="mt-3 text-[15px] leading-relaxed text-neutral-500">{sub}</p>}
+      {sub && <p className="mt-3 text-[15px] leading-relaxed text-ink-3">{sub}</p>}
       <div className="mt-7">{children}</div>
     </div>
   );
@@ -316,7 +317,7 @@ export default function SimpleCreateFlow() {
           autoFocus={autoFocus}
         />
       )}
-      {example && <p className="mt-2 text-[13px] text-neutral-400">{example}</p>}
+      {example && <p className="mt-2 text-[13px] text-ink-2">{example}</p>}
     </div>
   );
 
@@ -325,7 +326,7 @@ export default function SimpleCreateFlow() {
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="mt-8 flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-6 py-4 text-[16px] font-bold text-white shadow-[0_6px_24px_rgba(242,13,128,0.3)] transition-all hover:brightness-105 active:scale-[0.985] disabled:opacity-50"
+      className="mt-8 flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-6 py-4 text-[16px] font-bold text-white shadow-[0_6px_24px_rgba(228,121,90,0.3)] transition-all hover:brightness-105 active:scale-[0.985] disabled:opacity-50"
     >
       {label}
       <span className="material-symbols-outlined text-[20px]">arrow_forward</span>
@@ -336,7 +337,7 @@ export default function SimpleCreateFlow() {
     <button
       type="button"
       onClick={onClick}
-      className="mx-auto mt-4 block text-[13px] font-medium text-neutral-400 underline-offset-4 hover:text-neutral-600 hover:underline"
+      className="mx-auto mt-4 block text-[13px] font-medium text-ink-2 underline-offset-4 hover:text-neutral-600 hover:underline"
     >
       Omitir este paso
     </button>
@@ -551,7 +552,7 @@ export default function SimpleCreateFlow() {
             <button
               type="button"
               onClick={() => set('useOwnLyrics', true)}
-              className="mx-auto mt-6 block text-[13px] text-neutral-400 underline-offset-4 hover:text-neutral-600 hover:underline"
+              className="mx-auto mt-6 block text-[13px] text-ink-2 underline-offset-4 hover:text-neutral-600 hover:underline"
             >
               Ya tengo mi propia letra escrita
             </button>
@@ -642,7 +643,7 @@ export default function SimpleCreateFlow() {
               {summaryRows.map(row => (
                 <div key={row.label} className="flex items-center justify-between gap-3 px-4 py-3">
                   <div className="min-w-0">
-                    <p className="text-[11px] font-bold uppercase tracking-wider text-neutral-400">{row.label}</p>
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-ink-2">{row.label}</p>
                     <p className="truncate text-[15px] font-semibold text-neutral-900">{row.value || '—'}</p>
                   </div>
                   <button
@@ -657,8 +658,8 @@ export default function SimpleCreateFlow() {
             </div>
 
             {!answers.useOwnLyrics && storyLength < 20 && (
-              <div className="mt-4 flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3.5">
-                <span className="material-symbols-outlined mt-0.5 text-[20px] text-amber-500">info</span>
+              <div className="mt-4 flex items-start gap-3 rounded-xl border border-marigold-soft bg-amber-50 px-4 py-3.5">
+                <span className="material-symbols-outlined mt-0.5 text-[20px] text-marigold">info</span>
                 <div>
                   <p className="text-[14px] font-semibold text-neutral-900">Tu canción aún no tiene historia</p>
                   <p className="mt-0.5 text-[13px] leading-snug text-neutral-600">
@@ -688,19 +689,19 @@ export default function SimpleCreateFlow() {
                 onChange={e => set('email', e.target.value)}
                 className="w-full rounded-xl border border-neutral-300 bg-white px-4 py-3.5 text-[17px] text-neutral-900 shadow-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
               />
-              <p className="mt-2 text-[13px] text-neutral-400">Aquí te enviamos la canción terminada.</p>
+              <p className="mt-2 text-[13px] text-ink-2">Aquí te enviamos la canción terminada.</p>
             </div>
 
             <button
               type="button"
               onClick={handleSubmit}
               disabled={submitting}
-              className="mt-6 w-full rounded-xl bg-primary px-6 py-4 text-[16px] font-bold text-white shadow-[0_6px_24px_rgba(242,13,128,0.3)] transition-all hover:brightness-105 active:scale-[0.985] disabled:opacity-60"
+              className="mt-6 w-full rounded-xl bg-primary px-6 py-4 text-[16px] font-bold text-white shadow-[0_6px_24px_rgba(228,121,90,0.3)] transition-all hover:brightness-105 active:scale-[0.985] disabled:opacity-60"
             >
               {submitting ? 'Creando tu canción…' : 'Crear mi canción — escúchala gratis'}
             </button>
 
-            <div className="mt-5 flex items-center justify-center gap-5 text-neutral-400">
+            <div className="mt-5 flex items-center justify-center gap-5 text-ink-2">
               <span className="flex items-center gap-1.5 text-[12px] font-medium">
                 <span className="material-symbols-outlined text-[16px]">lock</span> Pago seguro
               </span>
@@ -712,7 +713,7 @@ export default function SimpleCreateFlow() {
               </span>
             </div>
 
-            <p className="mt-4 text-center text-[11px] leading-relaxed text-neutral-400">
+            <p className="mt-4 text-center text-[11px] leading-relaxed text-ink-2">
               Al continuar aceptas los <a href="/terminos-de-servicio" className="underline">términos de servicio</a> y la{' '}
               <a href="/politica-de-privacidad" className="underline">política de privacidad</a>.
             </p>
@@ -747,12 +748,12 @@ export default function SimpleCreateFlow() {
             type="button"
             onClick={goBack}
             aria-label="Regresar"
-            className="flex h-10 w-10 items-center justify-center rounded-full text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-800"
+            className="flex h-10 w-10 items-center justify-center rounded-full text-ink-3 transition-colors hover:bg-neutral-100 hover:text-neutral-800"
           >
             <span className="material-symbols-outlined">arrow_back</span>
           </button>
-          <span className="font-display text-[17px] font-bold tracking-tight text-neutral-900">RegalosQueCantan</span>
-          <span className="w-10 text-right text-[12px] font-semibold tabular-nums text-neutral-400">
+          <CenzoMark size={44} /><span className="font-display text-[17px] font-bold tracking-tight text-neutral-900">RegalosQueCantan</span>
+          <span className="w-10 text-right text-[12px] font-semibold tabular-nums text-ink-2">
             {Math.min(stepIndex + 1, steps.length)}/{steps.length}
           </span>
         </div>

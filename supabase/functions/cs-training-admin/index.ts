@@ -32,6 +32,8 @@ const corsHeaders = {
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
+const AI_EDIT_MODEL = Deno.env.get('CS_TRAINING_EDIT_MODEL') || 'claude-sonnet-4-6';
 
 // ── Learned-facts section ───────────────────────────────────────────────────
 // Approving a distilled fact used to do `doc + "\n\n# " + title + "\n" + body`.
@@ -102,7 +104,7 @@ serve(async (req) => {
     if (!roleRow) return json({ success: false, error: 'No admin access' }, 403);
     const role = roleRow.role as 'admin' | 'assistant';
 
-    let body: { action?: string; knowledge?: string; id?: string; enabled?: boolean; proposal_id?: string } = {};
+    let body: { action?: string; knowledge?: string; id?: string; enabled?: boolean; proposal_id?: string; instruction?: string; messages?: { role: string; content: string }[] } = {};
     if (req.method === 'POST') { try { body = await req.json(); } catch { body = {}; } }
     const action = body.action || 'get';
 
@@ -303,6 +305,140 @@ serve(async (req) => {
 
     // Everything below changes bot behavior → admins only.
     if (role !== 'admin') return json({ success: false, error: 'Only admins can edit training' }, 403);
+
+    // ── ai-edit: natural-language edit of the knowledge doc (PREVIEW ONLY) ──
+    // The owner types "make the tone warmer" / "change delivery time to 5 min";
+    // Claude locates the relevant text in the doc and returns the full revised
+    // document plus a before/after change list. NOTHING is saved here — the
+    // frontend shows the diff and the owner applies + saves through the normal
+    // 'save' action, so a human always approves before the live bot changes.
+    if (action === 'ai-edit') {
+      if (!ANTHROPIC_API_KEY) return json({ success: false, error: 'ANTHROPIC_API_KEY not set' }, 500);
+      // Conversation protocol: the frontend sends the whole exchange so far —
+      // user turns are the owner's plain-language requests, assistant turns are
+      // the model's own raw JSON replies (verbatim, so it can revise its last
+      // proposal). A bare `instruction` is accepted as a one-message shorthand.
+      const convo = (Array.isArray(body.messages) ? body.messages : [])
+        .filter((m) => (m?.role === 'user' || m?.role === 'assistant') && typeof m?.content === 'string' && m.content.trim())
+        .slice(-12);
+      if (convo.length === 0 && (body.instruction || '').trim()) {
+        convo.push({ role: 'user', content: body.instruction!.trim() });
+      }
+      if (convo.length === 0 || convo[0].role !== 'user' || convo[convo.length - 1].role !== 'user') {
+        return json({ success: false, error: 'messages must start and end with a user turn' }, 400);
+      }
+
+      // Base = what the owner currently sees in the editor (may include unsaved
+      // edits). Falls back to the saved doc, then the built-in default.
+      let base = (body.knowledge || '').trim();
+      if (!base) {
+        const { data: settings } = await admin
+          .from('cs_agent_settings').select('knowledge_doc').eq('id', 1).maybeSingle();
+        base = (settings?.knowledge_doc || '').trim() || CS_KNOWLEDGE;
+      }
+
+      // The model returns ONLY small find/replace edits — never the whole
+      // document. The first version asked for the full revised doc back; on the
+      // owner's real 19k-char doc that took >150s of generation and the gateway
+      // killed the request with a 504. Applying tiny edits server-side keeps
+      // the AI output to a few hundred tokens regardless of document size.
+      const system = `You edit the knowledge/training document of a customer-service AI for Regalos Que Cantan (personalized-song gifts for the US Latino community). The admin will give you an instruction in English or Spanish; produce the minimal edits that apply it.
+
+Hard rules:
+- Edit ONLY what the instruction requires; leave everything else untouched.
+- The document's customer-facing content is SPANISH; keep it Spanish. Match the document's existing style.
+- NEVER invent facts, prices, links, times, or policies. If the instruction needs a fact the admin did not provide (e.g. "add the new price" without saying the price), do not guess — ask.
+- A tone/approach instruction (e.g. "warmer", "more direct", "less pushy") should be applied by editing the relevant tone rules and any example phrasings that embody the old tone.
+- Each edit's "old" must be copied VERBATIM from the document (exact characters, spacing, and line breaks) and must be long enough to appear exactly ONCE in the document. "new" is its full replacement. To add text, include a neighboring line in "old" and repeat it in "new" alongside the added text.
+- This may be an ongoing conversation: the admin can react to your proposal ("shorter", "keep the emoji", "don't touch the closing line") or ask questions. When they ask for adjustments, respond with a NEW COMPLETE set of edits that replaces your previous proposal entirely, with every "old" quoted from the ORIGINAL document (never from your own proposed text). If they are asking a question rather than requesting a change, answer briefly via "clarification".
+
+Respond with ONLY a JSON object, no markdown fences, in one of these two shapes:
+{"clarification": "<one short question or answer, in English>"}
+or
+{"summary": "<1-3 sentences in English describing what you changed and where>",
+ "edits": [{"section": "<short label of where>", "old": "<verbatim unique excerpt from the document>", "new": "<its replacement>"}]}`;
+
+      // The (large) document rides only in the first user turn; follow-ups are
+      // just the owner's words plus the model's own prior JSON replies.
+      const anthropicMessages = convo.map((m, i) => ({
+        role: m.role,
+        content: i === 0
+          ? `CURRENT DOCUMENT:\n<<<DOC\n${base}\nDOC>>>\n\nADMIN INSTRUCTION: ${m.content}`
+          : m.content,
+      }));
+
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+        body: JSON.stringify({
+          model: AI_EDIT_MODEL,
+          max_tokens: 8000,
+          system,
+          messages: anthropicMessages,
+        }),
+      });
+      if (!res.ok) {
+        const errTxt = await res.text();
+        console.error('cs-training-admin ai-edit: anthropic error', res.status, errTxt);
+        return json({ success: false, error: `AI request failed (${res.status}) — try again` }, 502);
+      }
+      const ai = await res.json();
+      const raw = (ai?.content?.[0]?.text || '').trim();
+
+      let parsed: { clarification?: string; summary?: string; edits?: { section?: string; old?: string; new?: string }[] };
+      try {
+        // Tolerate accidental ```json fences around the object.
+        parsed = JSON.parse(raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, ''));
+      } catch {
+        console.error('cs-training-admin ai-edit: unparseable AI output', raw.slice(0, 500));
+        return json({ success: false, error: 'AI returned an unreadable result — try rephrasing the request' }, 502);
+      }
+
+      if (parsed.clarification) {
+        return json({ success: true, clarification: String(parsed.clarification), assistant_raw: raw });
+      }
+
+      const edits = Array.isArray(parsed.edits) ? parsed.edits : [];
+      if (edits.length === 0) {
+        return json({ success: true, clarification: 'The AI could not find anything to change for that request. Try describing it differently or pointing at the wording it should look for.', assistant_raw: raw });
+      }
+
+      // Apply the edits server-side, all-or-nothing. An "old" that is missing
+      // or ambiguous means the model misquoted the doc — refuse rather than
+      // guess where the change belongs.
+      let doc = base;
+      const changes: { section: string; before: string; after: string }[] = [];
+      for (const e of edits.slice(0, 20)) {
+        const oldText = String(e?.old || '');
+        const newText = String(e?.new ?? '');
+        if (!oldText || oldText === newText) continue;
+        const occurrences = doc.split(oldText).length - 1;
+        if (occurrences !== 1) {
+          console.error('cs-training-admin ai-edit: edit anchor', occurrences === 0 ? 'not found' : 'ambiguous', oldText.slice(0, 120));
+          return json({ success: false, error: 'The AI mis-located part of the document — nothing was changed. Please try again (rephrasing usually helps).' }, 422);
+        }
+        doc = doc.replace(oldText, newText);
+        changes.push({ section: String(e?.section || ''), before: oldText, after: newText });
+      }
+      if (changes.length === 0) {
+        return json({ success: true, clarification: 'That did not change anything — the document may already say this. Try describing the change differently.', assistant_raw: raw });
+      }
+      // Sanity guards: an "edit" that shrinks the doc drastically or drops the
+      // managed learned-facts section means the model mangled it — refuse.
+      if (!doc || doc.length < base.length * 0.5) {
+        return json({ success: false, error: 'The AI edit removed too much of the document — nothing was changed. Try a more specific request.' }, 422);
+      }
+      if (base.includes(LEARNED_START) && (!doc.includes(LEARNED_START) || !doc.includes(LEARNED_END))) {
+        return json({ success: false, error: 'The AI edit broke the auto-learned section — nothing was changed. Try again.' }, 422);
+      }
+      return json({
+        success: true,
+        summary: String(parsed.summary || 'Edited the document.'),
+        changes,
+        document: doc,
+        assistant_raw: raw,
+      });
+    }
 
     // ── save knowledge ───────────────────────────────────────────────────
     if (action === 'save') {

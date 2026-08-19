@@ -25,17 +25,22 @@
 //   action: 'apply'             -> swaps the approved fixed audio into the row
 //
 // Hard constraints from Kie (enforced/clamped here):
-//   - replaced window must be 6-60 seconds AND <= 50% of the song length
+//   - replaced window must be 10-480 seconds AND <= 50% of the song length.
+//     We are stricter than Kie on the ceiling (MAX_WINDOW_S = 60) because a
+//     long window re-sings more of the song than a fix needs.
 //   - the source song must still be on Kie's servers (audio is purged after
 //     ~14 days) — needs the parent kie_task_id + the per-track audioId, which
 //     we read from songs.kie_task_id + songs.kie_payload.id. Songs older than
 //     ~14 days (or made on Mureka) can't be section-fixed; the caller is told
 //     to use regenerate-paid-song-kie (full re-roll) instead.
 //
-// Auth: verify_jwt = false. Mirrors regenerate-paid-song-kie — invoked from the
-// admin dashboard / CLI with the anon (publishable) key as Bearer. The secrets
-// (KIE_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY) only exist in the edge
-// runtime, which is why this is a function and not a browser-side script.
+// Auth: verify_jwt = false at the GATEWAY (fix-song-auto calls server-to-server
+// with the service key, which the gateway can't role-check), but the HANDLER
+// enforces auth itself: the service-role key OR an admin_users session JWT.
+// Before 2026-08-10 this function accepted the public anon key alone — anyone
+// holding the key shipped in the frontend bundle could apply/undo audio on any
+// song or burn Claude/Whisper/Kie credit. The dashboard and the CLI now send an
+// admin session token / the service key respectively.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
@@ -63,7 +68,13 @@ const CLAUDE_PRIMARY_MODEL = 'claude-opus-4-8';
 const CLAUDE_FALLBACK_MODEL = 'claude-sonnet-4-6';
 
 // Kie hard limits for replace-section.
-const MIN_WINDOW_S = 6;
+// The FLOOR IS 10, not 6 (verified live 2026-08-12 — a 9.7s window came back
+// `422 Selected section must be between 10-480 seconds`). We shipped 6 for
+// months: any change whose window snapped under 10s was rejected outright and
+// the owner just saw "submit failed" with no usable reason. Kie's ceiling is
+// actually 480s; MAX_WINDOW_S below stays 60 as OUR quality cap, because a long
+// window re-sings more of the song than the fix needs.
+const MIN_WINDOW_S = 10;
 const MAX_WINDOW_S = 60;
 
 // ---------------------------------------------------------------------------
@@ -116,9 +127,36 @@ function stripSpokenProsodyCue(lyrics: string): string {
     .replace(/[ \t]+$/gm, '');
 }
 
+// CUSTOM-LYRICS NORMALIZATION (2026-08-12, Mariela 62fd68ed).
+// Customer-pasted lyrics arrive as Markdown — a "# **Title**" heading, **bold**
+// spans — and with SPELLED-OUT section tags ("[Verso uno]", "[Verso dos]") that
+// englishifyLyricsMarkers' [Verso <digit>] rule never matched. Sent that way to
+// replace-section, Suno doesn't see a structured sheet and LOOPS it: 8/8 takes
+// came back at 1.9-2.1x the song's length (7:14-7:17 for a 3:30 song) — the same
+// ~8-minute looping signature un-tagged custom lyrics produce at generation
+// time. Normalize first and the model gets a clean structure to follow.
+const SPELLED_ORDINAL: Record<string, number> = { uno: 1, dos: 2, tres: 3, cuatro: 4, cinco: 5, seis: 6, siete: 7, ocho: 8 };
+function normalizeCustomLyrics(lyrics: string): string {
+  return lyrics
+    // Markdown heading lines (the pasted song title) — never sung, pure noise.
+    .replace(/^[ \t]*#{1,6}[ \t]*.*$/gm, '')
+    // Bold/italic emphasis markers.
+    .replace(/\*\*|__/g, '')
+    // [Verso uno] -> [Verso 1] so the englishify rules below can convert it.
+    .replace(/\[\s*Verso\s+(uno|dos|tres|cuatro|cinco|seis|siete|ocho)\s*\]/gi,
+      (_m, w: string) => `[Verso ${SPELLED_ORDINAL[w.toLowerCase()]}]`)
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 function englishifyLyricsMarkers(lyrics: string): string {
   if (!lyrics) return lyrics;
-  return stripSpokenProsodyCue(lyrics)
+  // ORDER MATTERS (2026-08-17): translate the section markers BEFORE the
+  // prosody strip. stripSpokenProsodyCue deletes any [lowercase...] tag, which
+  // included customer-typed [coro]/[verso 1] — the /gi translators below never
+  // saw them, the sheet went to Suno untagged, and untagged sheets loop to ~8
+  // minutes (the Mariela 62fd68ed class, reachable through this side door).
+  return stripSpokenProsodyCue(normalizeCustomLyrics(lyrics)
     .replace(/\[Verso Final\]/gi, '[Final Verse]')
     .replace(/\[Verso (\d+)\]/gi, '[Verse $1]')
     .replace(/\[Verso\]/gi, '[Verse]')
@@ -126,7 +164,7 @@ function englishifyLyricsMarkers(lyrics: string): string {
     .replace(/\[Coro\]/gi, '[Chorus]')
     .replace(/\[Puente\]/gi, '[Bridge]')
     .replace(/\[Pre-Coro\]/gi, '[Pre-Chorus]')
-    .replace(/\[Hablado\]/gi, '[Spoken Word]');
+    .replace(/\[Hablado\]/gi, '[Spoken Word]'));
 }
 
 // Gender + Spanish-language locks, same construction regenerate-paid-song-kie
@@ -136,7 +174,7 @@ function englishifyLyricsMarkers(lyrics: string): string {
 // name (genre DNA leaked in at generation), so strip those before re-singing —
 // otherwise both section-fix and full re-roll fail. Same gotcha as
 // regenerate-paid-song-kie (which resends style_used verbatim).
-const ARTIST_RE = /\b(el komander|komander|los buchones de culiac[aá]n|los buchones|buchones|gerardo ortiz|natanael cano|peso pluma|junior h|fuerza regida|tito double p|luis r\.? conriquez|conriquez|chalino(?: sanchez)?|los tucanes(?: de tijuana)?|los tigres del norte|banda ms|christian nodal|nodal|car[ií]n le[oó]n|eslab[oó]n armado|t3r elemento|ariel camacho|calibre 50|grupo firme|espinoza paz|larry hern[aá]ndez|remmy valenzuela|el fantasma|la adictiva|adriel favela|el makabelico|los dos carnales|la maquinaria norte[ñn]a)\b(?:\s+(?:style|sound|vibe|aesthetic))?/gi;
+const ARTIST_RE = /\b(banda el recodo|el recodo|julio preciado|juli[oó]n [aá]lvarez|intocable|jenni rivera|banda lim[oó]n|la arrolladora|los recoditos|k-paz de la sierra|k-paz|pepe aguilar|vicente fern[aá]ndez|alejandro fern[aá]ndez|luis miguel|marc anthony|sin bandera|el komander|komander|los buchones de culiac[aá]n|los buchones|buchones|gerardo ortiz|natanael cano|peso pluma|junior h|fuerza regida|tito double p|luis r\.? conriquez|conriquez|chalino(?: sanchez)?|los tucanes(?: de tijuana)?|los tigres del norte|banda ms|christian nodal|nodal|car[ií]n le[oó]n|eslab[oó]n armado|t3r elemento|ariel camacho|calibre 50|grupo firme|espinoza paz|larry hern[aá]ndez|remmy valenzuela|el fantasma|la adictiva|adriel favela|el makabelico|los dos carnales|la maquinaria norte[ñn]a)\b(?:\s+(?:style|sound|vibe|aesthetic))?/gi;
 function stripArtistNames(style: string): string {
   if (!style) return style;
   let out = style.replace(ARTIST_RE, '');
@@ -235,7 +273,7 @@ const FIX_TOOL = {
     properties: {
       can_fix: {
         type: 'boolean',
-        description: 'true if the reported problem is localized to ONE contiguous stretch that is at most half the song; false if it is spread across the whole song or cannot be located in the transcript.',
+        description: 'true if this fix can be made by re-singing ONE contiguous stretch of at most half the song. IMPORTANT: if the SAME wording must change in SEVERAL separate places (e.g. a chorus line sung twice), that is still true — target the EARLIEST unfixed occurrence; the caller fixes the spots one at a time and calls again for the next. Only false when the change is diffuse across the whole song (most lines rewritten) or cannot be located in the transcript.',
       },
       reason: {
         type: 'string',
@@ -247,7 +285,7 @@ const FIX_TOOL = {
       },
       infill_end_s: {
         type: 'number',
-        description: 'End time, in seconds, of the slice to regenerate. End at the END of the last full lyric line of the passage (just after its last word) — never mid-line. Choose a whole phrase, not just the wrong word: aim for a 10-15 second window covering the complete line(s) the error sits in. Hard limits: 6-60 seconds and no more than half the song duration.',
+        description: 'End time, in seconds, of the slice to regenerate. End at the END of the last full lyric line of the passage (just after its last word) — never mid-line. Choose a whole phrase, not just the wrong word: aim for a 10-15 second window covering the complete line(s) the error sits in. Hard limits: 10-60 seconds and no more than half the song duration — a window shorter than 10 seconds is rejected outright by the music API.',
       },
       section_text: {
         type: 'string',
@@ -299,7 +337,8 @@ Tu trabajo es localizar el problema y proponer un arreglo QUIRÚRGICO de una sol
   · Fechas: escribe los números SIEMPRE en palabras y de forma natural en español (p. ej. "el catorce de marzo de dos mil catorce", nunca "14/03/2014" ni "2014"). El año va deletreado completo.
   · No repitas el coro ni la despedida dentro de la ventana; re-canta el bloque UNA sola vez, en orden, sin saltar ni duplicar líneas.
 - AGREGAR UNA LÍNEA NUEVA (no reemplazar): solo es confiable en el BLOQUE FINAL / la despedida (ahí hay espacio instrumental y nada después que se desalinee). Si el dueño pide agregar una línea al final: inserta la línea EXACTA en su lugar dentro de section_text y de full_lyrics; define la ventana [infill_start_s, infill_end_s] = el bloque final completo (desde el inicio del último coro/despedida hasta el final del canto), y llena add_line = { text, anchor } con una palabra distintiva de la línea nueva. Si la canción tiene intro [Hablado] (los corridos), puedes agregarla como línea [Hablado] (lo hablado no necesita métrica → usa las palabras EXACTAS del cliente). Si la adición NO es al final (va a media canción), pon can_fix=false y explica que ese caso necesita rehacer la canción completa.
-- Si el problema abarca toda la canción o no se puede ubicar, pon can_fix=false y explica por qué; no inventes una ventana.
+- VARIAS APARICIONES DE LA MISMA CORRECCIÓN (regla dura, 2026-08-12): si la palabra/línea a corregir se canta en VARIOS lugares separados (p. ej. el mismo verso del coro a 1:18 y a 2:23), NO pongas can_fix=false. El sistema arregla un punto a la vez y vuelve a llamarte para el siguiente: elige la aparición MÁS TEMPRANA que todavía esté mal, define la ventana ahí, y pon can_fix=true. En "reason" menciona cuántas apariciones detectaste.
+- Solo pon can_fix=false si el cambio es DIFUSO (hay que reescribir casi toda la letra) o si de plano no se puede ubicar en la transcripción; explica por qué y no inventes una ventana.
 - La queja puede incluir una conversación con el dueño y/o una captura de pantalla (WhatsApp) del mensaje del cliente. Lee la imagen si viene adjunta y usa todo el contexto para entender exactamente qué corregir.
 
 IDIOMA: change_summary y reason van en INGLÉS (el dueño habla inglés). Toda la LETRA (section_text, full_lyrics, verify_phrases) y los nombres/fechas cantados permanecen en ESPAÑOL — nunca traduzcas la letra.
@@ -324,7 +363,7 @@ Your job:
 // Full-song re-roll: used when section-fix isn't possible (e.g. a Mureka song)
 // or the owner chooses to remake the whole song. Claude returns the complete
 // corrected lyrics; we then generate a fresh Kie song from them.
-const FULL_FIX_SYSTEM_PROMPT = `Eres un editor de letras de canciones regionales mexicanas en español. Te dan la letra actual de una canción y una queja/instrucción (puede incluir una conversación con el dueño y/o una captura de WhatsApp del cliente). Devuelve la letra COMPLETA ya corregida aplicando SOLO el cambio pedido y dejando idéntico todo lo demás; conserva los marcadores de sección como [Coro] y [Verso]. Para nombres mal pronunciados, reescríbelos con ortografía española fonética (p. ej. "Yareli"→"Yarelí", "Joaquin"→"Joaquín"). Lee la imagen si viene adjunta. En "changes" lista cada línea o frase que cambió, con el texto exacto ANTES y DESPUÉS, para que el dueño lo confirme. Si la petición es AGREGAR una línea NUEVA (no reemplazar): inclúyela en full_lyrics en su lugar, repórtala en "changes" como { before: "(línea nueva)", after: la línea }, y si va en el BLOQUE FINAL/despedida llena add_line = { text, anchor } con una palabra distintiva y poco común de la línea nueva. Si la canción tiene intro [Hablado], puedes agregarla como línea [Hablado] con las palabras EXACTAS del cliente. IDIOMA: change_summary va en INGLÉS (el dueño habla inglés); la LETRA (full_lyrics) y los textos antes/después en "changes" permanecen en ESPAÑOL — nunca traduzcas la letra. Responde SIEMPRE llamando a la herramienta submit_corrected_lyrics.`;
+const FULL_FIX_SYSTEM_PROMPT = `Eres un editor de letras de canciones regionales mexicanas en español. Te dan la letra actual de una canción y una queja/instrucción (puede incluir una conversación con el dueño y/o una captura de WhatsApp del cliente). Devuelve la letra COMPLETA ya corregida aplicando SOLO el cambio pedido y dejando idéntico todo lo demás; conserva los marcadores de sección como [Coro] y [Verso]. Para nombres mal pronunciados, reescríbelos con ortografía española fonética (p. ej. "Yareli"→"Yarelí", "Joaquin"→"Joaquín"). Lee la imagen si viene adjunta. En "changes" lista cada línea o frase que cambió, con el texto exacto ANTES y DESPUÉS, para que el dueño lo confirme. Si la petición es AGREGAR una línea NUEVA (no reemplazar): inclúyela en full_lyrics, repórtala en "changes" como { before: "(línea nueva)", after: la línea }, y llena add_line = { text, anchor } con una palabra distintiva y poco común de la línea nueva. UBICACIÓN DE LA LÍNEA NUEVA (regla dura, aprendida 2026-08-10): si el dueño no especifica dónde, colócala AL FINAL DE UN VERSO relacionado por tema (a media canción) — NUNCA como última línea cantada después del coro final: al re-generar con duración fija, el modelo DESCARTA una línea añadida al final, pero canta sin problema una línea insertada dentro de un verso. Si el dueño pide un lugar explícito, respétalo. Si la canción tiene intro [Hablado], puedes agregarla como línea [Hablado] con las palabras EXACTAS del cliente. IDIOMA: change_summary va en INGLÉS (el dueño habla inglés); la LETRA (full_lyrics) y los textos antes/después en "changes" permanecen en ESPAÑOL — nunca traduzcas la letra. Responde SIEMPRE llamando a la herramienta submit_corrected_lyrics.`;
 
 const FULL_FIX_TOOL = {
   name: 'submit_corrected_lyrics',
@@ -661,7 +700,7 @@ async function verifyPhrasesInAudio(audioUrl: string, phrases: string[], expecte
 // Is a thrown error Kie's content/copyright filter?
 function isContentError(e: any): boolean {
   const m = String(e?.message || e || '').toLowerCase();
-  return m.includes('sensitive') || m.includes('content') || m.includes('filtro') || m.includes('derechos') || m.includes('copyright') || m.includes('bloque');
+  return m.includes('sensitive') || m.includes('content') || m.includes('filtro') || m.includes('derechos') || m.includes('copyright') || m.includes('bloque') || m.includes('artist name') || m.includes('artist reference');
 }
 
 // On a content-filter rejection, strip likely triggers (artist/band/brand
@@ -725,7 +764,7 @@ async function generateFullRound(lyrics: string, title: string, styleUsed: strin
   }
 }
 
-// Keep Claude's window inside Kie's 6-60s / <=50%-of-song rule.
+// Keep Claude's window inside the 10-60s / <=50%-of-song rule.
 function clampWindow(startIn: number, endIn: number, duration: number): { start: number; end: number } {
   const dur = duration > 0 ? duration : 180;
   const maxLen = Math.max(MIN_WINDOW_S, Math.min(MAX_WINDOW_S, dur * 0.5));
@@ -750,7 +789,8 @@ function clampWindow(startIn: number, endIn: number, duration: number): { start:
   len = end - start;
   if (len > maxLen) end = start + maxLen;
 
-  return { start: Math.round(start * 100) / 100, end: Math.round(end * 100) / 100 };
+  const rs = Math.round(start * 100) / 100; // round START only, then rebuild END from the length — rounding both ends independently could shave a 10.00s window to 9.99s and take Kie's 422 at the floor
+  return { start: rs, end: Math.round((rs + (end - start)) * 100) / 100 };
 }
 
 // Suno re-sings the ENTIRE infill window from the prompt lyrics, so a window
@@ -778,7 +818,7 @@ function snapToGap(t: number, words: WhisperWord[], dur: number, search = 1.3): 
 }
 
 // Expand a window to a phrase-length minimum (centered), snap edges to natural
-// breaths, then enforce Kie's 6-60s / <=50% rule via clampWindow.
+// breaths, then enforce the 10-60s / <=50% rule via clampWindow.
 function snapWindowToPhrase(startIn: number, endIn: number, words: WhisperWord[], duration: number): { start: number; end: number } {
   const dur = duration > 0 ? duration : 180;
   let start = Math.max(0, Math.min(startIn, dur));
@@ -846,10 +886,10 @@ async function submitReplaceSection(args: {
 // Full new Kie generation from corrected lyrics (whole-song re-roll). Mirrors
 // regenerate-paid-song-kie's submitToKie tuning so the remake matches how paid
 // songs are produced.
-async function submitFullGenerate(lyrics: string, title: string, styleUsed: string, voiceType: string, callbackUrl: string): Promise<string> {
+async function submitFullGenerate(lyrics: string, title: string, styleUsed: string, voiceType: string, callbackUrl: string, opts: { personaId?: string; durationS?: number } = {}): Promise<string> {
   const vocalGender: 'm' | 'f' = voiceType === 'female' ? 'f' : 'm';
   const { tags, negativeTags } = buildStyleAndNegatives(styleUsed, voiceType);
-  const payload = {
+  const payload: Record<string, unknown> = {
     prompt: englishifyLyricsMarkers(lyrics).substring(0, 5000),
     customMode: true,
     instrumental: false,
@@ -863,6 +903,12 @@ async function submitFullGenerate(lyrics: string, title: string, styleUsed: stri
     weirdnessConstraint: 0.3,
     audioWeight: 0.7,
   };
+  // PERSONA RE-ROLL (2026-08-09): sing the fresh full generation with the
+  // ORIGINAL take's minted voice; `duration` (V5_5 only) pins the length to the
+  // original song's — same singer + same length + corrected words, the
+  // deterministic fix when replace-section keeps over-extending.
+  if (opts.personaId) { payload.personaId = opts.personaId; payload.personaModel = 'voice_persona'; }
+  if (opts.durationS && opts.durationS >= 10 && opts.durationS <= 360) payload.duration = Math.round(opts.durationS);
   const resp = await fetch('https://api.kie.ai/api/v1/generate', {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${KIE_API_KEY}`, 'Content-Type': 'application/json' },
@@ -1026,7 +1072,7 @@ async function applySplicedAudio(req: Request, supabase: any): Promise<Response>
 // audio URLs can rotate, so we always re-fetch rather than trust a stored URL.
 // createTimeMs is the TAKE's generation time — the ~14-day retention clock runs
 // from this, not from the song's created_at (each chained fix resets it).
-async function fetchKieTrack(taskId: string, audioId?: string): Promise<{ audioUrl: string; id: string; createTimeMs: number | null } | null> {
+async function fetchKieTrack(taskId: string, audioId?: string): Promise<{ audioUrl: string; id: string; createTimeMs: number | null; durationS: number | null } | null> {
   if (!KIE_API_KEY || !taskId) return null;
   try {
     const resp = await fetch(`https://api.kie.ai/api/v1/generate/record-info?taskId=${encodeURIComponent(taskId)}`, {
@@ -1038,7 +1084,8 @@ async function fetchKieTrack(taskId: string, audioId?: string): Promise<{ audioU
     const t = (audioId && tracks.find((x: any) => x.id === audioId)) || tracks[0];
     if (!t?.audioUrl) return null;
     const ct = Number(t.createTime ?? raw?.data?.createTime);
-    return { audioUrl: t.audioUrl, id: t.id, createTimeMs: Number.isFinite(ct) && ct > 0 ? ct : null };
+    const dur = Number(t.duration);
+    return { audioUrl: t.audioUrl, id: t.id, createTimeMs: Number.isFinite(ct) && ct > 0 ? ct : null, durationS: Number.isFinite(dur) && dur > 0 ? dur : null };
   } catch { return null; }
 }
 
@@ -1054,7 +1101,7 @@ function parseJsonMaybe(p: any): any {
 // it survives all future fixes. Returns the parent taskId, the per-track audioId,
 // and the CURRENT pristine audioUrl. null = no recoverable Kie source (Mureka, or
 // Kie purged the audio after ~14 days) → caller should offer a full re-roll.
-async function resolveKieSource(song: any, supabase: any): Promise<{ taskId: string; audioId: string; pristineUrl: string; trimAtS: number | null; createTimeMs: number | null } | null> {
+async function resolveKieSource(song: any, supabase: any): Promise<{ taskId: string; audioId: string; pristineUrl: string; trimAtS: number | null; createTimeMs: number | null; durationS: number | null } | null> {
   // trimAtS travels ONLY on the chained candidate (kie_payload): when the applied
   // audio was an end-trimmed whole take, the Kie-hosted source is LONGER than the
   // live song, and every downstream consumer (Claude's window, the length checks)
@@ -1062,19 +1109,57 @@ async function resolveKieSource(song: any, supabase: any): Promise<{ taskId: str
   const candidates: Array<{ taskId?: string; audioId?: string; trimAtS?: number | null }> = [];
   if (song?.kie_task_id) { const kp = parseJsonMaybe(song.kie_payload); candidates.push({ taskId: song.kie_task_id, audioId: kp?.id, trimAtS: Number(kp?.trimAtS) > 0 ? Number(kp.trimAtS) : null }); }
   const ks = parseJsonMaybe(song?.kie_source); if (ks?.taskId) candidates.push({ taskId: ks.taskId, audioId: ks.audioId, trimAtS: null });
-  const fb = parseJsonMaybe(song?.fix_backup); if (fb?.kie_task_id) { const kp = parseJsonMaybe(fb.kie_payload); candidates.push({ taskId: fb.kie_task_id, audioId: kp?.id, trimAtS: null }); }
+  const fb = parseJsonMaybe(song?.fix_backup); if (fb?.kie_task_id) { const kp = parseJsonMaybe(fb.kie_payload); candidates.push({ taskId: fb.kie_task_id, audioId: kp?.id, trimAtS: Number(kp?.trimAtS) > 0 ? Number(kp.trimAtS) : null }); }
   for (const c of candidates) {
     if (!c.taskId) continue;
     const track = await fetchKieTrack(c.taskId, c.audioId);
     if (track?.audioUrl) {
       const existing = parseJsonMaybe(song?.kie_source);
       if (!existing || existing.taskId !== c.taskId) {
-        try { await supabase.from('songs').update({ kie_source: { taskId: c.taskId, audioId: c.audioId || track.id } }).eq('id', song.id); } catch { /* best effort */ }
+        try { await supabase.from('songs').update({ kie_source: { ...(existing || {}), taskId: c.taskId, audioId: c.audioId || track.id } }).eq('id', song.id); } catch { /* best effort */ } // SPREAD (2026-08-17): replacing the object wholesale deleted the persisted personaId on every re-fix — the next full re-roll re-minted a voice, violating ONE-mint-per-audio
       }
-      return { taskId: c.taskId, audioId: c.audioId || track.id, pristineUrl: track.audioUrl, trimAtS: c.trimAtS ?? null, createTimeMs: track.createTimeMs };
+      return { taskId: c.taskId, audioId: c.audioId || track.id, pristineUrl: track.audioUrl, trimAtS: c.trimAtS ?? null, createTimeMs: track.createTimeMs, durationS: track.durationS };
     }
   }
   return null;
+}
+
+// Mint (once — persisted in songs.kie_source.personaId, then always reused) or
+// reuse the song's Kie voice persona, and derive the live song's true length to
+// pin a full re-roll to (trimAtS of an end-trimmed chained take beats the
+// source take's raw duration). Used by action:'mint-persona' and — since
+// 2026-08-10, owner priority: multi-spot fixes must keep the SAME voice — by
+// 'full-submit' AUTOMATICALLY whenever the Kie source is alive, so "redo the
+// whole song" no longer changes the singer.
+async function ensurePersona(song: any, songId: string, supabase: any, opts: { vocalStart?: number; vocalEnd?: number } = {}): Promise<{ personaId: string | null; reused: boolean; durationS: number | null; error?: string }> {
+  const existing = parseJsonMaybe(song?.kie_source)?.personaId || null;
+  const src = await resolveKieSource(song, supabase);
+  const durationS = src ? (src.trimAtS || src.durationS || null) : null;
+  if (existing) return { personaId: existing, reused: true, durationS };
+  if (!src) return { personaId: null, reused: false, durationS: null, error: 'No Kie source available (Mureka song, or Kie purged the audio after ~14 days).' };
+  const resp = await fetch('https://api.kie.ai/api/v1/generate/generate-persona', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${KIE_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      taskId: src.taskId,
+      audioId: src.audioId,
+      name: `voz-${String(songId).slice(0, 8)}`,
+      description: `Voz original de la canción para ${song.recipient_name || 'cliente'}. ${String(song.style_used || '').slice(0, 160)}`,
+      // 10-30s vocal sample window; verses start after the intro on our songs.
+      vocalStart: Number(opts.vocalStart) >= 0 ? Number(opts.vocalStart) : 12,
+      vocalEnd: Number(opts.vocalEnd) > 0 ? Number(opts.vocalEnd) : 40,
+    }),
+  });
+  const data = await resp.json().catch(() => ({}));
+  const personaId = data?.data?.personaId;
+  if (!resp.ok || data?.code !== 200 || !personaId) {
+    return { personaId: null, reused: false, durationS, error: `generate-persona ${resp.status} code=${data?.code}: ${String(data?.msg || 'no personaId').slice(0, 200)}` };
+  }
+  // Persist (one mint per audio, ever) — merge into kie_source.
+  const mergedSource = { ...(parseJsonMaybe(song.kie_source) || {}), taskId: src.taskId, audioId: src.audioId, personaId };
+  await supabase.from('songs').update({ kie_source: mergedSource }).eq('id', songId);
+  await logAttempt(supabase, { song_id: songId, action: 'mint-persona', kie_task_id: src.taskId, outcome: 'success', detail: `personaId=${personaId}` });
+  return { personaId, reused: false, durationS };
 }
 
 Deno.serve(async (req) => {
@@ -1082,6 +1167,27 @@ Deno.serve(async (req) => {
 
   try {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+    // ── Auth gate (2026-08-10) — every action requires either the service-role
+    // key (fix-song-auto, CLI) or a logged-in admin_users session. The gateway
+    // can't do this for us (verify_jwt=false so service-key calls pass), so it
+    // lives here, before ANY body parsing or credit-spending work.
+    const authHeader = req.headers.get('Authorization') || '';
+    const bearer = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+    if (bearer !== SUPABASE_SERVICE_ROLE_KEY) {
+      if (!bearer) return json({ ok: false, error: 'Missing Authorization header' }, 401);
+      const userClient = createClient(SUPABASE_URL, Deno.env.get('SUPABASE_ANON_KEY')!, {
+        global: { headers: { Authorization: authHeader } },
+      });
+      const { data: userData, error: userErr } = await userClient.auth.getUser();
+      if (userErr || !userData?.user) return json({ ok: false, error: 'Invalid session — sign in to the admin dashboard again.' }, 401);
+      const { data: roleRow } = await supabase
+        .from('admin_users')
+        .select('role')
+        .eq('user_id', userData.user.id)
+        .single();
+      if (!roleRow) return json({ ok: false, error: 'No admin access' }, 403);
+    }
 
     // The admin dashboard stitches the surgical fix in the browser (Web Audio)
     // and POSTs the finished MP3 here as multipart/form-data to host + apply it.
@@ -1092,6 +1198,30 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const action: string = body?.action || 'preview';
+
+    // -----------------------------------------------------------------
+    // MINT-PERSONA — create (or reuse) a Kie voice persona from THIS song's
+    // original take, so a FULL re-roll can sing with the SAME voice
+    // (personaId + duration on /generate = same singer, pinned length —
+    // the deterministic escape hatch when replace-section over-extends;
+    // docs.kie.ai/suno-api/generate-persona, verified 2026-08-09).
+    // Each audioId can mint a persona only ONCE, so the id is persisted in
+    // songs.kie_source and reused on later calls.
+    // -----------------------------------------------------------------
+    if (action === 'mint-persona') {
+      const songId: string | undefined = body?.songId;
+      if (!songId) return json({ ok: false, error: 'songId is required' });
+      if (!KIE_API_KEY) return json({ ok: false, error: 'KIE_API_KEY missing' });
+      const { data: song } = await supabase
+        .from('songs')
+        .select('id, recipient_name, style_used, kie_task_id, kie_payload, kie_source, fix_backup, provider, created_at')
+        .eq('id', songId)
+        .single();
+      if (!song) return json({ ok: false, error: 'song not found' });
+      const p = await ensurePersona(song, songId, supabase, { vocalStart: body?.vocalStart, vocalEnd: body?.vocalEnd });
+      if (!p.personaId) return json({ ok: false, error: p.error || 'mint failed' });
+      return json({ ok: true, personaId: p.personaId, reused: p.reused, durationS: p.durationS });
+    }
 
     // -----------------------------------------------------------------
     // DIAG — pull Kie's record-info for any taskId (status + errorCode +
@@ -1119,10 +1249,17 @@ Deno.serve(async (req) => {
         // Full track list (audioUrl/id/imageUrl) so a slow replace-section job
         // whose original request hit the 150s gateway timeout can still be
         // collected out-of-band by polling this action with the taskId.
+        // duration: Kie reports each take's length. Callers use it to REJECT a
+        // hopeless take (>1.15x the original can never pass, even trimmed)
+        // BEFORE paying for a Whisper transcription of it — on the Mariela
+        // corrido (62fd68ed) Suno returned 6:30-7:17 takes for a 3:30 song and
+        // transcribing those ~10MB files is the longest, most failure-prone
+        // call in the whole flow (it died with a browser "Failed to fetch").
         trackList: (raw?.data?.response?.sunoData ?? []).map((t: any) => ({
           id: t.id ?? null,
           audioUrl: t.audioUrl ?? null,
           imageUrl: t.imageUrl ?? null,
+          duration: Number(t.duration) > 0 ? Number(t.duration) : null,
         })),
       });
     }
@@ -1263,6 +1400,10 @@ Deno.serve(async (req) => {
         kie_payload: b.kie_payload ?? null,
         provider: b.provider ?? null,
         lyrics_timestamps: b.lyrics_timestamps ?? null,
+        // The snapshot captured fix_corrections but the restore used to drop it —
+        // after an undo the song still claimed a correction its audio no longer
+        // contained, and every later fix demanded that phrase be sung.
+        fix_corrections: b.fix_corrections ?? null,
         // Restore the footprint to its pre-fix state (snapshot captured them).
         fixed_at: b.fixed_at ?? null,
         fix_count: Number(b.fix_count) || 0,
@@ -1332,7 +1473,11 @@ Deno.serve(async (req) => {
     // browser splice on the frontend if this errors.
     if (action === 'splice') {
       if (!INHOUSE_RENDERER_URL) return json({ ok: false, error: 'INHOUSE_RENDERER_URL not configured' });
-      const mode = body?.mode === 'section' ? 'section' : body?.mode === 'rehost' ? 'rehost' : body?.mode === 'trim' ? 'trim' : 'line';
+      // WHOLE TAKES ONLY (owner rule): the retired 'line'/'section' splices are
+      // no longer reachable — and an unknown mode is an error, never a default
+      // into the most invasive surgery.
+      const mode = body?.mode === 'rehost' ? 'rehost' : body?.mode === 'trim' ? 'trim' : null;
+      if (!mode) return json({ ok: false, error: "splice mode must be 'trim' or 'rehost' — mid-song splicing is retired (whole-takes rule)" });
       const spec: Record<string, unknown> = {
         mode,
         pristine_url: body?.pristineUrl,
@@ -1425,7 +1570,14 @@ Deno.serve(async (req) => {
       ? note.trim()
       : conversation.length
         ? conversation.map((m) => `${m.role === 'assistant' ? 'AI' : 'Dueño'}: ${m.text}`).join('\n')
-        : (fixImage ? '(Ver la captura de pantalla adjunta del mensaje del cliente.)' : '');
+        // APPROVED LYRICS ARE AN INSTRUCTION (2026-08-13). A card restored from
+        // a fix session carries the owner-confirmed plan but not the chat that
+        // produced it, so its re-roll arrived with an empty conversation and
+        // this guard rejected a perfectly specified request — the lyrics to
+        // sing were right there in approvedLyrics.
+        : approvedLyrics
+          ? '(Cantar exactamente la letra aprobada adjunta — cambios ya confirmados por el dueño en el paso de plan.)'
+          : (fixImage ? '(Ver la captura de pantalla adjunta del mensaje del cliente.)' : '');
     if (!songId || (!complaint && !fixImage)) {
       return json({ ok: false, error: 'songId y una instrucción (texto, conversación o captura) son obligatorios.' });
     }
@@ -1467,16 +1619,47 @@ Deno.serve(async (req) => {
         try {
           let lyricsUsed = correctedLyrics as string;
           let taskId: string;
+          // Persona re-roll: personaId sings with the original take's voice;
+          // durationS pins the length (V5_5). Explicit values win; otherwise —
+          // SAME-VOICE BY DEFAULT (2026-08-10, owner priority): whenever the Kie
+          // source is still alive, mint/reuse the song's own persona and pin the
+          // live song's length, so a full re-roll (the fallback when the section
+          // ladder can't land a multi-spot fix) no longer changes the singer.
+          // Opt out with body.usePersona === false.
+          const genOpts: { personaId?: string; durationS?: number } = {
+            personaId: typeof body?.personaId === 'string' && body.personaId ? body.personaId : undefined,
+            durationS: Number(body?.durationS) > 0 ? Number(body.durationS) : undefined,
+          };
+          if (!genOpts.personaId && body?.usePersona !== false) {
+            const p = await ensurePersona(song, songId!, supabase);
+            if (p.personaId) {
+              genOpts.personaId = p.personaId;
+              if (!genOpts.durationS && p.durationS) genOpts.durationS = Math.round(p.durationS);
+            } else if (p.error) {
+              // Never block the re-roll — proceed voice-unpinned, but say so.
+              console.log(`[fix] full-submit WITHOUT persona (${p.error})`);
+            }
+          }
+          // durationPadS: an ADDED line needs extra room — pinning to the exact
+          // original length would crowd or squeeze the new line out.
+          const durationPad = Math.max(0, Math.min(20, Number(body?.durationPadS) || 0));
+          if (durationPad && genOpts.durationS) genOpts.durationS = Math.min(360, genOpts.durationS + durationPad);
+          // pinDuration:false — SAME cloned voice, FREE length (2026-08-11,
+          // Miguel Ángel): the pin makes Suno pad the lyric sheet with repeated
+          // lines on some songs (4/4 pinned takes hallucinated; unpinned sang
+          // the sheet 2/2). This keeps the singer and lets the take breathe;
+          // the validator still bounds length and audits structure.
+          if (body?.pinDuration === false) genOpts.durationS = undefined;
           try {
-            taskId = await submitFullGenerate(lyricsUsed, title, song.style_used, song.voice_type, callbackUrl);
+            taskId = await submitFullGenerate(lyricsUsed, title, song.style_used, song.voice_type, callbackUrl, genOpts);
           } catch (e) {
             if (!isContentError(e)) throw e;
             const cleaned = await sanitizeLyricsForFilter(lyricsUsed);
             if (!cleaned || cleaned === lyricsUsed) throw e;
             lyricsUsed = cleaned;
-            taskId = await submitFullGenerate(lyricsUsed, title, song.style_used, song.voice_type, callbackUrl);
+            taskId = await submitFullGenerate(lyricsUsed, title, song.style_used, song.voice_type, callbackUrl, genOpts);
           }
-          await logAttempt(supabase, { song_id: songId, action: 'full-submit', mode: 'full', complaint: complaint.slice(0, 2000), kie_task_id: taskId, outcome: 'submitted', detail: (correctedSummary || '').slice(0, 500) });
+          await logAttempt(supabase, { song_id: songId, action: 'full-submit', mode: 'full', complaint: complaint.slice(0, 2000), kie_task_id: taskId, outcome: 'submitted', detail: `${genOpts.personaId ? `persona=${genOpts.personaId} durationS=${genOpts.durationS || '-'} · ` : ''}${(correctedSummary || '').slice(0, 400)}` });
           return json({
             ok: true,
             submitted: true,
@@ -1486,6 +1669,15 @@ Deno.serve(async (req) => {
             changeSummary: correctedSummary,
             fullLyrics: correctedLyrics, // store the REAL corrected lyrics on apply
             verifyPhrases,
+            // Same-voice telemetry for the UI: true = the new take sings with the
+            // song's own cloned voice, pinned to the live song's length.
+            personaUsed: !!genOpts.personaId,
+            pinnedDurationS: genOpts.durationS || null,
+            // The customer's current audio — the length yardstick for validating
+            // the fresh takes. section-submit always returned this; full-submit
+            // didn't, which made fix-song-auto's full-mode fallback reject EVERY
+            // take with "no pristine duration" and burn all its rounds.
+            originalAudioUrl: audioForFix,
             staleWarning: null,
           });
         } catch (e: any) {
@@ -1501,7 +1693,7 @@ Deno.serve(async (req) => {
         let lastTaskId = '';
         const maxRounds = verifyPhrases.length ? 2 : 1;
         for (let round = 1; round <= maxRounds; round++) {
-          const r = await generateFullRound(correctedLyrics, title, song.style_used, song.voice_type, callbackUrl);
+          const r = await generateFullRound(correctedLyrics as string, title, song.style_used, song.voice_type, callbackUrl);
           lastTaskId = r.taskId;
           for (const t of r.tracks) { const a = await annotateTake(t, verifyPhrases, r.usedLyrics); if (a) takes.push(a); }
           if (!verifyPhrases.length || takes.some((t) => t.verified === true)) break;
@@ -1542,13 +1734,13 @@ Deno.serve(async (req) => {
     // sourceTrimAtS = its true musical end) so the next re-sing builds on it. If
     // the override take is gone from Kie, fail loudly — falling back to the DB
     // source would silently revert the earlier rounds' corrections.
-    let kieSrc: { taskId: string; audioId: string; pristineUrl: string; trimAtS: number | null; createTimeMs: number | null } | null;
+    let kieSrc: { taskId: string; audioId: string; pristineUrl: string; trimAtS: number | null; createTimeMs: number | null; durationS: number | null } | null;
     const srcTaskId: string | undefined = body?.sourceTaskId;
     const srcAudioId: string | undefined = body?.sourceAudioId;
     if (srcTaskId && srcAudioId) {
       const track = await fetchKieTrack(srcTaskId, srcAudioId);
       if (!track) return json({ ok: false, error: 'La toma fuente del paso anterior ya no está disponible en Kie. Vuelve a empezar el arreglo.' });
-      kieSrc = { taskId: srcTaskId, audioId: srcAudioId, pristineUrl: track.audioUrl, trimAtS: Number(body?.sourceTrimAtS) > 0 ? Number(body.sourceTrimAtS) : null, createTimeMs: track.createTimeMs };
+      kieSrc = { taskId: srcTaskId, audioId: srcAudioId, pristineUrl: track.audioUrl, trimAtS: Number(body?.sourceTrimAtS) > 0 ? Number(body.sourceTrimAtS) : null, createTimeMs: track.createTimeMs, durationS: track.durationS };
     } else {
       // Normal path: the live row ids -> kie_source -> fix_backup (recovers even
       // after applies, so repeat & multi-part fixes keep the same voice).

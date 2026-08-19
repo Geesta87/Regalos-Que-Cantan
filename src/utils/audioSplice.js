@@ -438,19 +438,46 @@ function _parseYear(t, i) {
   return null;
 }
 export function buildTokenGroups(correctedLine) {
-  const t = String(correctedLine || '').split(/\s+/).map(norm).filter(Boolean);
-  const groups = [];
+  // Keep the RAW tokens alongside the normalized ones — proper-noun detection
+  // needs the original capitalization.
+  const pairs = String(correctedLine || '').split(/\s+/)
+    .map((raw) => ({ raw, n: norm(raw) }))
+    .filter((p) => p.n);
+  const t = pairs.map((p) => p.n);
+  // PROPER NAMES ARE NOT REQUIRED TOKENS (2026-08-10). Whisper writes invented
+  // names however it hears them — "Saynee" came back as "Zaine" on every take of
+  // song a4672f19, so one unverifiable NAME token rejected 6 otherwise-perfect
+  // generations with "no cantó lo corregido" and the ladder never reached the
+  // second correction. CLAUDE.md has always said name pronunciation cannot be
+  // judged from transcripts; the matcher now lives by it: a mid-line Capitalized
+  // token is treated as a name and SKIPPED — the words around it (which Whisper
+  // does transcribe reliably) prove the line was sung, and the owner's ears
+  // judge the name itself in the preview. Guard: if skipping names would leave
+  // fewer than 2 required groups (e.g. the phrase IS the name), keep them all —
+  // an empty matcher is worse than a fuzzy one.
+  // Line-INITIAL capitals count too (2026-08-11, Jesús Washington→Wilmington):
+  // "Wilmington fue tu destino" put the city as the line's first word and the
+  // matcher demanded it letter-for-letter — same false-reject as Saynee, new
+  // position. Every line starts capitalized, so this skips the first word of
+  // ordinary lines as well; that's safe — the ≥2-remaining-groups guard keeps
+  // short lines fully matched, and the surrounding words anchor long ones.
+  const isNameAt = (i) => {
+    const lead = pairs[i].raw.replace(/^[^A-Za-zÁÉÍÓÚÑÜáéíóúñü]+/, '');
+    return /^[A-ZÁÉÍÓÚÑÜ]/.test(lead);
+  };
+  const flagged = [];
   for (let i = 0; i < t.length;) {
     const y = _parseYear(t, i);
-    if (y) { groups.push([String(y.year)]); i = y.next; continue; } // "dos mil catorce" -> ['2014']
-    const w = t[i]; i++;
+    if (y) { flagged.push({ g: [String(y.year)], name: false }); i = y.next; continue; } // "dos mil catorce" -> ['2014']
+    const w = t[i]; const idx = i; i++;
     if (w.length < 2) continue;
     if (_FILLER.has(w)) continue;
     const numVal = _COMPOUND[w] ?? _TEENS[w] ?? _TENS[w] ?? _UNITS[w];
-    if (numVal != null) { groups.push([w, String(numVal)]); continue; } // standalone number + digit
-    groups.push([w]);
+    if (numVal != null) { flagged.push({ g: [w, String(numVal)], name: false }); continue; } // standalone number + digit
+    flagged.push({ g: [w], name: isNameAt(idx) });
   }
-  return groups;
+  const nonName = flagged.filter((x) => !x.name);
+  return (nonName.length >= 2 ? nonName : flagged).map((x) => x.g);
 }
 
 // `nearS` (optional) = the section's expected end in the ORIGINAL timeline

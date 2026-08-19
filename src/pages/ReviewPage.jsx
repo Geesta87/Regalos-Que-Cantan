@@ -6,6 +6,7 @@
 // (dark warm gradient, Montserrat, magenta CTA).
 import React, { useState } from 'react';
 import { Helmet } from 'react-helmet-async';
+import { CenzoSignature } from '../components/Cenzo';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -13,7 +14,7 @@ const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 function Star({ filled, size = 44 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true"
-      fill={filled ? '#fbbf24' : 'rgba(255,255,255,0.14)'}
+      fill={filled ? '#E8B44A' : 'rgba(255,255,255,0.14)'}
       style={{ transition: 'fill 0.15s, transform 0.15s', transform: filled ? 'scale(1.06)' : 'scale(1)' }}>
       <path d="M12 2.5l2.95 5.98 6.6.96-4.78 4.66 1.13 6.58L12 17.58l-5.9 3.1 1.13-6.58L2.45 9.44l6.6-.96L12 2.5z" />
     </svg>
@@ -106,9 +107,9 @@ export default function ReviewPage() {
             </p>
             <a href="/" style={{
               display: 'inline-block', marginTop: '22px', padding: '14px 26px',
-              background: 'linear-gradient(90deg, #e11d74, #c026d3)', color: 'white',
+              background: 'linear-gradient(90deg, #C9603F, #B62463)', color: 'white',
               borderRadius: '12px', fontSize: '14px', fontWeight: 700, textDecoration: 'none',
-              boxShadow: '0 4px 20px rgba(225,29,116,0.3)',
+              boxShadow: '0 4px 20px rgba(201,96,63,0.3)',
             }}>Crear otra canción</a>
           </div>
         ) : (
@@ -130,7 +131,7 @@ export default function ReviewPage() {
                 </button>
               ))}
             </div>
-            <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '12px', margin: '0 0 20px', minHeight: '16px' }}>
+            <p style={{ color: 'rgba(255,255,255,0.68)', fontSize: '12px', margin: '0 0 20px', minHeight: '16px' }}>
               {(hover || rating) === 0 ? 'Toca las estrellas' : ['', 'Muy mala', 'Mala', 'Regular', 'Buena', 'Increíble'][hover || rating]}
             </p>
 
@@ -168,17 +169,18 @@ export default function ReviewPage() {
             <button type="submit" disabled={!rating || status === 'sending'}
               style={{
                 width: '100%', padding: '16px',
-                background: !rating || status === 'sending' ? 'rgba(255,255,255,0.08)' : 'linear-gradient(90deg, #e11d74, #c026d3)',
+                background: !rating || status === 'sending' ? 'rgba(255,255,255,0.08)' : 'linear-gradient(90deg, #C9603F, #B62463)',
                 color: !rating || status === 'sending' ? 'rgba(255,255,255,0.4)' : 'white',
                 border: 'none', borderRadius: '12px', fontSize: '15px', fontWeight: 700,
                 cursor: !rating || status === 'sending' ? 'not-allowed' : 'pointer',
                 fontFamily: 'inherit', transition: 'all 0.2s',
-                boxShadow: !rating || status === 'sending' ? 'none' : '0 4px 20px rgba(225,29,116,0.3)',
+                boxShadow: !rating || status === 'sending' ? 'none' : '0 4px 20px rgba(201,96,63,0.3)',
               }}>
               {status === 'sending' ? 'Guardando…' : 'Enviar mi calificación'}
             </button>
           </form>
         )}
+        <CenzoSignature className="justify-center my-8" />
       </div>
     </>
   );

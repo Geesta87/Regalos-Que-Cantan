@@ -6,6 +6,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { buildUnsubscribeHeaders } from '../_shared/unsubscribe.ts';
 import Stripe from 'https://esm.sh/stripe@13.10.0?target=deno';
 import { buildEmailParts } from '../_shared/email.ts';
+import { renderEmail } from '../_shared/email-shell.ts';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY')!, {
   apiVersion: '2023-10-16',
@@ -327,7 +328,7 @@ async function sendEmail(
   return response;
 }
 
-// ── 3-song pack ("Paquete de 3 canciones") ─────────────────────────────────
+// ── Song packs ("Paquete de 3/5/10 canciones") ─────────────────────────────
 // Mint a memorable, unique code: BUYERFIRSTNAME-### — accent-stripped, A–Z
 // only, with a 3-digit number. Retries on collision against the coupons table.
 async function mintPackCode(supabase: any, rawName: string): Promise<string> {
@@ -346,30 +347,30 @@ async function mintPackCode(supabase: any, rawName: string): Promise<string> {
   return `${base}-${Date.now().toString().slice(-6)}`;
 }
 
-function getPack3EmailHtml(code: string, rawName: string): string {
+function getPackEmailHtml(code: string, rawName: string, songs: number): string {
   const firstName = (rawName || '').trim().split(/\s+/)[0] || 'Amigo';
   const createUrl = 'https://regalosquecantan.com/create/genre';
   return `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background:#181114; color:#ffffff; border-radius:16px; overflow:hidden;">
       <div style="background:linear-gradient(135deg,#f20d80,#a5085a); padding:28px 24px; text-align:center;">
         <h1 style="margin:0; font-size:22px; color:#fff;">¡Gracias por tu compra, ${firstName}! 🎵</h1>
-        <p style="margin:8px 0 0; color:#ffd9ec; font-size:14px;">Tu Paquete de 3 Canciones está listo</p>
+        <p style="margin:8px 0 0; color:#ffd9ec; font-size:14px;">Tu Paquete de ${songs} Canciones está listo</p>
       </div>
       <div style="padding:28px 24px;">
         <p style="font-size:15px; color:#e7e2e5; line-height:1.6; margin:0 0 18px;">
-          Este es tu código personal. Sirve para crear <strong>3 canciones personalizadas</strong> —
+          Este es tu código personal. Sirve para crear <strong>${songs} canciones personalizadas</strong> —
           una para cada persona que quieras sorprender, cuando tú quieras.
         </p>
         <div style="text-align:center; background:rgba(242,13,128,0.12); border:2px dashed #f20d80; border-radius:14px; padding:20px; margin:0 0 18px;">
           <p style="margin:0 0 6px; font-size:12px; letter-spacing:1px; color:#f9a8d4; font-weight:bold;">TU CÓDIGO</p>
           <p style="margin:0; font-size:30px; font-weight:800; color:#fff; letter-spacing:2px;">${code}</p>
-          <p style="margin:10px 0 0; font-size:13px; color:#bdb6ba;">Válido para 3 canciones · 12 meses</p>
+          <p style="margin:10px 0 0; font-size:13px; color:#bdb6ba;">Válido para ${songs} canciones · 12 meses</p>
         </div>
         <p style="font-size:14px; color:#e7e2e5; line-height:1.6; margin:0 0 10px;"><strong>Cómo usarlo:</strong></p>
         <ol style="font-size:14px; color:#cfc8cc; line-height:1.7; margin:0 0 22px; padding-left:20px;">
           <li>Crea tu canción en regalosquecantan.com (elige el género, el nombre y la historia).</li>
           <li>Al momento de pagar, escribe tu código <strong>${code}</strong>.</li>
-          <li>Esa canción te sale gratis. Repite hasta 3 veces — una por persona.</li>
+          <li>Esa canción te sale gratis. Repite hasta ${songs} veces — una por persona.</li>
         </ol>
         <div style="text-align:center;">
           <a href="${createUrl}" style="display:inline-block; background:#f20d80; color:#fff; text-decoration:none; font-weight:bold; font-size:16px; padding:14px 30px; border-radius:10px;">Crear mi primera canción 🎵</a>
@@ -466,90 +467,20 @@ function getAbandonedCheckoutEmailHtml(song: any, listenUrl: string) {
   const songTitle = song.song_title || `Canción para ${recipientName}`;
   const genre = song.genre || 'Musical';
   const occasion = song.occasion || 'Especial';
-  return `<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link href="https://fonts.googleapis.com/css2?family=Righteous&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
-</head>
-<body style="margin:0;padding:0;background-color:#1a0e08;font-family:'Nunito','Helvetica Neue',Arial,sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#1a0e08;padding:0;">
-    <tr><td align="center">
-      <table width="600" cellpadding="0" cellspacing="0" style="background-color:#1a0e08;">
-
-        <!-- Hero Section -->
-        <tr><td style="background:linear-gradient(180deg,#2a1408 0%,#1a0e08 100%);padding:50px 30px 30px;text-align:center;">
-          <p style="color:#ff6b35;font-size:42px;margin:0 0 16px;">&#127925;</p>
-          <h1 style="font-family:'Righteous',cursive;color:#ffffff;font-size:32px;margin:0 0 8px;font-weight:400;">${firstName}, tu canci&oacute;n</h1>
-          <h2 style="font-family:'Righteous',cursive;color:#ffffff;font-size:28px;margin:0 0 20px;font-weight:400;">para <span style="background:linear-gradient(135deg,#ff6b35,#ff8c42);padding:2px 12px;border-radius:8px;">${recipientName}</span> te espera</h2>
-          <p style="color:#c9b99a;font-size:15px;margin:0;line-height:1.7;">Notamos que no completaste tu compra.<br>Tu canci&oacute;n personalizada sigue lista para ti.</p>
-        </td></tr>
-
-        <!-- Song Card -->
-        <tr><td style="background-color:#1a0e08;padding:20px 30px;">
-          <table width="100%" cellpadding="0" cellspacing="0" style="border-radius:16px;overflow:hidden;">
-            <tr>
-              <td width="100" style="background:linear-gradient(135deg,#ff6b35 0%,#c2693a 100%);text-align:center;vertical-align:middle;padding:20px;">
-                <div style="width:50px;height:50px;background:rgba(255,255,255,0.2);border-radius:50%;margin:0 auto 8px;line-height:50px;font-size:24px;">&#9654;</div>
-                <p style="color:#ffffff;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:0;">LISTA</p>
-              </td>
-              <td style="background:linear-gradient(135deg,#2a1408 0%,#1a0e08 100%);padding:18px 20px;vertical-align:middle;">
-                <p style="color:#ff6b35;font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;margin:0 0 4px;">TU CANCI&Oacute;N PERSONALIZADA</p>
-                <p style="color:#ffffff;font-size:15px;font-weight:700;margin:0 0 6px;font-family:'Righteous',cursive;">${songTitle}</p>
-                <p style="color:#a67c52;font-size:12px;margin:0;">Para <strong style="color:#ffd23f;">${recipientName}</strong><br>
-                <span style="text-transform:capitalize;">${genre}</span> &middot; <span style="text-transform:capitalize;">${occasion}</span></p>
-              </td>
-            </tr>
-          </table>
-        </td></tr>
-
-        <!-- Listen CTA -->
-        <tr><td style="background-color:#1a0e08;padding:10px 30px 10px;text-align:center;">
-          <a href="${listenUrl}" style="display:inline-block;background:linear-gradient(135deg,#ff6b35 0%,#ff8c42 100%);color:#ffffff;padding:18px 44px;border-radius:50px;text-decoration:none;font-weight:800;font-size:18px;font-family:'Nunito','Helvetica Neue',Arial,sans-serif;box-shadow:0 4px 20px rgba(255,107,53,0.4);">
-            &#127911; Escuchar y Completar Compra
-          </a>
-        </td></tr>
-
-        <!-- Discount Section -->
-        <tr><td style="background-color:#1a0e08;padding:20px 30px;text-align:center;">
-          <table width="100%" cellpadding="0" cellspacing="0" style="border:2px dashed #ff6b35;border-radius:16px;overflow:hidden;">
-            <tr><td style="background:rgba(255,107,53,0.08);padding:24px 20px;text-align:center;">
-              <p style="color:#ffd23f;font-size:12px;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin:0 0 8px;">&#127873; REGALO EXCLUSIVO PARA TI</p>
-              <p style="font-family:'Righteous',cursive;color:#ff6b35;font-size:36px;margin:0 0 4px;font-weight:400;">10% OFF</p>
-              <p style="color:#c9b99a;font-size:14px;margin:0 0 12px;">Usa este c&oacute;digo al momento de pagar:</p>
-              <div style="display:inline-block;background:#2a1408;border:1px solid #ff6b35;border-radius:8px;padding:10px 24px;">
-                <span style="color:#ffffff;font-size:22px;font-weight:800;letter-spacing:4px;font-family:monospace;">VUELVE10</span>
-              </div>
-              <p style="color:#a67c52;font-size:12px;margin:12px 0 0;">V&aacute;lido por 24 horas &middot; Solo para esta canci&oacute;n</p>
-            </td></tr>
-          </table>
-        </td></tr>
-
-        <!-- Urgency -->
-        <tr><td style="background-color:#1a0e08;padding:10px 30px 20px;text-align:center;">
-          <p style="color:#c9b99a;font-size:14px;margin:0;line-height:1.6;">
-            &#9200; Las canciones se guardan por <strong style="color:#ffd23f;">tiempo limitado</strong>.<br>
-            No dejes pasar esta sorpresa &uacute;nica.
-          </p>
-        </td></tr>
-
-        <!-- Gradient Divider -->
-        <tr><td style="height:3px;background:linear-gradient(90deg,#ff6b35,#ffd23f,#ff2e88);font-size:0;line-height:0;">&nbsp;</td></tr>
-
-        <!-- Footer -->
-        <tr><td style="background-color:#1a0e08;padding:30px;text-align:center;">
-          <p style="color:#a67c52;font-size:12px;margin:0 0 10px;">&iquest;Preguntas? Escr&iacute;benos a<br>
-            <a href="mailto:hola@regalosquecantan.com" style="color:#ff6b35;font-weight:600;">hola@regalosquecantan.com</a>
-          </p>
-          <p style="color:#4a2c1a;font-size:11px;margin:0;">&copy; 2025 Regalos Que Cantan. Hecho con &#10084;&#65039; para ti.</p>
-        </td></tr>
-
-      </table>
-    </td></tr>
-  </table>
-</body>
-</html>`;
+  // Migrated to the shared brand shell (palette 'recovery'). listenUrl — which
+  // already carries &coupon=VUELVE10 — is UNCHANGED and passed straight through
+  // as ctaHref. sendEmail wraps this via buildEmailParts, so cfg.preheader unset.
+  return renderEmail({
+    palette: 'recovery',
+    hero: 'vinyl',
+    eyebrow: 'Tu canci&oacute;n te espera',
+    headline: `La canci&oacute;n de <span style="color:#f0a890;">${recipientName}</span> sigue lista.`,
+    sub: 'Notamos que no terminaste tu compra. Tu canci&oacute;n personalizada sigue esper&aacute;ndote.',
+    coupon: { code: 'VUELVE10', pct: '10%' },
+    ctaText: '&#9654;&nbsp;&nbsp;Escuchar y completar compra&nbsp;&nbsp;&#8594;',
+    ctaHref: listenUrl,
+    subcopy: 'Las canciones se guardan por tiempo limitado.',
+  });
 }
 
 // Email template for purchase confirmation (dark gradient design).
@@ -572,104 +503,32 @@ function getPurchaseEmailHtml(song: any, songIds: string[] = [song.id]) {
     ? `song_ids=${songIds.join(',')}`
     : `song_id=${song.id}`;
   const listenUrl = `https://regalosquecantan.com/listen?${listenParam}&utm_source=email&utm_medium=transactional&utm_campaign=purchase_confirmation`;
-  return `<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link href="https://fonts.googleapis.com/css2?family=Righteous&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
-</head>
-<body style="margin:0;padding:0;background-color:#1a0e08;font-family:'Nunito','Helvetica Neue',Arial,sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#1a0e08;padding:0;">
-    <tr><td align="center">
-      <table width="600" cellpadding="0" cellspacing="0" style="background-color:#1a0e08;">
-
-        <!-- Dark Hero Section -->
-        <tr><td style="background:linear-gradient(180deg,#2a1408 0%,#1a0e08 100%);padding:50px 30px 40px;text-align:center;">
-          <p style="color:#ff6b35;font-size:13px;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin:0 0 20px;">&#127881; COMPRA CONFIRMADA${isCombo ? ` &middot; ${songCount} CANCIONES` : ''}</p>
-          <h1 style="font-family:'Righteous',cursive;color:#ffffff;font-size:36px;margin:0 0 4px;font-weight:400;">Oye, ${firstName}...</h1>
-          <h2 style="font-family:'Righteous',cursive;color:#ffffff;font-size:32px;margin:0 0 24px;font-weight:400;">${isCombo ? `Tus <strong style="color:#ffd23f;">${songCount} canciones</strong> ya son` : 'Tu canci&oacute;n ya es'} <span style="background:linear-gradient(135deg,#ff6b35,#ff8c42);padding:2px 12px;border-radius:8px;">${isCombo ? 'tuyas.' : 'tuya.'}</span></h2>
-          <p style="color:#c9b99a;font-size:16px;margin:0;line-height:1.7;">${isCombo
-            ? `Letra, melod&iacute;a y emoci&oacute;n en <strong style="color:#ffd23f;">${songCount} versiones &uacute;nicas</strong> &mdash;<br>todas listas para llegar al coraz&oacute;n de <strong style="color:#ffd23f;">${recipientName}</strong>.`
-            : `Letra, melod&iacute;a y emoci&oacute;n &mdash; todo listo para<br>que llegue al coraz&oacute;n de <strong style="color:#ffd23f;">${recipientName}</strong>.`}</p>
-        </td></tr>
-
-        <!-- Download CTA Button -->
-        <tr><td style="background-color:#1a0e08;padding:10px 30px 16px;text-align:center;">
-          <a href="${listenUrl}" style="display:inline-block;background:linear-gradient(135deg,#ff6b35 0%,#ff8c42 100%);color:#ffffff;padding:18px 44px;border-radius:50px;text-decoration:none;font-weight:800;font-size:18px;font-family:'Nunito','Helvetica Neue',Arial,sans-serif;box-shadow:0 4px 20px rgba(255,107,53,0.4);">
-            &#127911; ${isCombo ? `Escuchar mis ${songCount} canciones` : 'Escuchar y Descargar'}
-          </a>
-        </td></tr>
-${isCombo ? `
-        <!-- Combo callout — flagged so 2-song bundle buyers don't think they only got one song -->
-        <tr><td style="background-color:#1a0e08;padding:0 30px 24px;">
-          <table width="100%" cellpadding="0" cellspacing="0" style="background:linear-gradient(135deg,rgba(255,107,53,0.12) 0%,rgba(255,46,136,0.12) 100%);border:1.5px solid rgba(255,107,53,0.4);border-radius:16px;">
-            <tr><td style="padding:18px 22px;text-align:center;">
-              <p style="color:#ffd23f;font-size:11px;font-weight:800;letter-spacing:2px;text-transform:uppercase;margin:0 0 6px;">&#127911;&#127911; PAQUETE DE ${songCount} CANCIONES</p>
-              <p style="color:#ffffff;font-size:14px;font-weight:600;margin:0;line-height:1.5;">El bot&oacute;n de arriba abre <strong style="color:#ff8c42;">tus ${songCount} canciones</strong> en una sola p&aacute;gina.<br><span style="color:#c9b99a;font-weight:400;font-size:13px;">Usa los botones &laquo;Canci&oacute;n 1&raquo; / &laquo;Canci&oacute;n 2&raquo; arriba del reproductor para alternar entre ellas.</span></p>
-            </td></tr>
-          </table>
-        </td></tr>
-` : ''}
-        <tr><td style="background-color:#1a0e08;padding:0 30px 30px;text-align:center;">
-          <p style="color:#a67c52;font-size:13px;margin:0;">&#128274; Este enlace no expira &middot; ${isCombo ? `Las ${songCount} canciones est&aacute;n incluidas` : 'Escucha y descarga cuando quieras'}</p>
-        </td></tr>
-
-        <!-- Gradient Divider -->
-        <tr><td style="height:3px;background:linear-gradient(90deg,#ff6b35,#ffd23f,#ff2e88);font-size:0;line-height:0;">&nbsp;</td></tr>
-
-        <!-- Song Preview Section -->
-        <tr><td style="background-color:#1a0e08;padding:40px 30px 10px;text-align:center;">
-          <p style="color:#ff6b35;font-size:13px;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin:0 0 12px;">&#127911; ${isCombo ? `TUS ${songCount} CANCIONES COMPRADAS` : 'TU CANCI&Oacute;N COMPRADA'}</p>
-          <h3 style="font-family:'Righteous',cursive;color:#ffffff;font-size:24px;margin:0 0 24px;font-weight:400;">${isCombo ? `${songCount} canciones, un solo enlace` : 'Este regalo tiene voz propia'}</h3>
-        </td></tr>
-
-        <!-- Song Card -->
-        <tr><td style="background-color:#1a0e08;padding:0 30px 30px;">
-          <table width="100%" cellpadding="0" cellspacing="0" style="border-radius:16px;overflow:hidden;">
-            <tr>
-              <!-- Play Button Column -->
-              <td width="120" style="background:linear-gradient(135deg,#ff6b35 0%,#c2693a 100%);text-align:center;vertical-align:middle;padding:20px;">
-                <div style="width:50px;height:50px;background:rgba(255,255,255,0.2);border-radius:50%;margin:0 auto 8px;line-height:50px;font-size:24px;">&#9654;</div>
-                <p style="color:#ffffff;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:0;">${isCombo ? `${songCount} CANCIONES` : 'COMPRADA'}</p>
-              </td>
-              <!-- Song Info Column -->
-              <td style="background:linear-gradient(135deg,#2a1408 0%,#1a0e08 100%);padding:20px 24px;vertical-align:middle;">
-                <p style="color:#ff6b35;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;margin:0 0 6px;">${isCombo ? `TUS ${songCount} CANCIONES PERSONALIZADAS` : 'TU CANCI&Oacute;N PERSONALIZADA'}</p>
-                <p style="color:#ffffff;font-size:16px;font-weight:700;margin:0 0 8px;font-family:'Righteous',cursive;">${songTitle}</p>
-                <p style="color:#a67c52;font-size:13px;margin:0 0 12px;">Para <strong style="color:#ffd23f;">${recipientName}</strong> &middot; De: ${senderName}<br>Estilo: <span style="text-transform:capitalize;">${genre}</span> &middot; Ocasi&oacute;n: <span style="text-transform:capitalize;">${occasion}</span>${isCombo ? `<br><strong style="color:#ffd23f;">${songCount} versiones &uacute;nicas en el mismo enlace</strong>` : ''}</p>
-                <!-- Mini Waveform -->
-                <span style="display:inline-block;width:4px;height:14px;background:#ff6b35;border-radius:2px;margin:0 1px;"></span>
-                <span style="display:inline-block;width:4px;height:22px;background:#ff8c42;border-radius:2px;margin:0 1px;"></span>
-                <span style="display:inline-block;width:4px;height:10px;background:#ffd23f;border-radius:2px;margin:0 1px;"></span>
-                <span style="display:inline-block;width:4px;height:26px;background:#ff6b35;border-radius:2px;margin:0 1px;"></span>
-                <span style="display:inline-block;width:4px;height:16px;background:#ff2e88;border-radius:2px;margin:0 1px;"></span>
-              </td>
-            </tr>
-          </table>
-        </td></tr>
-
-        <!-- Share Section -->
-        <tr><td style="background-color:#1a0e08;padding:0 30px 30px;text-align:center;">
-          <p style="color:#c9b99a;font-size:15px;margin:0;">&iquest;Te gust&oacute;? Sorprende a m&aacute;s personas en <a href="https://regalosquecantan.com" style="color:#ff6b35;font-weight:700;">regalosquecantan.com</a></p>
-        </td></tr>
-
-        <!-- Gradient Divider -->
-        <tr><td style="height:3px;background:linear-gradient(90deg,#ff6b35,#ffd23f,#ff2e88);font-size:0;line-height:0;">&nbsp;</td></tr>
-
-        <!-- Footer -->
-        <tr><td style="background-color:#1a0e08;padding:30px;text-align:center;">
-          <p style="color:#a67c52;font-size:12px;margin:0 0 10px;">&iquest;Preguntas? Escr&iacute;benos a<br>
-            <a href="mailto:hola@regalosquecantan.com" style="color:#ff6b35;font-weight:600;">hola@regalosquecantan.com</a>
-          </p>
-          <p style="color:#4a2c1a;font-size:11px;margin:0;">&copy; 2025 Regalos Que Cantan. Hecho con &#10084;&#65039; para ti.</p>
-        </td></tr>
-
-      </table>
-    </td></tr>
-  </table>
-</body>
-</html>`;
+  // Migrated to the shared brand shell (palette 'confirm'). listenUrl is
+  // UNCHANGED (same /listen purchase_confirmation link, payment-gated) and passed
+  // straight through as ctaHref. sendEmail wraps via buildEmailParts → no cfg.preheader.
+  return renderEmail({
+    palette: 'confirm',
+    hero: 'vinyl',
+    eyebrow: isCombo ? `Compra confirmada &middot; ${songCount} canciones` : 'Compra confirmada',
+    headline: isCombo
+      ? `Tus <span style="color:#8fe6b8;">${songCount} canciones</span> ya son tuyas.`
+      : `La canci&oacute;n de <span style="color:#8fe6b8;">${recipientName}</span> ya es tuya.`,
+    sub: isCombo
+      ? `Letra, melod&iacute;a y emoci&oacute;n en ${songCount} versiones &uacute;nicas &mdash; todas listas para llegar al coraz&oacute;n de ${recipientName}. Usa los botones &laquo;Canci&oacute;n 1 / 2&raquo; para alternar.`
+      : `Letra, melod&iacute;a y emoci&oacute;n &mdash; todo listo para que llegue al coraz&oacute;n de ${recipientName}.`,
+    credits: [
+      { label: 'Para', value: recipientName },
+      { label: 'De', value: senderName },
+      { label: 'Estilo', value: genre },
+    ],
+    ctaText: isCombo
+      ? `&#9654;&nbsp;&nbsp;Escuchar mis ${songCount} canciones&nbsp;&nbsp;&#8594;`
+      : '&#9654;&nbsp;&nbsp;Escuchar y descargar&nbsp;&nbsp;&#8594;',
+    ctaHref: listenUrl,
+    subcopy: isCombo
+      ? `Las ${songCount} canciones est&aacute;n incluidas &middot; el enlace no expira.`
+      : 'Tu enlace no expira &mdash; escucha y descarga cuando quieras.',
+  });
 }
 
 serve(async (req) => {
@@ -780,14 +639,16 @@ serve(async (req) => {
       }
 
       // ─────────────────────────────────────────────────────────────────────
-      // 3-SONG PACK ($49.99) — "Paquete de 3 canciones" bought from the store.
-      // create-checkout tags it metadata.type='pack3' (no songId). On payment
-      // we mint a personal NOMBRE-### coupon worth 3 free single-song
-      // redemptions (12-mo expiry) and email it. Idempotent on session.id so a
-      // retried webhook never mints a second code. MUST return early so it is
-      // not treated as a song payment.
+      // SONG PACKS — "Paquete de 3/5/10 canciones" bought from the store.
+      // create-checkout tags it metadata.type='pack3'|'pack5'|'pack10' plus
+      // pack_songs (no songId). On payment we mint a personal NOMBRE-###
+      // coupon worth N free single-song redemptions (12-mo expiry) and email
+      // it. Idempotent on session.id so a retried webhook never mints a
+      // second code. MUST return early so it is not treated as a song payment.
       // ─────────────────────────────────────────────────────────────────────
-      if (session.metadata?.type === 'pack3') {
+      const packType = session.metadata?.type || '';
+      if (/^pack\d+$/.test(packType)) {
+        const packSongs = parseInt(session.metadata?.pack_songs || packType.slice(4), 10) || 3;
         const packEmail = (session.metadata?.email || session.customer_email || '').trim().toLowerCase();
         const packName = (session.metadata?.buyer_name || session.customer_details?.name || '').trim();
         try {
@@ -806,7 +667,7 @@ serve(async (req) => {
               active: true,
               type: 'free',
               discount: 100,
-              max_uses: 3,
+              max_uses: packSongs,
               times_used: 0,
               expires_at: expiresAt,
               single_song_only: true,
@@ -817,17 +678,17 @@ serve(async (req) => {
           if (packEmail) {
             await sendEmail(
               packEmail,
-              'Tu código de 3 canciones — RegalosQueCantan 🎵',
-              getPack3EmailHtml(code, packName),
-              'pack3_purchase',
-              `Tu código ${code} sirve para crear 3 canciones personalizadas.`,
+              `Tu código de ${packSongs} canciones — RegalosQueCantan 🎵`,
+              getPackEmailHtml(code, packName, packSongs),
+              `${packType}_purchase`,
+              `Tu código ${code} sirve para crear ${packSongs} canciones personalizadas.`,
             );
           }
-          console.log(`✅ [pack3] minted ${code} for ${packEmail || '(no email)'} (session ${session.id})`);
+          console.log(`✅ [${packType}] minted ${code} for ${packEmail || '(no email)'} (session ${session.id})`);
         } catch (e: any) {
-          console.error('[pack3] failed to mint/email code:', e?.message || e);
+          console.error(`[${packType}] failed to mint/email code:`, e?.message || e);
         }
-        return new Response(JSON.stringify({ received: true, status: 'pack3_processed' }), { headers: { 'Content-Type': 'application/json' }, status: 200 });
+        return new Response(JSON.stringify({ received: true, status: `${packType}_processed` }), { headers: { 'Content-Type': 'application/json' }, status: 200 });
       }
 
       const songIdMeta = session.metadata?.songId;

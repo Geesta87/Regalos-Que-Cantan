@@ -3,6 +3,7 @@ import { AppContext } from '../App';
 import SocialProofToast from '../components/SocialProofToast';
 import { trackStep } from '../services/tracking';
 import genres from '../config/genres';
+import { CenzoMark, CenzoSignature } from '../components/Cenzo';
 
 // ============================================
 // BACHATA — dedicated landing page
@@ -47,7 +48,7 @@ const faqs = [
 ];
 
 // Photo frame with warm gradient fallback (image drops in later, no layout shift)
-function PhotoFrame({ src, alt, className = '', gradient = 'linear-gradient(135deg, #4c0519 0%, #9f1239 45%, #b45309 100%)', children }) {
+function PhotoFrame({ src, alt, className = '', gradient = 'linear-gradient(135deg, #4A1030 0%, #96204F 45%, #C98A1B 100%)', children }) {
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
   return (
@@ -84,11 +85,11 @@ function ReactionVideo() {
     if (!v.muted) v.play().catch(() => {});
   };
   return (
-    <section className="bg-gradient-to-b from-[#0f0a0c] to-[#0a0708] pt-8 pb-6 px-6">
+    <section className="bg-gradient-to-b from-[#191A45] to-[#191A45] pt-8 pb-6 px-6">
       <div className="max-w-xs mx-auto text-center">
-        <span className="text-rose-400 uppercase tracking-[0.3em] text-[11px] font-bold">💕 Reacción Real</span>
+        <span className="text-terra uppercase tracking-[0.3em] text-[11px] font-bold">💕 Reacción Real</span>
         <p className="text-white/60 text-sm mt-2 mb-4">Mira lo que pasa cuando escuchan su canción</p>
-        <div className="relative rounded-[28px] overflow-hidden border border-rose-500/30 shadow-2xl shadow-black/50 bg-black">
+        <div className="relative rounded-[28px] overflow-hidden border border-terra-deep/30 shadow-2xl shadow-black/50 bg-black">
           <video
             ref={ref}
             src="/videos/testimonial3.mp4"
@@ -155,11 +156,11 @@ function MedleyPlayer() {
   return (
     <div className="mx-auto mt-6 max-w-md">
       <audio ref={ref} src="/samples/bachata/bachata-medley.mp3" preload="metadata" />
-      <div className="flex items-center gap-4 rounded-2xl border border-rose-500/30 bg-black/40 backdrop-blur px-5 py-4 shadow-lg shadow-black/30">
+      <div className="flex items-center gap-4 rounded-2xl border border-terra-deep/30 bg-black/40 backdrop-blur px-5 py-4 shadow-lg shadow-black/30">
         <button
           onClick={toggle}
           aria-label={playing ? 'Pausar muestra' : 'Reproducir muestra'}
-          className="w-12 h-12 shrink-0 rounded-full bg-rose-500 hover:bg-rose-400 flex items-center justify-center shadow-lg shadow-rose-500/30 transition-all active:scale-95"
+          className="w-12 h-12 shrink-0 rounded-full bg-terra-deep hover:bg-terra flex items-center justify-center shadow-lg shadow-terra-deep/30 transition-all active:scale-95"
         >
           <span className="material-symbols-outlined text-white text-2xl" style={{ fontVariationSettings: "'FILL' 1" }}>
             {playing ? 'pause' : 'play_arrow'}
@@ -168,10 +169,10 @@ function MedleyPlayer() {
         <div className="flex-1 min-w-0 text-left">
           <div className="flex items-center justify-between mb-1.5">
             <span className="text-white text-sm font-bold">🎧 Escucha una muestra</span>
-            <span className="text-white/40 text-[11px] font-mono">{fmt(t)} / {fmt(dur)}</span>
+            <span className="text-white/55 text-[11px] font-mono">{fmt(t)} / {fmt(dur)}</span>
           </div>
           <div onClick={seek} className="h-2 bg-white/10 rounded-full overflow-hidden cursor-pointer">
-            <div className="h-full bg-gradient-to-r from-rose-500 to-pink-400 rounded-full transition-[width] duration-200" style={{ width: `${pct}%` }} />
+            <div className="h-full bg-gradient-to-r from-terra-deep to-magenta rounded-full transition-[width] duration-200" style={{ width: `${pct}%` }} />
           </div>
         </div>
       </div>
@@ -183,7 +184,7 @@ function StarRating({ rating }) {
   return (
     <div className="flex gap-0.5">
       {[...Array(5)].map((_, i) => (
-        <span key={i} className={`text-lg ${i < rating ? 'text-rose-400' : 'text-white/20'}`}>★</span>
+        <span key={i} className={`text-lg ${i < rating ? 'text-terra' : 'text-white/55'}`}>★</span>
       ))}
     </div>
   );
@@ -194,7 +195,7 @@ function FAQItem({ question, answer, isOpen, onClick }) {
     <div className="border border-white/10 rounded-xl overflow-hidden">
       <button onClick={onClick} className="w-full p-5 flex items-center justify-between text-left bg-white/[0.02] hover:bg-white/[0.05] transition-colors">
         <span className="font-semibold text-white pr-4">{question}</span>
-        <span className={`material-symbols-outlined text-rose-400 transition-transform ${isOpen ? 'rotate-180' : ''}`}>expand_more</span>
+        <span className={`material-symbols-outlined text-terra transition-transform ${isOpen ? 'rotate-180' : ''}`}>expand_more</span>
       </button>
       {isOpen && <div className="px-5 pb-5 text-white/70">{answer}</div>}
     </div>
@@ -272,7 +273,7 @@ export default function BachataLanding() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0a0708] flex flex-col">
+    <div className="night-sky min-h-screen flex flex-col">
       <style>{`
         @keyframes btnGlowRose {
           0%, 100% { box-shadow: 0 0 20px rgba(225,29,72,0.4), 0 0 40px rgba(225,29,72,0.2); }
@@ -288,12 +289,12 @@ export default function BachataLanding() {
       <SocialProofToast />
 
       {/* ==================== HEADER ==================== */}
-      <header className="bg-[#0a0708]/80 backdrop-blur-md py-4 px-6 md:px-12 border-b border-white/5 sticky top-0 z-40">
+      <header className="bg-[#191A45]/80 backdrop-blur-md py-4 px-6 md:px-12 border-b border-white/5 sticky top-0 z-40">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="cursor-pointer" onClick={() => navigateTo('landing')}>
-            <h2 className="font-display text-white text-xl md:text-2xl font-medium tracking-tight">RegalosQueCantan</h2>
+            <CenzoMark size={44} /><h2 className="font-display text-white text-xl md:text-2xl font-medium tracking-tight">RegalosQueCantan</h2>
           </div>
-          <button onClick={handleCreate} className="bg-rose-500 hover:bg-rose-400 text-white px-5 py-2 rounded-full text-sm font-bold transition-all">
+          <button onClick={handleCreate} className="bg-terra-deep hover:bg-terra text-white px-5 py-2 rounded-full text-sm font-bold transition-all">
             🌹 Crear Mi Bachata
           </button>
         </div>
@@ -307,7 +308,7 @@ export default function BachataLanding() {
             src="/images/bachata/hero.jpg"
             alt="Pareja bailando bachata en un ambiente romántico"
             className="w-full h-full"
-            gradient="linear-gradient(135deg, #1a0410 0%, #4c0519 40%, #7c2d12 100%)"
+            gradient="linear-gradient(135deg, #1E1140 0%, #4A1030 40%, #B44F35 100%)"
           />
         </div>
         {/* Cinematic overlay — light enough to show the photo, dark at the base to blend into the next section */}
@@ -323,7 +324,7 @@ export default function BachataLanding() {
           </span>
           <h1 className="text-white text-4xl md:text-6xl lg:text-7xl font-black leading-tight tracking-tighter font-display mb-6" style={{ textShadow: '0 4px 24px rgba(0,0,0,0.6)' }}>
             Regala Una Bachata <br />
-            <span className="italic text-transparent bg-clip-text bg-gradient-to-r from-rose-400 via-pink-200 to-amber-300">
+            <span className="italic text-transparent bg-clip-text bg-gradient-to-r from-terra via-magenta-soft to-marigold-soft">
               Personalizada
             </span>
           </h1>
@@ -333,7 +334,7 @@ export default function BachataLanding() {
           </p>
           <button
             onClick={handleCreate}
-            className="group relative inline-flex cursor-pointer items-center justify-center overflow-hidden rounded-full h-16 px-10 bg-rose-600 text-white text-lg font-bold shadow-2xl shadow-rose-500/30 transition-all hover:scale-105 active:scale-95"
+            className="group relative inline-flex cursor-pointer items-center justify-center overflow-hidden rounded-full h-16 px-10 bg-terra-deep text-white text-lg font-bold shadow-2xl shadow-terra-deep/30 transition-all hover:scale-105 active:scale-95"
             style={{ animation: 'btnGlowRose 2s ease-in-out infinite' }}
           >
             <span className="relative z-10">🌹 Crear Mi Bachata — $29.99</span>
@@ -344,14 +345,14 @@ export default function BachataLanding() {
           <MedleyPlayer />
 
           <div className="mt-5 flex flex-wrap justify-center items-center gap-4">
-            <span className="inline-flex items-center gap-2 bg-rose-500 text-white rounded-full px-5 py-2 text-xs font-bold">
+            <span className="inline-flex items-center gap-2 bg-terra-deep text-white rounded-full px-5 py-2 text-xs font-bold">
               ⚡ Lista en ~3 minutos · Entrega instantánea
             </span>
             <span className="text-sm text-white/60">
-              ✨ <span className="line-through text-white/30">$79.99</span> <span className="text-white font-extrabold text-base">$29.99</span> · Oferta por tiempo limitado · Preview gratis ✨
+              ✨ <span className="line-through text-white/50">$79.99</span> <span className="text-white font-extrabold text-base">$29.99</span> · Oferta por tiempo limitado · Preview gratis ✨
             </span>
           </div>
-          <p className="mt-3 text-white/40 text-sm">✓ 2 versiones únicas • ✓ Letra personalizada • ✓ Descarga MP3</p>
+          <p className="mt-3 text-white/55 text-sm">✓ 2 versiones únicas • ✓ Letra personalizada • ✓ Descarga MP3</p>
         </div>
       </section>
 
@@ -359,14 +360,14 @@ export default function BachataLanding() {
       <ReactionVideo />
 
       {/* ==================== 2. STYLE PICKER ==================== */}
-      <section ref={styleRef} className="py-16 px-6 bg-[#0f0a0c]">
+      <section ref={styleRef} className="py-16 px-6 bg-[#191A45]">
         <div className="max-w-4xl mx-auto">
           <div className="flex items-center justify-center gap-3 mb-6">
-            <div className="flex items-center justify-center w-10 h-10 rounded-full bg-rose-500 text-white font-black text-lg">1</div>
+            <div className="flex items-center justify-center w-10 h-10 rounded-full bg-terra-deep text-white font-black text-lg">1</div>
             <div className="h-[2px] w-12 bg-white/10"></div>
-            <div className="flex items-center justify-center w-10 h-10 rounded-full bg-white/10 text-white/30 font-bold text-lg">2</div>
+            <div className="flex items-center justify-center w-10 h-10 rounded-full bg-white/10 text-white/50 font-bold text-lg">2</div>
             <div className="h-[2px] w-12 bg-white/10"></div>
-            <div className="flex items-center justify-center w-10 h-10 rounded-full bg-white/10 text-white/30 font-bold text-lg">3</div>
+            <div className="flex items-center justify-center w-10 h-10 rounded-full bg-white/10 text-white/50 font-bold text-lg">3</div>
           </div>
           <div className={`text-center mb-8 transition-all duration-300 ${styleError && !selectedStyle ? 'animate-pulse' : ''}`}>
             <h2 className="text-white text-3xl md:text-4xl font-black">Paso 1: Elige Tu Estilo de Bachata</h2>
@@ -389,21 +390,21 @@ export default function BachataLanding() {
                 }}
                 className={`relative rounded-2xl p-6 text-center transition-all duration-300 border-2 ${
                   selectedStyle?.id === style.id
-                    ? 'border-rose-400 bg-rose-500/15 scale-[1.03] shadow-xl shadow-rose-500/25 ring-2 ring-rose-400/30'
+                    ? 'border-terra bg-terra-deep/15 scale-[1.03] shadow-xl shadow-terra-deep/25 ring-2 ring-terra/30'
                     : styleError && !selectedStyle
-                    ? 'border-rose-400 bg-rose-500/[0.08] scale-[1.02]'
-                    : 'border-white/10 bg-white/[0.03] hover:border-rose-500/40 hover:bg-white/[0.06]'
+                    ? 'border-terra bg-terra-deep/[0.08] scale-[1.02]'
+                    : 'border-white/10 bg-white/[0.03] hover:border-terra-deep/40 hover:bg-white/[0.06]'
                 }`}
                 style={styleError && !selectedStyle ? { animation: 'cardGlowPulse 1.2s ease-in-out infinite' } : undefined}
               >
                 {style.popular && (
-                  <div className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-rose-500 text-white text-[10px] font-black px-3 py-0.5 rounded-full shadow-lg">POPULAR</div>
+                  <div className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-terra-deep text-white text-[10px] font-black px-3 py-0.5 rounded-full shadow-lg">POPULAR</div>
                 )}
                 <div className="text-4xl mb-2">{style.emoji}</div>
                 <div className="text-white font-bold text-base">{style.name}</div>
-                <div className="text-white/40 text-xs mt-1 leading-tight">{style.desc}</div>
+                <div className="text-white/55 text-xs mt-1 leading-tight">{style.desc}</div>
                 {selectedStyle?.id === style.id ? (
-                  <div className="absolute top-2 right-2 w-6 h-6 bg-rose-400 rounded-full flex items-center justify-center shadow-lg">
+                  <div className="absolute top-2 right-2 w-6 h-6 bg-terra rounded-full flex items-center justify-center shadow-lg">
                     <span className="text-white text-sm font-bold">✓</span>
                   </div>
                 ) : (
@@ -416,7 +417,7 @@ export default function BachataLanding() {
             <button
               onClick={handleCreate}
               className={`inline-flex items-center gap-2 font-bold px-10 py-4 rounded-full text-lg transition-all shadow-lg ${
-                selectedStyle ? 'bg-rose-500 hover:bg-rose-400 text-white hover:scale-105 active:scale-95 shadow-rose-500/30' : 'bg-white/10 text-white/40 cursor-default'
+                selectedStyle ? 'bg-terra-deep hover:bg-terra text-white hover:scale-105 active:scale-95 shadow-terra-deep/30' : 'bg-white/10 text-white/55 cursor-default'
               }`}
             >
               {selectedStyle ? `🌹 Crear Bachata ${selectedStyle.name} — $29.99` : '👆 Selecciona un estilo arriba'}
@@ -426,30 +427,30 @@ export default function BachataLanding() {
       </section>
 
       {/* ==================== 3. PHOTO STORY STRIP ==================== */}
-      <section className="py-16 px-6 bg-[#0a0708]">
+      <section className="py-16 px-6 bg-[#191A45]">
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-10">
-            <span className="text-rose-400 uppercase tracking-[0.3em] text-xs font-bold">💃 La Vibra</span>
+            <span className="text-terra uppercase tracking-[0.3em] text-xs font-bold">💃 La Vibra</span>
             <h2 className="text-white text-3xl md:text-4xl font-black mt-3">El Sonido Que Enamora</h2>
             <p className="text-white/60 mt-2 max-w-xl mx-auto">Guitarra requinteada, bongós y güira — el alma de República Dominicana en una canción hecha para tu persona especial.</p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
             <PhotoFrame src="/images/bachata/couple-dance.jpg" alt="Pareja bailando bachata pegados" className="rounded-2xl aspect-[4/5] border border-white/10"
-              gradient="linear-gradient(135deg, #4c0519 0%, #be123c 100%)">
+              gradient="linear-gradient(135deg, #4A1030 0%, #B62463 100%)">
               <div className="absolute inset-x-0 bottom-0 p-5 bg-gradient-to-t from-black/80 to-transparent">
                 <p className="text-white font-bold text-lg">Para bailar pegados</p>
                 <p className="text-white/60 text-sm">Ese momento de los dos</p>
               </div>
             </PhotoFrame>
             <PhotoFrame src="/images/bachata/guitar.jpg" alt="Guitarra requinto y bongós de bachata" className="rounded-2xl aspect-[4/5] border border-white/10 md:mt-8"
-              gradient="linear-gradient(135deg, #7c2d12 0%, #b45309 100%)">
+              gradient="linear-gradient(135deg, #B44F35 0%, #C98A1B 100%)">
               <div className="absolute inset-x-0 bottom-0 p-5 bg-gradient-to-t from-black/80 to-transparent">
                 <p className="text-white font-bold text-lg">Sonido auténtico</p>
                 <p className="text-white/60 text-sm">Requinto · bongó · güira</p>
               </div>
             </PhotoFrame>
             <PhotoFrame src="/images/bachata/reaction.jpg" alt="Reacción emotiva al escuchar su bachata" className="rounded-2xl aspect-[4/5] border border-white/10"
-              gradient="linear-gradient(135deg, #500724 0%, #9d174d 100%)">
+              gradient="linear-gradient(135deg, #4A1030 0%, #B62463 100%)">
               <div className="absolute inset-x-0 bottom-0 p-5 bg-gradient-to-t from-black/80 to-transparent">
                 <p className="text-white font-bold text-lg">Su reacción</p>
                 <p className="text-white/60 text-sm">Cuando escucha su nombre</p>
@@ -460,10 +461,10 @@ export default function BachataLanding() {
       </section>
 
       {/* ==================== 4. AUDIO SAMPLES ==================== */}
-      <section className="py-16 px-6 bg-[#0f0a0c]">
+      <section className="py-16 px-6 bg-[#191A45]">
         <div className="max-w-4xl mx-auto">
           <div className="text-center mb-10">
-            <span className="text-rose-400 uppercase tracking-[0.3em] text-xs font-bold">🎧 Escucha Ejemplos</span>
+            <span className="text-terra uppercase tracking-[0.3em] text-xs font-bold">🎧 Escucha Ejemplos</span>
             <h2 className="text-white text-3xl md:text-4xl font-black mt-3">Así Suenan Nuestras Bachatas</h2>
             <p className="text-white/60 mt-2">Canciones reales creadas para clientes</p>
           </div>
@@ -472,11 +473,11 @@ export default function BachataLanding() {
               const isPlaying = playingId === sample.id;
               const progress = isPlaying && duration > 0 ? (currentTime / duration) * 100 : 0;
               return (
-                <div key={sample.id} className={`rounded-2xl border transition-all duration-300 overflow-hidden ${isPlaying ? 'border-rose-400/60 bg-rose-500/10' : 'border-white/10 bg-white/[0.03] hover:border-rose-500/30'}`}>
+                <div key={sample.id} className={`rounded-2xl border transition-all duration-300 overflow-hidden ${isPlaying ? 'border-terra/60 bg-terra-deep/10' : 'border-white/10 bg-white/[0.03] hover:border-terra-deep/30'}`}>
                   <div className="p-5">
                     <div className="flex items-center gap-4">
                       <button onClick={() => isPlaying ? handlePause() : handlePlay(sample)}
-                        className={`w-14 h-14 rounded-full flex items-center justify-center shrink-0 transition-all ${isPlaying ? 'bg-rose-500 scale-110' : 'bg-white/10 hover:bg-rose-500/30'}`}>
+                        className={`w-14 h-14 rounded-full flex items-center justify-center shrink-0 transition-all ${isPlaying ? 'bg-terra-deep scale-110' : 'bg-white/10 hover:bg-terra-deep/30'}`}>
                         <span className="material-symbols-outlined text-white text-2xl" style={{ fontVariationSettings: "'FILL' 1" }}>{isPlaying ? 'pause' : 'play_arrow'}</span>
                       </button>
                       <div className="flex-1 min-w-0">
@@ -484,35 +485,35 @@ export default function BachataLanding() {
                           <span className="text-xl">{sample.emoji}</span>
                           <h4 className="font-bold text-white text-sm truncate">{sample.title}</h4>
                         </div>
-                        <p className="text-rose-400 text-xs font-semibold mt-0.5">{sample.tag}</p>
+                        <p className="text-terra text-xs font-semibold mt-0.5">{sample.tag}</p>
                       </div>
                     </div>
                     <div className="mt-4 flex items-center gap-2">
                       <div className="flex-1 h-1.5 bg-white/10 rounded-full overflow-hidden">
-                        <div className="h-full bg-rose-400 rounded-full transition-all duration-200" style={{ width: `${progress}%` }} />
+                        <div className="h-full bg-terra rounded-full transition-all duration-200" style={{ width: `${progress}%` }} />
                       </div>
-                      <span className="text-white/40 text-[10px] font-mono">{isPlaying ? `${Math.floor(currentTime)}s` : '1:00'}</span>
+                      <span className="text-white/55 text-[10px] font-mono">{isPlaying ? `${Math.floor(currentTime)}s` : '1:00'}</span>
                     </div>
                   </div>
                   {isPlaying && (
-                    <div className="bg-rose-500/10 px-5 py-2 flex items-center gap-2 border-t border-rose-500/20">
-                      <span className="w-2 h-2 bg-rose-400 rounded-full animate-pulse" />
-                      <span className="text-rose-400 text-xs font-bold">Reproduciendo</span>
+                    <div className="bg-terra-deep/10 px-5 py-2 flex items-center gap-2 border-t border-terra-deep/20">
+                      <span className="w-2 h-2 bg-terra rounded-full animate-pulse" />
+                      <span className="text-terra text-xs font-bold">Reproduciendo</span>
                     </div>
                   )}
                 </div>
               );
             })}
           </div>
-          <p className="text-center text-white/30 text-xs mt-4">* Nombres cambiados por privacidad</p>
+          <p className="text-center text-white/50 text-xs mt-4">* Nombres cambiados por privacidad</p>
         </div>
       </section>
 
       {/* ==================== 5. HOW IT WORKS ==================== */}
-      <section className="py-16 px-6 bg-[#0a0708]">
+      <section className="py-16 px-6 bg-[#191A45]">
         <div className="max-w-4xl mx-auto">
           <div className="text-center mb-12">
-            <span className="text-rose-400 uppercase tracking-[0.3em] text-xs font-bold">📝 Cómo Funciona</span>
+            <span className="text-terra uppercase tracking-[0.3em] text-xs font-bold">📝 Cómo Funciona</span>
             <h2 className="text-white text-3xl md:text-4xl font-black mt-3">3 Pasos Simples</h2>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
@@ -522,15 +523,15 @@ export default function BachataLanding() {
               { icon: '🎶', step: '3', title: 'Recibe Tu Bachata', desc: 'En ~3 min recibes 2 versiones únicas en MP3 de alta calidad.' }
             ].map((item) => (
               <div key={item.step} className="text-center">
-                <div className="w-20 h-20 mx-auto mb-4 rounded-2xl bg-rose-500/15 border border-rose-500/20 flex items-center justify-center text-4xl">{item.icon}</div>
-                <div className="text-rose-400 font-bold text-sm mb-2">PASO {item.step}</div>
+                <div className="w-20 h-20 mx-auto mb-4 rounded-2xl bg-terra-deep/15 border border-terra-deep/20 flex items-center justify-center text-4xl">{item.icon}</div>
+                <div className="text-terra font-bold text-sm mb-2">PASO {item.step}</div>
                 <h3 className="text-white text-xl font-bold mb-2">{item.title}</h3>
                 <p className="text-white/60">{item.desc}</p>
               </div>
             ))}
           </div>
           <div className="text-center mt-10">
-            <button onClick={handleCreate} className="inline-flex items-center gap-2 bg-gradient-to-r from-rose-600 to-pink-500 text-white font-bold px-10 py-4 rounded-full text-lg transition-all hover:scale-105 active:scale-95 shadow-xl shadow-rose-500/20">
+            <button onClick={handleCreate} className="inline-flex items-center gap-2 bg-gradient-to-r from-terra-deep to-magenta text-white font-bold px-10 py-4 rounded-full text-lg transition-all hover:scale-105 active:scale-95 shadow-xl shadow-terra-deep/20">
               🌹 Crear Mi Bachata
             </button>
           </div>
@@ -538,20 +539,20 @@ export default function BachataLanding() {
       </section>
 
       {/* ==================== 6. TESTIMONIALS ==================== */}
-      <section className="py-16 px-6 bg-[#0f0a0c]">
+      <section className="py-16 px-6 bg-[#191A45]">
         <div className="max-w-5xl mx-auto">
           <div className="text-center mb-12">
-            <span className="text-rose-400 uppercase tracking-[0.3em] text-xs font-bold">⭐ Testimonios</span>
+            <span className="text-terra uppercase tracking-[0.3em] text-xs font-bold">⭐ Testimonios</span>
             <h2 className="text-white text-3xl md:text-4xl font-black mt-3">Lo Que Dicen Nuestros Clientes</h2>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {testimonials.map((t, i) => (
-              <div key={i} className="bg-white/[0.03] border border-white/10 rounded-2xl p-6 hover:border-rose-500/30 transition-all">
+              <div key={i} className="bg-white/[0.03] border border-white/10 rounded-2xl p-6 hover:border-terra-deep/30 transition-all">
                 <StarRating rating={t.rating} />
                 <p className="text-white/90 mt-4 mb-6 italic leading-relaxed">"{t.text}"</p>
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-rose-500/20 flex items-center justify-center">
-                    <span className="text-rose-400 font-bold">{t.name[0]}</span>
+                  <div className="w-10 h-10 rounded-full bg-terra-deep/20 flex items-center justify-center">
+                    <span className="text-terra font-bold">{t.name[0]}</span>
                   </div>
                   <div>
                     <p className="text-white font-semibold">{t.name}</p>
@@ -565,29 +566,29 @@ export default function BachataLanding() {
       </section>
 
       {/* ==================== 7. PRICING ==================== */}
-      <section className="py-16 px-6 bg-[#0a0708]">
+      <section className="py-16 px-6 bg-[#191A45]">
         <div className="max-w-md mx-auto">
           <div className="text-center mb-8">
-            <span className="text-rose-400 uppercase tracking-[0.3em] text-xs font-bold">💰 Precio</span>
+            <span className="text-terra uppercase tracking-[0.3em] text-xs font-bold">💰 Precio</span>
             <h2 className="text-white text-3xl md:text-4xl font-black mt-3">El Regalo Más Romántico</h2>
           </div>
-          <div className="bg-white/[0.03] border-2 border-rose-500/50 rounded-3xl p-8 text-center relative overflow-hidden">
-            <div className="absolute top-4 -right-8 bg-rose-500 text-white text-xs font-black px-10 py-1 rotate-45">🌹 62% OFF</div>
+          <div className="bg-white/[0.03] border-2 border-terra-deep/50 rounded-3xl p-8 text-center relative overflow-hidden">
+            <div className="absolute top-4 -right-8 bg-terra-deep text-white text-xs font-black px-10 py-1 rotate-45">🌹 62% OFF</div>
             <div className="text-5xl mb-3">🌹</div>
             <div className="mb-6">
-              <span className="text-white/40 line-through text-2xl">$79.99</span>
+              <span className="text-white/55 line-through text-2xl">$79.99</span>
               <div className="text-white text-5xl font-black">$29.99</div>
-              <span className="text-rose-400 text-sm font-semibold">Precio por tiempo limitado • Ahorra $50</span>
+              <span className="text-terra text-sm font-semibold">Precio por tiempo limitado • Ahorra $50</span>
             </div>
             <div className="space-y-3 text-left mb-8">
               {['Bachata completa (~2 minutos)','2 versiones únicas para elegir','Descarga MP3 de alta calidad','Letra 100% personalizada','Carátula de álbum única','Estilo que tú elijas'].map((item, i) => (
                 <div key={i} className="flex items-center gap-3 text-white/80">
-                  <span className="material-symbols-outlined text-rose-400">check_circle</span>
+                  <span className="material-symbols-outlined text-terra">check_circle</span>
                   <span>{item}</span>
                 </div>
               ))}
             </div>
-            <button onClick={handleCreate} className="w-full inline-flex items-center justify-center gap-2 rounded-full h-14 bg-gradient-to-r from-rose-600 to-pink-500 text-white text-lg font-bold shadow-xl transition-all hover:scale-105 active:scale-95">
+            <button onClick={handleCreate} className="w-full inline-flex items-center justify-center gap-2 rounded-full h-14 bg-gradient-to-r from-terra-deep to-magenta text-white text-lg font-bold shadow-xl transition-all hover:scale-105 active:scale-95">
               🌹 Crear Mi Bachata
             </button>
             <p className="mt-4 text-white/50 text-sm flex items-center justify-center gap-2">
@@ -595,17 +596,17 @@ export default function BachataLanding() {
               Preview GRATIS antes de pagar
             </p>
           </div>
-          <div className="mt-4 bg-rose-500/10 border border-rose-500/20 rounded-2xl p-4 text-center">
+          <div className="mt-4 bg-terra-deep/10 border border-terra-deep/20 rounded-2xl p-4 text-center">
             <p className="text-rose-300 text-sm font-bold">🎁 ¿Quieres 2 canciones? Llévate ambas por $39.99 y ahorra $20</p>
           </div>
         </div>
       </section>
 
       {/* ==================== 8. FAQ ==================== */}
-      <section className="py-16 px-6 bg-[#0f0a0c]">
+      <section className="py-16 px-6 bg-[#191A45]">
         <div className="max-w-2xl mx-auto">
           <div className="text-center mb-12">
-            <span className="text-rose-400 uppercase tracking-[0.3em] text-xs font-bold">❓ Preguntas Frecuentes</span>
+            <span className="text-terra uppercase tracking-[0.3em] text-xs font-bold">❓ Preguntas Frecuentes</span>
             <h2 className="text-white text-3xl md:text-4xl font-black mt-3">¿Tienes Dudas?</h2>
           </div>
           <div className="space-y-3">
@@ -620,14 +621,14 @@ export default function BachataLanding() {
       <section className="py-20 px-6 relative overflow-hidden">
         <div className="absolute inset-0">
           <PhotoFrame src="/images/bachata/hero.jpg" alt="" className="w-full h-full"
-            gradient="linear-gradient(135deg, #1a0410 0%, #4c0519 50%, #7c2d12 100%)" />
+            gradient="linear-gradient(135deg, #1E1140 0%, #4A1030 50%, #B44F35 100%)" />
         </div>
         <div className="absolute inset-0" style={{ background: 'linear-gradient(180deg, rgba(10,7,8,0.72) 0%, rgba(10,7,8,0.88) 100%)' }} />
         <div className="max-w-xl mx-auto text-center relative z-10">
           <div className="text-5xl mb-4">🌹</div>
           <h2 className="text-white text-3xl md:text-4xl font-black mb-4">Regala Una Bachata Inolvidable</h2>
           <p className="text-white/70 text-lg mb-8">Una canción de amor que llevará su nombre para siempre. Para aniversarios, San Valentín, o simplemente porque lo tuyo merece una canción.</p>
-          <button onClick={handleCreate} className="group relative inline-flex cursor-pointer items-center justify-center overflow-hidden rounded-full h-16 px-12 bg-gradient-to-r from-rose-600 to-pink-500 text-white text-xl font-bold shadow-2xl shadow-rose-500/30 transition-all hover:scale-105 active:scale-95">
+          <button onClick={handleCreate} className="group relative inline-flex cursor-pointer items-center justify-center overflow-hidden rounded-full h-16 px-12 bg-gradient-to-r from-terra-deep to-magenta text-white text-xl font-bold shadow-2xl shadow-terra-deep/30 transition-all hover:scale-105 active:scale-95">
             <span className="relative z-10">🌹 Crear Mi Bachata — $29.99</span>
             <div className="absolute inset-0 bg-white opacity-0 group-hover:opacity-10 transition-opacity" />
           </button>
@@ -636,15 +637,16 @@ export default function BachataLanding() {
       </section>
 
       {/* ==================== FOOTER ==================== */}
-      <footer className="py-8 px-6 bg-[#0a0708] border-t border-white/5">
+      <footer className="py-8 px-6 bg-[#191A45] border-t border-white/5">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
-          <div className="font-display text-white/30 text-lg">RegalosQueCantan</div>
+          <CenzoMark size={38} /><div className="font-display text-white/50 text-lg">RegalosQueCantan</div>
           <div className="flex gap-6">
-            <a className="text-white/30 hover:text-rose-400 transition-colors text-sm" href="/politica-de-privacidad">Privacidad</a>
-            <a className="text-white/30 hover:text-rose-400 transition-colors text-sm" href="/terminos-de-servicio">Términos</a>
-            <a className="text-white/30 hover:text-rose-400 transition-colors text-sm" href="#">Contacto</a>
+            <a className="text-white/50 hover:text-terra transition-colors text-sm" href="/politica-de-privacidad">Privacidad</a>
+            <a className="text-white/50 hover:text-terra transition-colors text-sm" href="/terminos-de-servicio">Términos</a>
+            <a className="text-white/50 hover:text-terra transition-colors text-sm" href="#">Contacto</a>
           </div>
-          <p className="text-white/20 text-sm">© 2026 RegalosQueCantan</p>
+          <CenzoSignature className="justify-center mb-3" />
+          <p className="text-white/55 text-sm">© 2026 RegalosQueCantan</p>
         </div>
       </footer>
     </div>

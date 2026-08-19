@@ -41,29 +41,42 @@ serve(async (req) => {
   try {
     const body = await req.json();
 
-    // ─── 3-song pack ("Paquete de 3 canciones", $49.99) ──────────────────────
+    // ─── Song packs ("Paquete de 2/3/5/10 canciones") ────────────────────────
     // A standalone purchase with NO song yet: the buyer pays once and receives a
-    // personal NOMBRE-### code worth 3 free single-song redemptions, minted +
+    // personal NOMBRE-### code worth N free single-song redemptions, minted +
     // emailed by stripe-webhook on payment. Returns early — none of the
     // song-checkout logic below applies (there is no songId).
-    if (body.pack === 'pack3') {
+    // Pricing = GRATIS ladder anchored on the $29.99 single (owner, 2026-08-13):
+    // pack3 = 2×29.99 ("paga 2, la 3ª gratis"), pack5 = 3×29.99, pack10 = 5×29.99.
+    // Every redemption is a brand-new generation (its own task id) — these packs
+    // are unrelated to the $39.99 both-versions-of-one-generation checkout offer.
+    const SONG_PACKS: Record<string, { songs: number; cents: number; priceLabel: string }> = {
+      pack2: { songs: 2, cents: 4499, priceLabel: '$44.99' },
+      pack3: { songs: 3, cents: 5998, priceLabel: '$59.98' },
+      pack5: { songs: 5, cents: 8997, priceLabel: '$89.97' },
+      pack10: { songs: 10, cents: 14995, priceLabel: '$149.95' },
+    };
+    if (body.pack) {
+      const pack = SONG_PACKS[String(body.pack)];
+      if (!pack) {
+        return jsonResp(400, { error: 'pack_unknown', message: 'Paquete no disponible.' });
+      }
       const packEmail = String(body.email || '').trim().toLowerCase();
       const packName = String(body.buyerName || '').trim().slice(0, 40);
       if (!packEmail || !packEmail.includes('@')) {
         return jsonResp(400, { error: 'pack_missing_email', message: 'Necesitamos un correo válido para enviarte el código.' });
       }
-      const PACK3_PRICE_CENTS = 4999; // $49.99 — 3 songs (~$16.66 each)
       const packSession = await stripe.checkout.sessions.create({
         customer_email: packEmail,
         line_items: [{
           price_data: {
             currency: 'usd',
             product_data: {
-              name: 'Paquete de 3 Canciones - RegalosQueCantan',
-              description: 'Un código personal para crear 3 canciones personalizadas — una para cada persona, cuando tú quieras.',
+              name: `Paquete de ${pack.songs} Canciones - RegalosQueCantan`,
+              description: `Un código personal para crear ${pack.songs} canciones personalizadas — una para cada persona, cuando tú quieras.`,
               images: ['https://regalosquecantan.com/og-image.jpg'],
             },
-            unit_amount: PACK3_PRICE_CENTS,
+            unit_amount: pack.cents,
           },
           quantity: 1,
         }],
@@ -72,13 +85,14 @@ serve(async (req) => {
         submit_type: 'pay',
         custom_text: {
           submit: {
-            message: '**3 canciones, un solo pago.** Recibes tu código por correo al instante y lo usas cuando quieras — una canción distinta para cada ser querido. Tu código no caduca pronto (12 meses) y cada canción incluye preview antes de quedar lista.',
+            message: `**${pack.songs} canciones, un solo pago.** Recibes tu código por correo al instante y lo usas cuando quieras — una canción distinta para cada ser querido. Tu código no caduca pronto (12 meses) y cada canción incluye preview antes de quedar lista.`,
           },
         },
-        success_url: `${BASE_URL}/pack-listo?session_id={CHECKOUT_SESSION_ID}`,
+        success_url: `${BASE_URL}/pack-listo?session_id={CHECKOUT_SESSION_ID}&songs=${pack.songs}`,
         cancel_url: `${BASE_URL}/tienda`,
         metadata: {
-          type: 'pack3',
+          type: String(body.pack),
+          pack_songs: String(pack.songs),
           email: packEmail,
           buyer_name: packName,
         },
@@ -483,8 +497,44 @@ serve(async (req) => {
     // Dynamic payment methods - uses Stripe Dashboard settings
     // Enables: Apple Pay, Google Pay, Amazon Pay, Cash App Pay, Link, Cards
     // Do NOT hardcode payment_method_types - let Stripe show the best options per device
+    // ── Paquete Definitivo ($79.99) — the "everything" bundle offered in the
+    // pre-payment upsell modal on /comparison: 2 canciones + 2 videos con
+    // fotos + 2 pistas instrumentales + video con letra + 1 película animada
+    // (à la carte $111.96). This ONLY replaces the price with a single line
+    // item; fulfillment still runs off the per-addon metadata below, so the
+    // webhook / success page create exactly the same orders as an itemized
+    // cart. Coupons don't stack on it (same rule as the 3+ song carts) —
+    // the frontend shows $79.99 flat, so the charge always matches the quote.
+    //
+    // Honored ONLY when the cart matches the bundle definition exactly. A
+    // richer cart (e.g. animadoCount 2 = $44.99 of animado) falls through to
+    // itemized pricing, so a crafted request can never buy more than the
+    // bundle for the bundle price. The frontend clears its flag whenever the
+    // buyer edits a component, which keeps quote and charge in agreement.
+    const ULTIMATE_BUNDLE_PRICE_CENTS = 7999;
+    const ultimateBundle: boolean =
+      (body.ultimateBundle === true || body.ultimateBundle === 'true')
+      && songCount >= 2
+      && videoAddonCountNum >= 2
+      && effectiveKaraokeIds.length >= 2
+      && lyricVideoBool
+      && animadoCount === 1;
+
     // Build line items
-    const lineItems: any[] = [
+    const lineItems: any[] = ultimateBundle ? [
+      {
+        price_data: {
+          currency: 'usd',
+          product_data: {
+            name: 'Paquete Definitivo — Todo Incluido',
+            description: '2 canciones personalizadas + 2 videos con fotos + 2 pistas instrumentales + video con letra + película animada estilo Pixar.',
+            images: ['https://regalosquecantan.com/og-image.jpg'],
+          },
+          unit_amount: ULTIMATE_BUNDLE_PRICE_CENTS,
+        },
+        quantity: 1,
+      },
+    ] : [
       {
         price_data: {
           currency: 'usd',
@@ -503,8 +553,11 @@ serve(async (req) => {
       },
     ];
 
+    // Add-on line items below are skipped when the Paquete Definitivo is in
+    // play — its single line item already covers them (the gift-SMS add-on is
+    // NOT part of the bundle and still bills separately).
     // Add video addon as separate line item
-    if (videoAddonCountNum > 0 && videoAddonCents > 0) {
+    if (!ultimateBundle && videoAddonCountNum > 0 && videoAddonCents > 0) {
       lineItems.push({
         price_data: {
           currency: 'usd',
@@ -524,7 +577,7 @@ serve(async (req) => {
 
     // Animado add-on — $29 one video / $44.99 both songs. The story-video
     // pipeline fulfills it post-payment (confirm-animado-order on the success page).
-    if (animadoCount > 0 && animadoCents > 0) {
+    if (!ultimateBundle && animadoCount > 0 && animadoCents > 0) {
       lineItems.push({
         price_data: {
           currency: 'usd',
@@ -545,7 +598,7 @@ serve(async (req) => {
     // Karaoke add-on — $7.99 per instrumental. A 2-song order can buy an
     // instrumental for one or both songs (effectiveKaraokeIds), so quantity
     // scales with how many were chosen. fetch-karaoke runs per song post-payment.
-    if (effectiveKaraokeIds.length) {
+    if (!ultimateBundle && effectiveKaraokeIds.length) {
       const karaokeQty = effectiveKaraokeIds.length;
       // 1 instrumental = $7.99; both = $14.99 bundle. One line item carrying the
       // total (quantity 1) so the bundle discount shows as a single price.
@@ -567,7 +620,7 @@ serve(async (req) => {
 
     // Lyric video add-on ($9.99) — full song video with synced highlighted
     // lyrics. render-lyric-video (Vercel) builds it post-payment.
-    if (lyricVideoBool) {
+    if (!ultimateBundle && lyricVideoBool) {
       lineItems.push({
         price_data: {
           currency: 'usd',
@@ -694,6 +747,10 @@ serve(async (req) => {
         songCount: String(songCount),
         videoAddon: videoAddonCountNum > 0 ? 'true' : 'false',
         videoAddonCount: String(videoAddonCountNum),
+        // Paquete Definitivo ($79.99 all-in). Fulfillment is unchanged — the
+        // per-addon flags below still drive it; this is for reporting so the
+        // analyst / briefing can tell bundle orders from itemized ones.
+        ultimateBundle: ultimateBundle ? 'true' : 'false',
         // Animado upsell — read by confirm-animado-order on the success page.
         animadoCount: String(animadoCount),
         animadoSongIds: effectiveAnimadoIds.join(','),

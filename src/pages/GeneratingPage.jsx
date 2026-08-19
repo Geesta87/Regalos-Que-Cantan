@@ -3,6 +3,7 @@ import { AppContext } from '../App';
 import { generateSong, checkSongStatus } from '../services/api';
 import genres from '../config/genres';
 import { trackStep, logAffiliateSongCreated } from '../services/tracking';
+import { CenzoMark, CenzoGuide, CenzoLive } from '../components/Cenzo';
 
 // ✅ FIX: Added timeout constant (10 minutes)
 const GENERATION_TIMEOUT_MS = 10 * 60 * 1000;
@@ -504,7 +505,7 @@ export default function GeneratingPage() {
   // Queued retry state — Kie.ai is down, show humorous "down moment" page
   if (song1Status === 'queued_retry') {
     return (
-      <div className="bg-forest min-h-screen flex items-center justify-center p-6">
+      <div className="night-sky min-h-screen flex items-center justify-center p-6">
         <div className="bg-white/10 border border-gold/30 rounded-2xl p-8 max-w-md text-center">
           <div className="text-6xl mb-4">🎤😴</div>
           <h2 className="text-white text-2xl font-bold mb-3">
@@ -528,7 +529,7 @@ export default function GeneratingPage() {
             <p className="text-gold font-semibold">{formData.email}</p>
           </div>
 
-          <p className="text-white/40 text-xs mb-6">
+          <p className="text-white/55 text-xs mb-6">
             Normalmente tarda unos minutos. Máximo una hora si el cantante pide un encore de su siesta. 🛌
           </p>
 
@@ -556,7 +557,7 @@ export default function GeneratingPage() {
   // retrying will always hit the same gate.
   if (error && errorCode === 'COUNTRY_BLOCKED') {
     return (
-      <div className="bg-forest min-h-screen flex items-center justify-center p-6">
+      <div className="night-sky min-h-screen flex items-center justify-center p-6">
         <div className="bg-white/10 border border-gold/30 rounded-2xl p-8 max-w-md text-center">
           <span className="material-symbols-outlined text-gold text-5xl mb-4">favorite</span>
           <h2 className="text-white text-2xl font-bold mb-4">Lo sentimos de corazón</h2>
@@ -576,7 +577,7 @@ export default function GeneratingPage() {
   if (error) {
     const isRateLimit = errorCode === 'RATE_LIMIT_UNPAID' || errorCode === 'IP_BLOCKED';
     return (
-      <div className="bg-forest min-h-screen flex items-center justify-center p-6">
+      <div className="night-sky min-h-screen flex items-center justify-center p-6">
         <div className="bg-white/10 border border-red-500/30 rounded-2xl p-8 max-w-md text-center">
           <span className="material-symbols-outlined text-red-400 text-5xl mb-4">error</span>
           <h2 className="text-white text-2xl font-bold mb-4">Algo salió mal</h2>
@@ -589,7 +590,7 @@ export default function GeneratingPage() {
           </button>
           {isRateLimit && (
             <div className="mt-6 pt-6 border-t border-white/10">
-              <p className="text-white/40 text-xs mb-3">Admin override</p>
+              <p className="text-white/55 text-xs mb-3">Admin override</p>
               <form
                 onSubmit={(e) => { e.preventDefault(); handleOverrideRetry(); }}
                 className="flex gap-2 justify-center"
@@ -620,7 +621,7 @@ export default function GeneratingPage() {
   }
 
   return (
-    <div className="bg-forest min-h-screen text-white">
+    <div className="night-sky min-h-screen text-white">
       {/* Animated Background */}
       <div className="fixed inset-0 -z-10">
         <div className="absolute inset-0 bg-gradient-to-br from-forest via-forest to-background-dark"></div>
@@ -644,7 +645,7 @@ export default function GeneratingPage() {
 
       {/* Header */}
       <header className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-6 md:px-24 py-6">
-        <h2 className="font-display text-white text-xl font-medium tracking-tight">RegalosQueCantan</h2>
+        <CenzoMark size={44} /><h2 className="font-display text-white text-xl font-medium tracking-tight">RegalosQueCantan</h2>
         <div className="flex items-center gap-3">
           <span className="text-gold/80 text-xs font-bold uppercase tracking-widest">Creando magia</span>
           <span className="material-symbols-outlined text-gold animate-pulse">auto_awesome</span>
@@ -657,6 +658,13 @@ export default function GeneratingPage() {
           
           {/* Hero Section */}
           <div className="text-center mb-8">
+            {/* Cenzo is the one doing the listening while they wait. This is the
+                longest screen in the funnel, so he gets a real presence here. */}
+            {/* Silent loop — see CenzoLive for why it makes no sound and how it
+                behaves over a wait this long. */}
+            <CenzoLive size={272} className="mb-3" />
+            <p className="font-hand text-gold text-2xl mb-4">«Estoy oyendo tu historia…»</p>
+
             {/* Animated Album Art Placeholder */}
             <div className="relative w-40 h-40 mx-auto mb-6">
               <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-gold/30 to-bougainvillea/30 animate-pulse"></div>
@@ -671,9 +679,9 @@ export default function GeneratingPage() {
               </div>
               {/* Song version indicators */}
               <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 flex gap-2">
-                <div className={`w-3 h-3 rounded-full transition-all ${song1Status === 'completed' ? 'bg-green-400' : song1Status === 'generating' ? 'bg-gold animate-pulse' : 'bg-white/20'}`}></div>
+                <div className={`w-3 h-3 rounded-full transition-all ${song1Status === 'completed' ? 'bg-turquesa' : song1Status === 'generating' ? 'bg-gold animate-pulse' : 'bg-white/20'}`}></div>
                 {!isFastFunnel && (
-                  <div className={`w-3 h-3 rounded-full transition-all ${song2Status === 'completed' ? 'bg-green-400' : song2Status === 'generating' ? 'bg-gold animate-pulse' : 'bg-white/20'}`}></div>
+                  <div className={`w-3 h-3 rounded-full transition-all ${song2Status === 'completed' ? 'bg-turquesa' : song2Status === 'generating' ? 'bg-gold animate-pulse' : 'bg-white/20'}`}></div>
                 )}
               </div>
             </div>
@@ -719,9 +727,9 @@ export default function GeneratingPage() {
               {steps.map((step, idx) => (
                 <div key={idx} className="flex flex-col items-center">
                   <div className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${
-                    idx < currentStep ? 'bg-green-500 text-white' :
+                    idx < currentStep ? 'bg-turquesa text-white' :
                     idx === currentStep ? 'bg-gold text-white scale-110' :
-                    'bg-white/10 text-white/30'
+                    'bg-white/10 text-white/55'
                   }`}>
                     {idx < currentStep ? (
                       <span className="material-symbols-outlined text-sm">check</span>
@@ -736,14 +744,14 @@ export default function GeneratingPage() {
             {/* Version Status */}
             <div className="flex justify-center gap-6 mt-6 pt-4 border-t border-white/10">
               <div className="flex items-center gap-2">
-                <div className={`w-2 h-2 rounded-full ${song1Status === 'completed' ? 'bg-green-400' : 'bg-gold animate-pulse'}`}></div>
+                <div className={`w-2 h-2 rounded-full ${song1Status === 'completed' ? 'bg-turquesa' : 'bg-gold animate-pulse'}`}></div>
                 <span className="text-sm text-white/60">
                   {isFastFunnel ? 'Canción' : 'Versión 1'}: {song1Status === 'completed' ? '✓ Lista' : 'Creando...'}
                 </span>
               </div>
               {!isFastFunnel && (
                 <div className="flex items-center gap-2">
-                  <div className={`w-2 h-2 rounded-full ${song2Status === 'completed' ? 'bg-green-400' : song2Status === 'failed' ? 'bg-red-400' : 'bg-gold animate-pulse'}`}></div>
+                  <div className={`w-2 h-2 rounded-full ${song2Status === 'completed' ? 'bg-turquesa' : song2Status === 'failed' ? 'bg-red-400' : 'bg-gold animate-pulse'}`}></div>
                   <span className="text-sm text-white/60">Versión 2: {song2Status === 'completed' ? '✓ Lista' : song2Status === 'failed' ? '✗ Error' : 'Creando...'}</span>
                 </div>
               )}
@@ -774,7 +782,7 @@ export default function GeneratingPage() {
                 <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-forest/90 to-transparent pointer-events-none"></div>
               </div>
               
-              <p className="text-gold/60 text-xs mt-4 text-center">
+              <p className="text-gold/85 text-xs mt-4 text-center">
                 ✨ Tu letra personalizada se está convirtiendo en música...
               </p>
             </div>
@@ -782,14 +790,14 @@ export default function GeneratingPage() {
 
           {/* Fun Fact */}
           <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-5">
-            <p className="text-gold/70 text-xs uppercase tracking-widest mb-2">¿Sabías que?</p>
+            <p className="text-gold/90 text-xs uppercase tracking-widest mb-2">¿Sabías que?</p>
             <p className="text-white/80 font-medium transition-all duration-500">
               {funFacts[factIndex]}
             </p>
           </div>
 
           {/* Time Estimate */}
-          <p className="text-center text-white/40 text-sm mt-6">
+          <p className="text-center text-white/55 text-sm mt-6">
             ⏱️ Tiempo estimado: {isFastFunnel ? '2-3 minutos' : '2-4 minutos para ambas versiones'}
           </p>
         </div>

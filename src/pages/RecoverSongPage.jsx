@@ -1,6 +1,7 @@
 import React, { useContext, useState } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { AppContext } from '../App';
+import { CenzoGuide } from '../components/Cenzo';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -144,7 +145,7 @@ export default function RecoverSongPage() {
           backdropFilter: 'blur(20px)',
         }}>
           <div style={{ textAlign: 'center', marginBottom: '24px' }}>
-            <div style={{ fontSize: '40px', marginBottom: '14px' }}>🎵</div>
+            <CenzoGuide size={140} className="mx-auto" />
             <h1 style={{ fontSize: '24px', fontWeight: 800, margin: '0 0 10px' }}>
               {status === 'found' ? 'Encontramos tus canciones' : 'Encontrar mi canción'}
             </h1>
@@ -206,7 +207,7 @@ export default function RecoverSongPage() {
                   padding: '16px',
                   background: searching || !email.trim()
                     ? 'rgba(255,255,255,0.08)'
-                    : 'linear-gradient(90deg, #e11d74, #c026d3)',
+                    : 'linear-gradient(90deg, #C9603F, #B62463)',
                   color: searching || !email.trim() ? 'rgba(255,255,255,0.4)' : 'white',
                   border: 'none',
                   borderRadius: '12px',
@@ -215,7 +216,7 @@ export default function RecoverSongPage() {
                   cursor: searching || !email.trim() ? 'not-allowed' : 'pointer',
                   fontFamily: 'inherit',
                   transition: 'all 0.2s',
-                  boxShadow: searching || !email.trim() ? 'none' : '0 4px 20px rgba(225,29,116,0.3)',
+                  boxShadow: searching || !email.trim() ? 'none' : '0 4px 20px rgba(201,96,63,0.3)',
                 }}
               >
                 {searching ? '⏳ Buscando...' : '🔍 Buscar mis canciones'}
@@ -281,7 +282,7 @@ export default function RecoverSongPage() {
                   return (
                     <div style={{ marginBottom: unpaidSongs.length > 0 ? '28px' : '20px' }}>
                       <p style={{
-                        color: 'rgba(74,222,128,0.95)',
+                        color: 'rgba(137,218,212,0.95)',
                         fontSize: '11px', fontWeight: 700,
                         margin: '0 0 12px',
                         textTransform: 'uppercase', letterSpacing: '1.5px',
@@ -297,8 +298,8 @@ export default function RecoverSongPage() {
                             <div
                               key={group.key}
                               style={{
-                                background: 'rgba(74,222,128,0.03)',
-                                border: '1px solid rgba(74,222,128,0.20)',
+                                background: 'rgba(137,218,212,0.03)',
+                                border: '1px solid rgba(137,218,212,0.20)',
                                 borderRadius: '16px',
                                 padding: '14px',
                               }}
@@ -306,7 +307,7 @@ export default function RecoverSongPage() {
                               {/* Purchase header */}
                               {firstDate && (
                                 <p style={{
-                                  color: 'rgba(74,222,128,0.7)',
+                                  color: 'rgba(137,218,212,0.7)',
                                   fontSize: '10px', fontWeight: 700,
                                   margin: '0 0 10px',
                                   textTransform: 'uppercase', letterSpacing: '1.2px',
@@ -322,14 +323,14 @@ export default function RecoverSongPage() {
                                     key={s.id}
                                     style={{
                                       background: 'rgba(255,255,255,0.04)',
-                                      border: '1px solid rgba(74,222,128,0.15)',
+                                      border: '1px solid rgba(137,218,212,0.15)',
                                       borderRadius: '12px',
                                       padding: '16px',
                                       textAlign: 'center',
                                     }}
                                   >
                                     {s.has_video_addon
-                                      ? <p style={{ color: '#a78bfa', fontSize: '10px', fontWeight: 800, margin: '0 0 6px', textTransform: 'uppercase', letterSpacing: '1.5px' }}>
+                                      ? <p style={{ color: '#A9AAEE', fontSize: '10px', fontWeight: 800, margin: '0 0 6px', textTransform: 'uppercase', letterSpacing: '1.5px' }}>
                                           🎬 Canción + Video{s.is_bundle ? ' (Paquete 2)' : ''}
                                         </p>
                                       : s.is_bundle && (
@@ -346,7 +347,7 @@ export default function RecoverSongPage() {
                                       style={{
                                         display: 'inline-block',
                                         background: s.has_video_addon
-                                          ? 'linear-gradient(135deg, #7c3aed, #a855f7)'
+                                          ? 'linear-gradient(135deg, #4A4CA8, #8E90E8)'
                                           : 'linear-gradient(135deg, #ff6b35, #ff8c42)',
                                         color: 'white',
                                         textDecoration: 'none',
@@ -355,7 +356,7 @@ export default function RecoverSongPage() {
                                         padding: '14px 28px',
                                         borderRadius: '30px',
                                         boxShadow: s.has_video_addon
-                                          ? '0 4px 18px rgba(139,92,246,0.4)'
+                                          ? '0 4px 18px rgba(102,104,210,0.4)'
                                           : '0 4px 18px rgba(255,107,53,0.35)',
                                       }}
                                     >
@@ -367,14 +368,14 @@ export default function RecoverSongPage() {
 
                               {/* Per-purchase send button */}
                               <div style={{
-                                background: 'rgba(74,222,128,0.05)',
-                                border: '1px dashed rgba(74,222,128,0.25)',
+                                background: 'rgba(137,218,212,0.05)',
+                                border: '1px dashed rgba(137,218,212,0.25)',
                                 borderRadius: '10px',
                                 padding: '10px 12px',
                                 textAlign: 'center',
                               }}>
                                 {groupSendStatus === 'sent' ? (
-                                  <p style={{ color: '#4ade80', fontSize: '13px', margin: 0, fontWeight: 600 }}>
+                                  <p style={{ color: '#89DAD4', fontSize: '13px', margin: 0, fontWeight: 600 }}>
                                     ✅ Enviamos esta compra a {email.toLowerCase().trim()}
                                   </p>
                                 ) : (
@@ -383,8 +384,8 @@ export default function RecoverSongPage() {
                                       onClick={() => handleSendPaidGroup(group.key)}
                                       disabled={groupSendStatus === 'sending'}
                                       style={{
-                                        background: 'rgba(74,222,128,0.12)',
-                                        border: '1px solid rgba(74,222,128,0.40)',
+                                        background: 'rgba(137,218,212,0.12)',
+                                        border: '1px solid rgba(137,218,212,0.40)',
                                         color: 'white',
                                         padding: '9px 16px',
                                         borderRadius: '9px',
@@ -451,7 +452,7 @@ export default function RecoverSongPage() {
                                 {s.recipient_name}
                               </p>
                               {s.created_at && (
-                                <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '12px', margin: 0 }}>
+                                <p style={{ color: 'rgba(255,255,255,0.68)', fontSize: '12px', margin: 0 }}>
                                   Creada el {formatDate(s.created_at)}
                                 </p>
                               )}
@@ -459,7 +460,7 @@ export default function RecoverSongPage() {
                             <a
                               href={s.listen_url}
                               style={{
-                                background: 'linear-gradient(90deg, #e11d74, #c026d3)',
+                                background: 'linear-gradient(90deg, #C9603F, #B62463)',
                                 color: 'white',
                                 textDecoration: 'none',
                                 fontWeight: 700,
@@ -467,7 +468,7 @@ export default function RecoverSongPage() {
                                 padding: '11px 16px',
                                 borderRadius: '10px',
                                 whiteSpace: 'nowrap',
-                                boxShadow: '0 4px 14px rgba(225,29,116,0.3)',
+                                boxShadow: '0 4px 14px rgba(201,96,63,0.3)',
                               }}
                             >
                               💳 Comprar
@@ -487,7 +488,7 @@ export default function RecoverSongPage() {
                       textAlign: 'center',
                     }}>
                       {unpaidSendStatus === 'sent' ? (
-                        <p style={{ color: '#4ade80', fontSize: '13px', margin: 0, fontWeight: 600 }}>
+                        <p style={{ color: '#89DAD4', fontSize: '13px', margin: 0, fontWeight: 600 }}>
                           ✅ Te enviamos un recordatorio de {unpaidSongs.length === 1 ? 'tu canción pendiente' : `tus ${unpaidSongs.length} canciones pendientes`} a {email.toLowerCase().trim()}
                         </p>
                       ) : (
@@ -530,7 +531,7 @@ export default function RecoverSongPage() {
                   style={{
                     width: '100%',
                     background: 'transparent',
-                    color: 'rgba(255,255,255,0.5)',
+                    color: 'rgba(255,255,255,0.7)',
                     border: '1px solid rgba(255,255,255,0.12)',
                     borderRadius: '10px',
                     padding: '10px',
@@ -549,7 +550,7 @@ export default function RecoverSongPage() {
 
         <p style={{
           maxWidth: '520px', width: '100%',
-          color: 'rgba(255,255,255,0.4)',
+          color: 'rgba(255,255,255,0.65)',
           fontSize: '12px',
           lineHeight: 1.6,
           marginTop: '20px',
@@ -565,7 +566,7 @@ export default function RecoverSongPage() {
           href="/"
           onClick={(e) => { e.preventDefault(); navigateTo('landing'); }}
           style={{
-            color: 'rgba(255,255,255,0.5)',
+            color: 'rgba(255,255,255,0.7)',
             textDecoration: 'none',
             fontSize: '13px',
             marginTop: '14px',

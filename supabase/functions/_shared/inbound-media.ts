@@ -185,7 +185,9 @@ export function transcribeVoiceMessage(
             channel: opts.channel,
             lastAutoReplyAt: opts.lastAutoReplyAt,
           });
-          if (!r.sent) await triggerCsAgent(opts.conversationId);
+          // Gate on `active`, NOT `sent` — a throttled or failed away message
+          // still means the owner is away. See _shared/out-of-office.ts.
+          if (!r.active) await triggerCsAgent(opts.conversationId);
         } catch (e) {
           console.warn('inbound-media: voice follow-up failed', (e as Error).message);
         }

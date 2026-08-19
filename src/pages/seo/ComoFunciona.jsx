@@ -2,6 +2,7 @@ import React, { useContext } from 'react';
 import { AppContext } from '../../App';
 import SEOHead, { generateHowToStructuredData, generateBreadcrumbData } from '../../components/SEOHead';
 import SEOLink from '../../components/SEOLink';
+import { CenzoSignature } from '../../components/Cenzo';
 
 const STEPS = [
   {
@@ -75,14 +76,14 @@ export default function ComoFunciona() {
       <div className="min-h-screen bg-landing-bg text-white" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
         {/* Hero */}
         <section className="relative py-24 px-6 overflow-hidden">
-          <div className="absolute inset-0 opacity-30" style={{ background: 'radial-gradient(ellipse at center top, #c9184a40 0%, transparent 70%)' }} />
+          <div className="absolute inset-0 opacity-30" style={{ background: 'radial-gradient(ellipse at center top, #B44F3540 0%, transparent 70%)' }} />
 
           <div className="relative max-w-4xl mx-auto text-center">
             <nav className="mb-10" aria-label="Breadcrumb">
               <ol className="flex items-center justify-center gap-2 text-sm text-white/50">
                 {breadcrumbs.map((item, index) => (
                   <li key={item.path} className="flex items-center gap-2">
-                    {index > 0 && <span className="text-white/30">/</span>}
+                    {index > 0 && <span className="text-white/50">/</span>}
                     {index === breadcrumbs.length - 1 ? (
                       <span className="text-white/80 font-medium">{item.name}</span>
                     ) : (
@@ -99,14 +100,14 @@ export default function ComoFunciona() {
             <p className="text-xl text-white/60 mb-6 max-w-2xl mx-auto leading-relaxed">
               Crea una canción personalizada en 6 pasos simples. Sin conocimientos musicales necesarios.
             </p>
-            <p className="text-white/40">Listo en menos de 5 minutos • Desde $29.99</p>
+            <p className="text-white/55">Listo en menos de 5 minutos • Desde $29.99</p>
           </div>
         </section>
 
         {/* Definition Block */}
         <section className="px-6 -mt-8 mb-8 relative z-10">
           <div className="max-w-3xl mx-auto">
-            <div className="glass-morphism rounded-2xl p-6 md:p-8 border border-white/10" style={{ borderLeftWidth: '4px', borderLeftColor: '#c9184a' }}>
+            <div className="glass-morphism rounded-2xl p-6 md:p-8 border border-white/10" style={{ borderLeftWidth: '4px', borderLeftColor: '#B44F35' }}>
               <p className="text-white/80 leading-relaxed text-lg">
                 RegalosQueCantan es un servicio que crea canciones personalizadas en más de 20 géneros latinos. Tú proporcionas los detalles — nombre, ocasión, mensaje — y nosotros componemos la letra y generamos la música en minutos. El resultado es una canción única que nadie más tendrá, lista para descargar y compartir desde $29.99.
               </p>
@@ -123,14 +124,14 @@ export default function ComoFunciona() {
                   <div className="flex-shrink-0">
                     <div
                       className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl glass-morphism"
-                      style={{ boxShadow: '0 0 30px rgba(201, 24, 74, 0.15)' }}
+                      style={{ boxShadow: '0 0 30px rgba(180,79,53, 0.15)' }}
                     >
                       {step.icon}
                     </div>
                   </div>
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-2">
-                      <span className="text-sm font-bold px-3 py-1 rounded-full" style={{ background: 'linear-gradient(135deg, #c9184a, #a01540)', color: 'white' }}>
+                      <span className="text-sm font-bold px-3 py-1 rounded-full" style={{ background: 'linear-gradient(135deg, #B44F35, #8E3A26)', color: 'white' }}>
                         Paso {step.num}
                       </span>
                     </div>
@@ -154,20 +155,20 @@ export default function ComoFunciona() {
                 <div className="text-4xl mb-4">🎵</div>
                 <h3 className="font-bold text-2xl mb-2">$29.99</h3>
                 <p className="text-white/50 text-sm mb-4">1 Canción</p>
-                <p className="text-white/40 text-xs">Una versión de tu canción personalizada</p>
+                <p className="text-white/55 text-xs">Una versión de tu canción personalizada</p>
               </div>
               <div className="glass-morphism rounded-2xl p-8 text-center genre-card border border-landing-primary/30">
-                <div className="text-xs font-bold px-3 py-1 rounded-full mb-4 inline-block" style={{ background: 'linear-gradient(135deg, #c9184a, #a01540)', color: 'white' }}>Más Popular</div>
+                <div className="text-xs font-bold px-3 py-1 rounded-full mb-4 inline-block" style={{ background: 'linear-gradient(135deg, #B44F35, #8E3A26)', color: 'white' }}>Más Popular</div>
                 <div className="text-4xl mb-4">🎵🎵</div>
                 <h3 className="font-bold text-2xl mb-2">$39.99</h3>
                 <p className="text-white/50 text-sm mb-4">2 Canciones</p>
-                <p className="text-white/40 text-xs">Ambas versiones para comparar y elegir</p>
+                <p className="text-white/55 text-xs">Ambas versiones para comparar y elegir</p>
               </div>
               <div className="glass-morphism rounded-2xl p-8 text-center genre-card">
                 <div className="text-4xl mb-4">💎</div>
                 <h3 className="font-bold text-2xl mb-2">$49.99</h3>
                 <p className="text-white/50 text-sm mb-4">Premium</p>
-                <p className="text-white/40 text-xs">2 canciones + letra imprimible + entrega express</p>
+                <p className="text-white/55 text-xs">2 canciones + letra imprimible + entrega express</p>
               </div>
             </div>
           </div>
@@ -175,7 +176,7 @@ export default function ComoFunciona() {
 
         {/* Final CTA */}
         <section className="relative py-24 px-6 overflow-hidden">
-          <div className="absolute inset-0 opacity-20" style={{ background: 'radial-gradient(ellipse at center, #c9184a30 0%, transparent 70%)' }} />
+          <div className="absolute inset-0 opacity-20" style={{ background: 'radial-gradient(ellipse at center, #B44F3530 0%, transparent 70%)' }} />
           <div className="relative max-w-2xl mx-auto text-center">
             <h2 className="text-3xl md:text-4xl font-bold mb-5 font-display">
               ¿Listo para crear tu canción?
@@ -186,11 +187,11 @@ export default function ComoFunciona() {
             <button
               onClick={() => navigateTo('genre')}
               className="px-12 py-5 rounded-full text-xl font-bold transition-all transform hover:scale-105 animate-pulse-glow"
-              style={{ background: 'linear-gradient(135deg, #c9184a, #a01540)', color: 'white', boxShadow: '0 4px 30px rgba(201, 24, 74, 0.4)' }}
+              style={{ background: 'linear-gradient(135deg, #B44F35, #8E3A26)', color: 'white', boxShadow: '0 4px 30px rgba(180,79,53, 0.4)' }}
             >
               🎤 Crear Mi Canción Ahora
             </button>
-            <div className="mt-8 flex items-center justify-center gap-6 text-sm text-white/40">
+            <div className="mt-8 flex items-center justify-center gap-6 text-sm text-white/55">
               <span>✓ Sin suscripción</span>
               <span>✓ Pago único</span>
               <span>✓ Descarga inmediata</span>
@@ -200,8 +201,9 @@ export default function ComoFunciona() {
 
         {/* Footer */}
         <footer className="py-10 px-6 border-t border-white/5 text-center">
-          <p className="text-white/30 text-sm">© {new Date().getFullYear()} RegalosQueCantan. Todos los derechos reservados.</p>
-          <p className="mt-2 text-white/20 text-sm">Canciones personalizadas en géneros latinos para cada ocasión especial.</p>
+          <CenzoSignature className="justify-center mb-3" />
+          <p className="text-white/50 text-sm">© {new Date().getFullYear()} RegalosQueCantan. Todos los derechos reservados.</p>
+          <p className="mt-2 text-white/55 text-sm">Canciones personalizadas en géneros latinos para cada ocasión especial.</p>
         </footer>
       </div>
     </>

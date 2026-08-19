@@ -720,9 +720,9 @@ verify_jwt = true
 [functions.song-fix-queue]
 # Backs the "Pending fixes" queue in the admin "Fix Song" tab. Called from the
 # dashboard with a logged-in Supabase Auth user's JWT → verify_jwt = true; the
-# handler requires a row in admin_users. Both 'admin' and 'assistant' may list /
-# claim / stage / reject a request, but only role='admin' may RELEASE a staged
-# fix into the customer's live song (the owner-only second approval gate).
+# handler requires a row in admin_users. Any admin_users row (admin OR
+# assistant — owner decision 2026-07-27) may list / claim / stage / RELEASE /
+# reject; only role='admin' may flip the auto-fixer switch (auto-toggle).
 # Reads/writes song_fix_requests + swaps the audio into public.songs on release
 # (with the same fix_backup undo snapshot as the direct Fix Song apply).
 verify_jwt = true
@@ -1012,6 +1012,14 @@ verify_jwt = true
 [functions.action-inbox]
 verify_jwt = true
 
+[functions.character-studio]
+# Character Studio — in-house AI influencer / brand-character builder (the
+# Eromify replacement). Called only from the admin dashboard with a logged-in
+# Supabase Auth user's JWT → verify_jwt = true; handler requires
+# admin_users.role='admin' (spends Kie credits). Kie jobs are POLLED via the
+# 'list'/'sync' finalize pass (no callBackUrl), so no webhook path exists.
+verify_jwt = true
+
 # Business Analyst — ask-the-business chat agent (read-only SQL via the
 # analyst_run_sql RPC). Called only by the admin frontend with the owner's
 # JWT (admin_users gate inside); default gate stays ON.
@@ -1028,4 +1036,14 @@ verify_jwt = false
 [functions.dispute-evidence-pack]
 # Admin-only dispute evidence assembler. Called from the admin dashboard with
 # a Supabase Auth JWT and re-checked against admin_users inside the function.
+verify_jwt = true
+
+# Cuento Ilustrado — illustrated-storybook generator (test phase). Called only
+# from our own frontend: admin JWT for find/list/generate/status (admin_users
+# gate inside; spends Kie credits) and the anon key for the public /cuento/:token
+# read (share_token is the credential). Kie jobs are POLLED via 'status' (no
+# callBackUrl), so no webhook path exists → default gate stays ON. If Phase 2
+# ever adds stripe-webhook/pg_cron invocation, flip this to false in the same
+# commit that adds the caller.
+[functions.generate-cuento]
 verify_jwt = true

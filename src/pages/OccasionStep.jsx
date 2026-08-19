@@ -1,6 +1,11 @@
 import React, { useContext, useState, useEffect, useRef } from 'react';
 import { AppContext } from '../App';
 import { trackStep } from '../services/tracking';
+// Canonical lists — shared with the admin "Make Song for Customer" brief so the
+// two can never drift apart. Ids/names/icons are unchanged from when these
+// arrays lived here. See src/config/songOptions.js.
+import { OCCASIONS as occasions, EMOTIONAL_TONES as emotionalTones } from '../config/songOptions';
+import { CenzoMark, CenzoGuide } from '../components/Cenzo';
 
 // Show Valentine's badge only Jan 15 - Feb 14
 const isValentineSeason = () => {
@@ -25,40 +30,6 @@ const isPadreSeason = () => {
   const day = now.getDate();
   return (month === 4 && day >= 11) || (month === 5 && day <= 21); // May 11-31 or June 1-21
 };
-
-const occasions = [
-  { id: 'cumpleanos', name: 'Cumpleaños', icon: 'cake' },
-  { id: 'aniversario', name: 'Aniversario', icon: 'favorite' },
-  { id: 'san_valentin', name: 'San Valentín 💘', icon: 'favorite_border' },
-  { id: 'boda', name: 'Boda', icon: 'celebration' },
-  { id: 'nacimiento', name: 'Nacimiento', icon: 'child_care' },
-  { id: 'dia_madre', name: 'Día de la Madre', icon: 'home' },
-  { id: 'dia_padre', name: 'Día del Padre', icon: 'potted_plant' },
-  { id: 'amor', name: 'Amor / Pareja', icon: 'volunteer_activism' },
-  { id: 'graduacion', name: 'Graduación', icon: 'school' },
-  { id: 'quinceanera', name: 'Quinceañera', icon: 'celebration' },
-  { id: 'bautizo', name: 'Bautizo', icon: 'church' },
-  { id: 'jubilacion', name: 'Jubilación', icon: 'beach_access' },
-  { id: 'negocio', name: 'Negocio Nuevo', icon: 'storefront' },
-  { id: 'amistad', name: 'Amistad', icon: 'diversity_3' },
-  { id: 'agradecimiento', name: 'Agradecimiento', icon: 'redeem' },
-  { id: 'mascota', name: 'Mascota', icon: 'pets' },
-  { id: 'memorial', name: 'En Memoria 🕊️', icon: 'local_florist' },
-  { id: 'dia_muertos', name: 'Día de Muertos', icon: 'skull' },
-  { id: 'navidad', name: 'Navidad / Reyes', icon: 'auto_awesome' },
-  { id: 'para_mi', name: 'Para Mí Mismo', icon: 'person' },
-  { id: 'otro', name: 'Otra Ocasión', icon: 'more_horiz' }
-];
-
-const emotionalTones = [
-  { id: 'celebracion', name: 'Celebración / Alegría', icon: 'celebration' },
-  { id: 'amor', name: 'Amor / Romance', icon: 'favorite' },
-  { id: 'agradecimiento', name: 'Agradecimiento', icon: 'volunteer_activism' },
-  { id: 'nostalgia', name: 'Nostalgia / Recuerdos', icon: 'history' },
-  { id: 'motivacion', name: 'Motivación / Superación', icon: 'trending_up' },
-  { id: 'despedida', name: 'Despedida / Tributo', icon: 'waving_hand' },
-  { id: 'humor', name: 'Humor / Diversión', icon: 'sentiment_very_satisfied' }
-];
 
 export default function OccasionStep() {
   const { formData, updateFormData, navigateTo } = useContext(AppContext);
@@ -138,20 +109,20 @@ export default function OccasionStep() {
   const canProceed = selectedOccasion && isOtroValid;
 
   return (
-    <div className="bg-forest text-white antialiased min-h-screen">
+    <div className="night-sky text-white antialiased min-h-screen">
       {/* Header */}
       <header className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-8 md:px-24 py-6 bg-forest/80 backdrop-blur-md border-b border-white/5">
         <div 
           className="flex items-center gap-2 group cursor-pointer"
           onClick={() => navigateTo('landing')}
         >
-          <h2 className="font-display text-white text-xl font-medium tracking-tight">
+          <CenzoMark size={44} /><h2 className="font-display text-white text-xl font-medium tracking-tight">
             RegalosQueCantan
           </h2>
         </div>
         <div className="flex items-center gap-4">
           <div className="hidden md:flex flex-col items-end mr-4">
-            <span className="text-[10px] uppercase tracking-widest text-white/40">Paso 2 de 5</span>
+            <span className="text-[10px] uppercase tracking-widest text-white/55">Paso 2 de 5</span>
             <span className="text-xs font-bold text-gold">Selecciona la Ocasión</span>
           </div>
           <div className="w-24 h-1 bg-white/10 rounded-full overflow-hidden">
@@ -177,6 +148,7 @@ export default function OccasionStep() {
           {/* Title */}
           <div className="text-center mb-12">
             <span className="text-gold uppercase tracking-[0.3em] text-[10px] font-bold mb-4 block">Personalización</span>
+            <CenzoGuide size={132} className="mx-auto mb-2 md:mb-3" />
             <h1 className="font-display text-white text-4xl md:text-6xl font-black leading-tight tracking-tight mb-2">
               ¿Cuál es la <span className="italic font-normal">ocasión?</span>
             </h1>
@@ -201,12 +173,12 @@ export default function OccasionStep() {
                       : 'border-2 border-red-500/70 bg-red-500/20 hover:bg-red-500/30 hover:border-red-400 shadow-md shadow-red-500/30'
                     : occasion.id === 'dia_madre' && isMadresSeason()
                     ? selectedOccasion === occasion.id
-                      ? 'border-2 border-pink-500 bg-pink-500/30 ring-2 ring-pink-400 shadow-lg shadow-pink-500/40'
-                      : 'border-2 border-pink-500/70 bg-pink-500/20 hover:bg-pink-500/30 hover:border-pink-400 shadow-md shadow-pink-500/30'
+                      ? 'border-2 border-magenta bg-magenta/30 ring-2 ring-magenta shadow-lg shadow-magenta/40'
+                      : 'border-2 border-magenta/70 bg-magenta/20 hover:bg-magenta/30 hover:border-magenta shadow-md shadow-magenta/30'
                     : occasion.id === 'dia_padre' && isPadreSeason()
                     ? selectedOccasion === occasion.id
-                      ? 'border-2 border-blue-500 bg-blue-500/30 ring-2 ring-blue-400 shadow-lg shadow-blue-500/40'
-                      : 'border-2 border-blue-500/70 bg-blue-500/20 hover:bg-blue-500/30 hover:border-blue-400 shadow-md shadow-blue-500/30'
+                      ? 'border-2 border-anil bg-anil/30 ring-2 ring-anil shadow-lg shadow-anil/40'
+                      : 'border-2 border-anil/70 bg-anil/20 hover:bg-anil/30 hover:border-anil shadow-md shadow-anil/30'
                     : selectedOccasion === occasion.id
                       ? 'border-gold bg-white/20 ring-1 ring-gold border'
                       : 'border border-white/10 hover:border-gold/50 hover:bg-white/10 bg-white/5'}
@@ -216,26 +188,26 @@ export default function OccasionStep() {
                   <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold px-2 py-1 rounded-full">¡14 FEB!</span>
                 )}
                 {occasion.id === 'dia_madre' && isMadresSeason() && (
-                  <span className="absolute -top-1 -right-1 bg-pink-500 text-white text-[10px] font-bold px-2 py-1 rounded-full animate-pulse">10 MAYO</span>
+                  <span className="absolute -top-1 -right-1 bg-magenta text-white text-[10px] font-bold px-2 py-1 rounded-full animate-pulse">10 MAYO</span>
                 )}
                 {occasion.id === 'dia_padre' && isPadreSeason() && (
-                  <span className="absolute -top-1 -right-1 bg-blue-500 text-white text-[10px] font-bold px-2 py-1 rounded-full animate-pulse">21 JUN</span>
+                  <span className="absolute -top-1 -right-1 bg-anil text-white text-[10px] font-bold px-2 py-1 rounded-full animate-pulse">21 JUN</span>
                 )}
                 <span className={`material-symbols-outlined text-4xl mb-3 transition-transform ${
                   occasion.id === 'san_valentin' && isValentineSeason()
                     ? 'text-red-400'
                     : occasion.id === 'dia_madre' && isMadresSeason()
-                    ? 'text-pink-400'
+                    ? 'text-magenta'
                     : occasion.id === 'dia_padre' && isPadreSeason()
-                    ? 'text-blue-300'
+                    ? 'text-anil-soft'
                     : 'text-gold'
                 } ${selectedOccasion === occasion.id ? 'scale-110' : 'group-hover:scale-110'}`}>
                   {occasion.icon}
                 </span>
                 <span className={`text-sm font-medium tracking-wide ${
                   occasion.id === 'san_valentin' && isValentineSeason() ? 'text-red-200'
-                  : occasion.id === 'dia_madre' && isMadresSeason() ? 'text-pink-200'
-                  : occasion.id === 'dia_padre' && isPadreSeason() ? 'text-blue-200'
+                  : occasion.id === 'dia_madre' && isMadresSeason() ? 'text-magenta-soft'
+                  : occasion.id === 'dia_padre' && isPadreSeason() ? 'text-anil-soft'
                   : ''
                 }`}>{occasion.id === 'dia_madre' && isMadresSeason() ? 'Dia de la Madre 🌷' : occasion.id === 'dia_padre' && isPadreSeason() ? 'Día del Padre 🤠' : occasion.name}</span>
                 {occasion.id === 'otro' && selectedOccasion === 'otro' && customOccasion.length >= 20 && emotionalTone && (
@@ -269,7 +241,7 @@ export default function OccasionStep() {
               transition-all hover:scale-105 active:scale-95 flex items-center gap-2
               ${canProceed
                 ? 'bg-bougainvillea hover:bg-bougainvillea/90 text-white'
-                : 'bg-white/10 text-white/30 cursor-not-allowed hover:scale-100'}
+                : 'bg-white/10 text-white/55 cursor-not-allowed hover:scale-100'}
             `}
           >
             Continuar
@@ -308,13 +280,13 @@ export default function OccasionStep() {
                 value={customOccasion}
                 onChange={(e) => setCustomOccasion(e.target.value.slice(0, 500))}
                 placeholder="Ej: Es para celebrar que mi hermano abrió su propio negocio después de años de esfuerzo..."
-                className="w-full h-32 bg-white/5 border border-gold/20 rounded-xl p-4 text-white focus:ring-1 focus:ring-gold focus:border-gold outline-none transition-all resize-none text-sm placeholder:text-white/30"
+                className="w-full h-32 bg-white/5 border border-gold/20 rounded-xl p-4 text-white focus:ring-1 focus:ring-gold focus:border-gold outline-none transition-all resize-none text-sm placeholder:text-white/55"
               />
               <div className="flex justify-between mt-2">
-                <span className={`text-xs ${customOccasion.length < 20 ? 'text-red-400' : 'text-gold/60'}`}>
+                <span className={`text-xs ${customOccasion.length < 20 ? 'text-red-400' : 'text-gold/85'}`}>
                   Mínimo 20 caracteres
                 </span>
-                <span className="text-xs text-white/40">{customOccasion.length} / 500</span>
+                <span className="text-xs text-white/55">{customOccasion.length} / 500</span>
               </div>
             </div>
 
@@ -348,7 +320,7 @@ export default function OccasionStep() {
                 w-full py-4 rounded-full font-bold transition-all flex items-center justify-center gap-2
                 ${customOccasion.length >= 20 && emotionalTone
                   ? 'bg-bougainvillea text-white hover:scale-[1.02]'
-                  : 'bg-white/10 text-white/30 cursor-not-allowed'}
+                  : 'bg-white/10 text-white/55 cursor-not-allowed'}
               `}
             >
               Confirmar Ocasión

@@ -1,6 +1,7 @@
 import React, { useContext, useState } from 'react';
 import { AppContext } from '../App';
 import genres from '../config/genres';
+import { CenzoMark, CenzoSignature } from '../components/Cenzo';
 
 // Convert genres config to array for rendering
 const genreList = Object.entries(genres).map(([id, data]) => ({
@@ -79,7 +80,7 @@ export default function GenrePage() {
   };
 
   return (
-    <div className="bg-forest text-white antialiased min-h-screen flex flex-col">
+    <div className="night-sky text-white antialiased min-h-screen flex flex-col">
       {/* Header */}
       <header className="fixed top-0 left-0 right-0 z-50 flex flex-col pt-8 pb-4">
         <div className="flex items-center justify-between px-8 md:px-24 mb-6">
@@ -87,12 +88,12 @@ export default function GenrePage() {
             className="flex items-center gap-2 group cursor-pointer"
             onClick={() => navigateTo('landing')}
           >
-            <h2 className="font-display text-white text-2xl font-medium tracking-tight">
+            <CenzoMark size={44} /><h2 className="hidden sm:block font-display text-white text-2xl font-medium tracking-tight">
               RegalosQueCantan
             </h2>
           </div>
           <div className="flex items-center gap-4">
-            <span className="text-white/40 text-xs uppercase tracking-widest hidden md:block">Paso 1 de 4</span>
+            <span className="text-white/55 text-xs uppercase tracking-widest hidden md:block">Paso 1 de 4</span>
             <button 
               onClick={() => navigateTo('landing')}
               className="bg-white/10 hover:bg-white/20 text-white p-2 rounded-full transition-all"
@@ -103,7 +104,7 @@ export default function GenrePage() {
         </div>
         {/* Progress bar */}
         <div className="w-full bg-white/10 h-[1px] relative">
-          <div className="absolute top-0 left-0 h-full w-1/4 bg-gold shadow-[0_0_10px_rgba(242,13,128,0.8)] transition-all duration-700"></div>
+          <div className="absolute top-0 left-0 h-full w-1/4 bg-gold shadow-[0_0_10px_rgba(228,121,90,0.8)] transition-all duration-700"></div>
         </div>
       </header>
 
@@ -151,7 +152,7 @@ export default function GenrePage() {
                       ? 'border-red-400 border-[3px] shadow-[0_0_25px_rgba(248,113,113,0.4)] -translate-y-1 bg-red-500/10'
                       : 'border-red-400/50 hover:border-red-400 hover:bg-red-500/10'
                     : selectedGenre === genre.id
-                      ? 'border-gold border-[3px] shadow-[0_0_25px_rgba(242,13,128,0.3)] -translate-y-1'
+                      ? 'border-gold border-[3px] shadow-[0_0_25px_rgba(228,121,90,0.3)] -translate-y-1'
                       : 'border-white/10 hover:border-gold/50 hover:bg-white/5'}
                 `}
               >
@@ -220,7 +221,7 @@ export default function GenrePage() {
                 transition-all hover:scale-105 active:scale-95
                 ${selectedGenre
                   ? 'bg-bougainvillea text-white'
-                  : 'bg-white/10 text-white/30 cursor-not-allowed hover:scale-100'}
+                  : 'bg-white/10 text-white/55 cursor-not-allowed hover:scale-100'}
               `}
             >
               <span className="relative z-10 flex items-center gap-2">
@@ -231,7 +232,7 @@ export default function GenrePage() {
                 <div className="absolute inset-0 bg-white opacity-0 group-hover:opacity-10 transition-opacity"></div>
               )}
             </button>
-            <p className="text-white/30 text-xs uppercase tracking-widest">Puedes cambiar de género más adelante</p>
+            <p className="text-white/55 text-xs uppercase tracking-widest">Puedes cambiar de género más adelante</p>
           </div>
         </div>
       </main>
@@ -248,13 +249,14 @@ export default function GenrePage() {
       {/* Footer */}
       <footer className="bg-background-dark/50 backdrop-blur-md py-6 px-8 border-t border-white/5 relative z-30">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
-          <div className="font-display text-white/50 text-lg">RegalosQueCantan</div>
+          <CenzoMark size={38} /><div className="font-display text-white/50 text-lg">RegalosQueCantan</div>
           <div className="flex gap-8">
-            <a className="text-white/30 hover:text-gold transition-colors text-[10px] uppercase tracking-widest" href="#">Privacidad</a>
-            <a className="text-white/30 hover:text-gold transition-colors text-[10px] uppercase tracking-widest" href="#">Términos</a>
-            <a className="text-white/30 hover:text-gold transition-colors text-[10px] uppercase tracking-widest" href="#">FAQ</a>
+            <a className="text-white/55 hover:text-gold transition-colors text-[10px] uppercase tracking-widest" href="#">Privacidad</a>
+            <a className="text-white/55 hover:text-gold transition-colors text-[10px] uppercase tracking-widest" href="#">Términos</a>
+            <a className="text-white/55 hover:text-gold transition-colors text-[10px] uppercase tracking-widest" href="#">FAQ</a>
           </div>
-          <p className="text-white/20 text-[10px] uppercase tracking-tighter">© 2026 RegalosQueCantan.</p>
+          <CenzoSignature className="justify-center mb-3" />
+          <p className="text-white/50 text-[10px] uppercase tracking-tighter">© 2026 RegalosQueCantan.</p>
         </div>
       </footer>
     </div>

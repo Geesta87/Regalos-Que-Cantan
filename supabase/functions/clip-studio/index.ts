@@ -81,10 +81,17 @@ function extractGhlPostId(d: any): string | null {
 }
 
 async function ghlPostYouTube(accountId: string, caption: string, mediaUrl: string, scheduleDate: string): Promise<{ id: string | null; error: string | null }> {
+  // The caption's first line is the search-optimized TITLE (youtubeSeoCaption's
+  // contract); the rest is the description. GHL's YouTube pipeline takes the
+  // title via youtubePostDetails.title — `summary` alone yields a junk title.
+  const lines = caption.split('\n');
+  const title = (lines[0] || 'Canción personalizada para regalar | Regalos Que Cantan').trim().slice(0, 100);
+  const description = lines.slice(1).join('\n').trim();
   const payload = {
     accountIds: [accountId], userId: GHL_USER_ID,
     media: [{ url: mediaUrl, type: 'video/mp4' }],
-    summary: caption, scheduleDate, type: 'post', status: 'scheduled',
+    summary: description || caption, scheduleDate, type: 'post', status: 'scheduled',
+    youtubePostDetails: { title, privacyLevel: 'public', type: 'video' },
   };
   const resp = await ghlFetch(`/social-media-posting/${GHL_LOCATION_ID}/posts`, { method: 'POST', body: JSON.stringify(payload) });
   if (!resp.ok) return { id: null, error: `youtube_${resp.status}: ${(await resp.text()).slice(0, 300)}` };
@@ -975,8 +982,10 @@ serve(async (req) => {
         .map((w) => w.word.trim()).join(' ');
       const caption = await youtubeSeoCaption(clip.label || proj?.title || 'Clip', said);
 
-      // GHL needs a future schedule time; floor ~2 min out.
-      const scheduleDate = new Date(Date.now() + 150_000).toISOString();
+      // GHL needs a comfortably-future schedule time. 2.5 min was rejected
+      // with "Schedule Date must be after current date" (422, seen 2026-08-11);
+      // post-to-ghl's proven buffer is 15 min — use the same.
+      const scheduleDate = new Date(Date.now() + 900_000).toISOString();
       const { id: ghlId, error: postErr } = await ghlPostYouTube(acct.id, caption, clip.video_url, scheduleDate);
       if (!ghlId) return json({ success: false, error: postErr || 'YouTube post failed' }, 502);
 

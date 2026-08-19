@@ -99,3 +99,125 @@ Functions that should be added to the list as work on `claude/eloquent-stonebrak
 
 - `.githooks/pre-commit` blocks commits that (a) use sync `stripe.webhooks.constructEvent(`, or (b) add a new `supabase/functions/<name>/index.ts` without a matching entry in `supabase/config.toml`. The hook auto-installs on `npm install` via the `postinstall` script.
 - If the hook fires on a commit, read the message — it points at the exact rule that's being violated. Do not bypass with `--no-verify` without fixing the underlying issue.
+
+## 6. Fix-a-Song system (correcting paid songs)
+
+How customer song corrections work. Read this before touching `fix-song-section`,
+`song-fix-queue`, `fix-song-auto`, `FixSongCard`/`FixQueue` in AdminDashboard.jsx,
+or `src/utils/audioSplice.js`.
+
+### Hard rules (owner decisions — do not relitigate)
+
+- **Whole Suno takes ONLY.** Never splice, time-stretch (`atempo`), or pitch-shift
+  a customer's song. Every spliced result was audibly worse and owner-rejected
+  (2026-07/08). The only permitted audio surgery is a single END-TRIM (cut + fade
+  at the song's true final lyric line) to remove Suno's duplicated-tail
+  over-extension.
+- **A human always approves.** Automation may generate and STAGE candidates; only
+  the owner (or Ivan) releases a fix into a customer's live song. Preview first.
+- **Length discipline:** a take ships as-is only if its sung length is ≤1.08× the
+  original; longer takes get the end-trim rescue (trimmed target ≤1.15×); beyond
+  that, reject the take. The old 1.30× as-is ceiling shipped a 3:52 song as 4:49.
+
+### The flow
+
+1. `section-submit` (Kie replace-section) re-sings from the corrected lyrics —
+   returns a COMPLETE song, internally blended. Validate the WHOLE output by
+   Whisper transcript (corrected line sung ≥ its lyric occurrence count, old
+   wording sung zero times, prior fix corrections still present, structure and
+   length intact), then rehost + present + `apply`.
+2. Applies CHAIN: `fixTaskId`/`fixAudioId` are stored into
+   `kie_task_id`/`kie_payload` so the NEXT fix re-sings from the corrected take.
+   `fix_corrections` accumulates; takes that revert an earlier correction are
+   rejected. (Pre-2026-08-06, fix #2 silently reverted fix #1 — never remove this.)
+3. Multi-spot fixes: the ladder drives spots sequentially (earliest first,
+   chained, one final preview).
+4. **Persona re-roll — ON BY DEFAULT for every full re-roll** (2026-08-10,
+   owner priority: multi-spot fixes must keep the same voice). `full-submit`
+   automatically mints (ONE mint per audioId EVER — persisted in
+   `songs.kie_source.personaId`, always reused) or reuses the song's own cloned
+   singer and pins `durationS` to the live song's length (trimAtS beats the raw
+   take duration; `duration` works on V5_5 only) whenever the Kie source is
+   alive. Opt out with `usePersona:false`. Response reports `personaUsed` /
+   `pinnedDurationS` and the UI shows it. If the source is purged (>14 days /
+   Mureka), the re-roll proceeds voice-unpinned and the UI warns. It is still a
+   new performance — owner ears judge the A/B before applying.
+
+### Kie facts (verified against docs.kie.ai 2026-08-09)
+
+- replace-section window: **10–480s** per Kie (we cap at 60), ≤50% of song, **no
+  length-control parameter**. A window under 10s is a hard 422 — we shipped a 6s
+  floor for months (fixed 2026-08-12).
+- **One window reaches ONE spot.** A corrected line that repeats (chorus) needs a
+  window PER occurrence: the ladder keeps a partially-fixed take and chains the
+  next round off it. Ace goes straight to a full re-roll for repeated lines.
+- Kie `get-timestamped-lyrics` ALIGNS the submitted sheet — it is NOT a
+  transcript and cannot prove a word was sung. Prove wording with Whisper
+  (`transcribe-song` takes a raw `{audioUrl}`); use Kie timings for structure.
+- Source audio is purged ~14 days per take; every applied fix is a fresh take,
+  which resets that clock.
+- Whisper gotchas when validating: numbers/years transcribe as DIGITS ("13",
+  "19 de agosto") or spelled words — match both; name pronunciation cannot be
+  judged from transcripts (g/k confusion); ignore the hallucinated
+  "Subtítulos … Amara.org" over instrumental outros (verify by timestamp).
+
+### Auto-fix pipeline (ON since 2026-08-09)
+
+Chat → "Send to Fix Song" intake (auto-pulls the customer's email from the
+conversation) → `fix-song-auto` (pg_cron job 48 — reconstructable from
+`supabase/functions/fix-song-auto/CRON_SETUP.sql`; kill switch
+`fix_auto_state.enabled`, toggleable via the 🤖 pill in the Fix Song queue
+header, owner-only) understands → plans → generates → validates (same
+count-based checklist as the manual ladder, on the audible part only) → STAGES
+(candidate_meta carries the winner's `fixTaskId`/`fixAudioId`/`fixTrimAtS` so
+release keeps the chain) → WhatsApp ping to approvers → one-tap Release in
+`/admin?tab=fixsong` (releases auto-notify the customer and report any paid
+stale artifacts to re-run). It never guesses: ambiguity ⇒ `needs_human`, and
+the queue card shows the robot's reason. Any open card can be handed (back) to
+Ace via the "🎧 Give it to Ace / Have Ace redo it" button (`song-fix-queue`
+action `send-to-ace`: fresh rounds, full re-plan, owner's optional note becomes
+retry guidance) — never reset his rounds by SQL again.
+Full re-roll take rules learned 2026-08-10 (Vicente a4672f19): added lines go
+at the END OF A VERSE, never appended after the final chorus (duration-pinned
+takes drop them); takes whose vocals start >12s later than the original are
+rejected ("intro demasiado largo"); proper names are never required transcript
+tokens (Whisper mangles them — ears judge names).
+Learned 2026-08-11 (Miguel Ángel 676a1f73, 10 takes): the validator runs a
+FULL-STRUCTURE AUDIT — every distinctive lyric line must be sung EXACTLY its
+lyric count (fewer = missing section, more = duplicated; audit tokenization is
+case-blind, mid-line-name-skip only). The DURATION PIN can force Suno to pad
+the sheet with repeated sections (0/8 pinned vs 4/4 unpinned that night):
+`full-submit {pinDuration:false}` = SAME cloned voice, free length, and Ace
+AUTO-ESCALATES to it when pinned full takes fail structurally. Diagnose
+structural takes with Kie get-timestamped-lyrics (Suno's own word timings),
+not Whisper. `usePersona:false` (fresh voice) is a LAST resort — owner
+mandate: same song, same voice, edits only.
+
+Splice/rehost/trim run on Cloud Run `rqc-video-renderer` (`/splice-audio`), which
+also hosts Clip Studio routes — deploy it only from an up-to-date main.
+
+### Ace — the personified fix agent (2026-08-10)
+
+The Fix Song pipeline is personified as **"Ace, Song Fix Specialist"** — an
+animated Pixar-style gentleman studio engineer. Owner + Ivan say "send it to
+Ace". Full-bleed hero on the Fix Song tab (always-animated: idle "at your
+command" loop when standing by, headphones-on loop while working); chat intake
+button is "Send to Ace"; his WhatsApp pings sign "Ace here". Assets in
+`public/agents/` (ace.png, ace-hero.png + the three mp4 loops), generated on
+Kie via `test-kie-video` (nano-banana image → seedance-2 loop, character kept
+consistent by passing the live portrait URL as `image_urls` reference). Keep
+the name consistent in any new fix-song UI or notification copy.
+
+### Hardening (2026-08-10)
+
+- `fix-song-section` requires auth IN-HANDLER: the service-role key
+  (server-to-server) or a logged-in `admin_users` session. The public anon key
+  is rejected — never "simplify" the frontend back to `Bearer ${ANON}` for it.
+- **Add-a-line is a FULL re-roll** now. The old `runAddLine` splice graft
+  (spliceAddedTail) violated the whole-takes-only rule and was retired; do not
+  resurrect it.
+- The daily auto cap counts `song_fix_attempts.action='auto-submit'` marker
+  rows only; manual browser fixes don't starve the robot.
+- `fix_auto_state.active_since` must be non-NULL while enabled (a NULL makes
+  the worker silently process nothing). The `auto-toggle` action sets it on
+  first enable — keep that invariant.

@@ -14,8 +14,8 @@ import { guessTimezoneFromPhone, tzLabel, format12, tzOptionsWith } from '../uti
 //   senderDefault    — prefill for "tu nombre" (the song's sender)
 //   error            — server/client validation message to show inline
 
-const PINK = '#f20d80';
-const PINK_DARK = '#c70a64';
+const PINK = '#E4795A';
+const PINK_DARK = '#B44F35';
 
 function todayLocalISODate() {
   const d = new Date();
@@ -40,10 +40,10 @@ export default function GiftAddonField({ value, onChange, recipientDefault = '',
   const inputStyle = {
     width: '100%', padding: '10px 12px', borderRadius: '10px',
     background: 'rgba(0,0,0,0.35)', color: '#fff',
-    border: '1px solid rgba(242,13,128,0.3)', fontSize: '15px',
+    border: '1px solid rgba(228,121,90,0.3)', fontSize: '15px',
     fontFamily: 'inherit', boxSizing: 'border-box', marginBottom: '10px',
   };
-  const labelStyle = { fontSize: '12px', color: '#e7b9cf', display: 'block', marginBottom: '4px' };
+  const labelStyle = { fontSize: '12px', color: '#E3C3B2', display: 'block', marginBottom: '4px' };
 
   return (
     <div style={{ marginBottom: '16px', animation: 'fadeIn 0.6s ease-out both' }}>
@@ -52,8 +52,8 @@ export default function GiftAddonField({ value, onChange, recipientDefault = '',
         role="button"
         style={{
           display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer',
-          background: v.enabled ? 'rgba(242,13,128,0.12)' : 'rgba(242,13,128,0.06)',
-          border: v.enabled ? `2px solid ${PINK}` : '2px solid rgba(242,13,128,0.4)',
+          background: v.enabled ? 'rgba(228,121,90,0.12)' : 'rgba(228,121,90,0.06)',
+          border: v.enabled ? `2px solid ${PINK}` : '2px solid rgba(228,121,90,0.4)',
           borderRadius: '14px', padding: '12px 14px',
         }}
       >
@@ -65,20 +65,20 @@ export default function GiftAddonField({ value, onChange, recipientDefault = '',
         }}>{v.enabled ? '✓' : ''}</span>
         <div style={{ flex: 1 }}>
           <p style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: '#fff' }}>🎁 Enviárselo de sorpresa por mensaje</p>
-          <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#e7b9cf' }}>Se la mandamos el día y la hora que elijas — con tu nombre</p>
+          <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#E3C3B2' }}>Se la mandamos el día y la hora que elijas — con tu nombre</p>
         </div>
-        <span style={{ fontSize: '15px', fontWeight: 800, color: '#ffd6e8' }}>+$5</span>
+        <span style={{ fontSize: '15px', fontWeight: 800, color: '#F7E3D6' }}>+$5</span>
       </div>
 
       {v.enabled && (
-        <div style={{ padding: '14px', background: 'rgba(242,13,128,0.05)', border: '1px solid rgba(242,13,128,0.25)', borderTop: 'none', borderRadius: '0 0 14px 14px', marginTop: '-2px' }}>
+        <div style={{ padding: '14px', background: 'rgba(228,121,90,0.05)', border: '1px solid rgba(228,121,90,0.25)', borderTop: 'none', borderRadius: '0 0 14px 14px', marginTop: '-2px' }}>
           <label style={labelStyle}>¿Para quién es?</label>
           <input style={inputStyle} value={v.recipientName} onChange={(e) => set({ recipientName: e.target.value })} placeholder="Ej. Abuela Rosa" />
 
           <label style={labelStyle}>Su número de celular</label>
           <input style={{ ...inputStyle, marginBottom: '12px' }} value={v.phone} onChange={(e) => set({ phone: e.target.value })} placeholder="(305) 555-0148" inputMode="tel" />
 
-          <label style={labelStyle}>Tu nombre <span style={{ color: '#f97bb6' }}>(verá quién se lo manda)</span></label>
+          <label style={labelStyle}>Tu nombre <span style={{ color: '#F2A0C2' }}>(verá quién se lo manda)</span></label>
           <input style={inputStyle} value={v.buyerName} onChange={(e) => set({ buyerName: e.target.value })} placeholder="Tu nombre" />
 
           <label style={labelStyle}>Mensaje personal</label>
@@ -101,7 +101,7 @@ export default function GiftAddonField({ value, onChange, recipientDefault = '',
               <select value={effectiveTz} onChange={(e) => set({ tz: e.target.value })} style={{ ...inputStyle, marginBottom: '6px' }}>
                 {tzOptionsWith(effectiveTz).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
-              <p style={{ margin: 0, fontSize: '12px', color: '#f97bb6', lineHeight: 1.4 }}>
+              <p style={{ margin: 0, fontSize: '12px', color: '#F2A0C2', lineHeight: 1.4 }}>
                 🕒 Le llegará a las {format12(v.time)} {tzLabel(effectiveTz)}{v.recipientName ? ` — la hora de ${v.recipientName}` : ''}
               </p>
             </div>

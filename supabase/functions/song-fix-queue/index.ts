@@ -11,14 +11,16 @@
 //      existing Fix Song workflow, then STAGES the result here: the corrected
 //      audio is hosted in the `audio` bucket and recorded on the request, but
 //      the customer's live song is NOT touched (status='awaiting_approval').
-//   3. Only the OWNER (role='admin') can RELEASE it — that is the swap into the
-//      customer's live song, with the same fix_backup undo snapshot the direct
-//      Fix Song apply takes. Assistants can prepare fixes but never release them.
+//   3. The owner OR Ivan (assistant) RELEASES it — the swap into the customer's
+//      live song, with the same fix_backup undo snapshot the direct Fix Song
+//      apply takes. (Release was originally owner-only; owner decision
+//      2026-07-27 opened it to both admin_users roles.)
 //
 // Auth is identical to sms-admin / admin-songs: the platform gateway verifies
 // the Supabase Auth JWT (config.toml has [functions.song-fix-queue] verify_jwt =
-// true) and the handler requires a row in admin_users. 'assistant' may list /
-// claim / stage / reject; 'release' requires role='admin'.
+// true) and the handler requires a row in admin_users. Any admin_users row may
+// list / claim / stage / release / reject; only role='admin' may flip the
+// auto-fixer switch ('auto-toggle').
 //
 // Actions (POST JSON unless noted):
 //   GET or { action:'list' }                         → { success, role, requests }
@@ -105,7 +107,7 @@ function mergeCorrections(prevList: unknown, newList: unknown): Array<{ before: 
 // undone by a later julio→agosto fix on the same songs). Stitched/trimmed audio
 // is not a Kie track, so those releases still drop the Kie ids.
 // deno-lint-ignore no-explicit-any
-async function releaseCandidate(admin: any, reqRow: any, approver: string): Promise<{ audioUrl: string }> {
+async function releaseCandidate(admin: any, reqRow: any, approver: string): Promise<{ audioUrl: string; staleArtifacts: string[] }> {
   const songId = reqRow.song_id;
   const candidateUrl = reqRow.candidate_audio_url;
   if (!songId) throw new Error('This request has no song linked yet.');
@@ -113,9 +115,19 @@ async function releaseCandidate(admin: any, reqRow: any, approver: string): Prom
 
   const { data: prev } = await admin
     .from('songs')
-    .select('audio_url, preview_url, original_audio_url, image_url, lyrics, kie_task_id, task_id, kie_payload, kie_source, fix_corrections, provider, lyrics_timestamps, fixed_at, fix_count, fix_history')
+    .select('audio_url, preview_url, original_audio_url, image_url, lyrics, kie_task_id, task_id, kie_payload, kie_source, fix_corrections, provider, lyrics_timestamps, fixed_at, fix_count, fix_history, karaoke_url, lyric_video_url, karaoke_video_url, video_url')
     .eq('id', songId)
     .single();
+
+  // Paid audio-derived deliverables the release invalidates but cannot rebuild
+  // (no auto-rebuild exists for these) — reported back so staff re-run them by
+  // hand. The direct-apply path already did this; queue releases silently left
+  // a paid karaoke/lyric video rendered from the OLD audio with nobody told.
+  const staleArtifacts: string[] = [];
+  if (prev?.karaoke_url) staleArtifacts.push('karaoke');
+  if (prev?.lyric_video_url) staleArtifacts.push('lyric_video');
+  if (prev?.karaoke_video_url) staleArtifacts.push('karaoke_video');
+  if (prev?.video_url) staleArtifacts.push('video_addon');
 
   const now = new Date().toISOString();
   const meta = reqRow.candidate_meta || {};
@@ -181,7 +193,7 @@ async function releaseCandidate(admin: any, reqRow: any, approver: string): Prom
     resolved_at: now,
   }).eq('id', reqRow.id);
 
-  return { audioUrl: candidateUrl };
+  return { audioUrl: candidateUrl, staleArtifacts };
 }
 
 serve(async (req) => {
@@ -241,7 +253,7 @@ serve(async (req) => {
         fixTrimAtS: Number(form.get('fixTrimAtS')) > 0 ? Number(form.get('fixTrimAtS')) : null,
       };
 
-      const { error: upErr } = await admin.from('song_fix_requests').update({
+      const { data: upRows, error: upErr } = await admin.from('song_fix_requests').update({
         candidate_audio_url: publicUrl,
         candidate_lyrics: form.get('fullLyrics') ? String(form.get('fullLyrics')) : null,
         candidate_summary: form.get('summary') ? String(form.get('summary')) : null,
@@ -250,8 +262,9 @@ serve(async (req) => {
         status: 'awaiting_approval',
         worked_by: actor,
         staged_at: new Date().toISOString(),
-      }).eq('id', requestId);
+      }).eq('id', requestId).in('status', OPEN_STATUSES).select('id'); // never stage onto a released ('done') request — that resurrects it for a second release
       if (upErr) return json({ success: false, error: upErr.message }, 500);
+      if (!upRows?.length) return json({ success: false, error: 'This request was already resolved — nothing to stage onto.' }, 409);
       return json({ success: true, candidate_audio_url: publicUrl });
     }
 
@@ -287,6 +300,253 @@ serve(async (req) => {
       }
       const enriched = requests.map((r) => ({ ...r, song: r.song_id ? (songsById[String(r.song_id)] || null) : null }));
       return json({ success: true, role, requests: enriched });
+    }
+
+    // ── Robot (fix-song-auto) controls — the kill switch used to be SQL-only ──
+    if (action === 'auto-state') {
+      const { data: st } = await admin.from('fix_auto_state').select('*').eq('id', 1).single();
+      return json({ success: true, state: st || null });
+    }
+    if (action === 'auto-toggle') {
+      if (role !== 'admin') return json({ success: false, error: 'Only the owner can switch the auto-fixer on/off.' }, 403);
+      const enabled = !!body.enabled;
+      const patch: Record<string, unknown> = { enabled, updated_at: new Date().toISOString() };
+      // active_since gates which requests the robot may touch (future-only rule).
+      // Set it on FIRST enable only — re-enabling keeps the original window. A
+      // NULL active_since makes the worker silently process nothing (its cutoff
+      // falls back to "now"), so never leave it unset while enabled.
+      const { data: st } = await admin.from('fix_auto_state').select('active_since').eq('id', 1).single();
+      if (enabled && !st?.active_since) patch.active_since = new Date().toISOString();
+      const { error } = await admin.from('fix_auto_state').update(patch).eq('id', 1);
+      if (error) return json({ success: false, error: error.message }, 500);
+      return json({ success: true, enabled });
+    }
+
+    // ── SEND TO ACE — hand any open request (back) to the auto pipeline ─────
+    // Replaces the SQL-only resets of 2026-08-10: needs_human cards, old
+    // manual-era cards, and do-over-after-listening all get a one-tap "have
+    // Ace redo it". An optional note becomes extra guidance for his
+    // understanding step (e.g. "the intro was too long", "put the new line in
+    // Verso 2"). Fully re-plans from scratch with fresh rounds.
+    if (action === 'send-to-ace') {
+      const id = body.request_id;
+      if (!id) return json({ success: false, error: 'request_id required' }, 400);
+      const { data: reqRow } = await admin.from('song_fix_requests').select('id, customer_request, status, auto_plan').eq('id', id).single();
+      if (!reqRow) return json({ success: false, error: 'Request not found' }, 404);
+      // Any open OR rejected request may be handed to Ace; only released ones can't.
+      if (reqRow.status === 'done') return json({ success: false, error: 'Already released — nothing for Ace to redo.' }, 409);
+      const note = String(body.note || '').trim();
+      const patch: Record<string, unknown> = {
+        status: 'pending',
+        intake_complete: true,
+        auto_status: null,
+        auto_round: 0,
+        auto_error: null,
+        auto_takes: [],
+        // PRESERVE THE OWNER'S RESTRICTIONS across the reset (2026-08-17):
+        // noAutoFull means the owner approved a SECTION fix and refused a full
+        // re-roll. Nulling auto_plan let one 'Have Ace redo it' tap launder that
+        // away — Ace re-planned from scratch and could stage the very re-roll
+        // the owner said no to. stepPlan merges these flags into its new plan.
+        auto_plan: (reqRow.auto_plan?.noAutoFull || reqRow.auto_plan?.handoff)
+          ? { ...(reqRow.auto_plan?.noAutoFull ? { noAutoFull: true } : {}), ...(reqRow.auto_plan?.handoff ? { handoff: true } : {}) }
+          : null,
+        auto_task_id: null,
+        fix_spec: null,
+        candidate_audio_url: null,
+        candidate_lyrics: null,
+        candidate_summary: null,
+        candidate_meta: null,
+        staged_at: null,
+        worked_by: null,
+        reject_reason: null,
+        // The worker only picks up requests newer than fix_auto_state.active_since
+        // (future-only rule). A hand-off IS a fresh instruction — re-stamp it.
+        created_at: new Date().toISOString(),
+      };
+      if (note) patch.customer_request = `${reqRow.customer_request || ''}\n\nNOTA DEL DUEÑO (reintento): ${note}`.trim();
+      // .neq guards the race with a concurrent Release: resurrecting a row the
+      // instant after it went 'done' would put Ace to work on a shipped fix.
+      const { data: reset, error } = await admin.from('song_fix_requests').update(patch).eq('id', id).neq('status', 'done').select('id');
+      if (error) return json({ success: false, error: error.message }, 500);
+      if (!reset?.length) return json({ success: false, error: 'Already released — nothing for Ace to redo.' }, 409);
+      return json({ success: true });
+    }
+
+    // HAND AN ALREADY-APPROVED PLAN TO THE BACKGROUND WORKER (2026-08-12).
+    //
+    // Distinct from 'send-to-ace', which is a RESET: that one nulls auto_plan
+    // and fix_spec so Ace re-reads the complaint and re-plans from scratch.
+    // This one carries the plan the owner just confirmed on screen straight
+    // into the worker, seeding auto_status='generating' so Ace skips
+    // understanding/planning entirely and goes to work. Reusing send-to-ace
+    // here would throw the confirmation away and Ace would generate against a
+    // plan the owner never saw.
+    //
+    // Why it exists: the browser card runs the whole fix inside the tab — close
+    // it and the work dies, and it gives up quickly. On 2026-08-12 Kie spent
+    // hours failing most requests, and three paid songs needed 16, ~30 and ~20
+    // submissions to land. No person sits through that, and no browser tab
+    // survives it. Failed Kie jobs cost 0 credits, so the worker can simply
+    // out-wait a bad night — see MAX_INFRA_RETRIES in fix-song-auto.
+    //
+    // The human release gate is untouched: this only ever reaches
+    // status='awaiting_approval'. Nothing is applied to a customer's song
+    // without a person tapping Release.
+    if (action === 'handoff-plan') {
+      const songId = body.song_id;
+      const approvedLyrics = String(body.approvedLyrics || '').trim();
+      if (!songId) return json({ success: false, error: 'song_id required' }, 400);
+      if (!approvedLyrics) return json({ success: false, error: 'approvedLyrics required — hand off a CONFIRMED plan, not a blank one.' }, 400);
+
+      const changes = Array.isArray(body.changes) ? body.changes.filter((c: any) => c?.after) : [];
+
+      // WHAT THE WORKER CAN ACTUALLY DO. The browser ladder submits a window,
+      // keeps the resulting take, and CHAINS the next round off it — that is how
+      // a line sung in two choruses gets fixed, one window per occurrence. The
+      // worker has no such ladder: stepGenerate submits one window per round
+      // with no sourceTaskId, so it re-sings from the ORIGINAL every time and a
+      // repeated line can never satisfy the checklist. An added line can't ride
+      // a window at all. Handing either off as `mode:'section'` would burn a
+      // night and stage nothing.
+      //
+      // Re-derived HERE rather than trusted from the caller, because the button
+      // sends whichever mode the owner was shown and those rules live in the
+      // planner. Owner rule still wins: promoting to a full re-roll is a NEW
+      // PERFORMANCE, so we refuse rather than do it silently.
+      const timesInLyrics = (line: string): number => {
+        const norm = (s: string) => String(s || '').replace(/\r\n/g, '\n').toLowerCase().replace(/\s+/g, ' ').trim();
+        const hay = norm(approvedLyrics); const needle = norm(line);
+        if (!needle) return 0;
+        let n = 0; let i = hay.indexOf(needle);
+        while (i !== -1) { n++; i = hay.indexOf(needle, i + needle.length); }
+        return n;
+      };
+      const spots = changes.reduce((n: number, c: any) => n + Math.max(1, timesInLyrics(c.after)), 0);
+      const needsLadder = changes.length > 1 || spots > 1;
+      const isAddLine = !!body.addLine;
+      let mode = body.mode === 'full' ? 'full' : 'section';
+      if ((needsLadder || isAddLine) && mode === 'section') {
+        if (!body.allowFullReroll) {
+          return json({
+            success: false,
+            needsLadder: true,
+            error: isAddLine
+              ? 'Una línea NUEVA no cabe en una ventana: solo se puede con "Rehacer canción completa" (misma voz clonada). Ace no puede hacerlo solo — apruébalo aquí o hazlo en esta ventana.'
+              : 'Esta corrección toca varios lugares (o una línea que se repite). Ace re-canta UNA ventana por ronda y no encadena, así que no puede terminarla. Hazla en esta ventana, o aprueba rehacer la canción completa.',
+          }, 409);
+        }
+        mode = 'full';   // owner explicitly opted in
+      }
+
+      const autoPlan: Record<string, unknown> = {
+        approvedLyrics,
+        changes,
+        // stepGenerate passes these straight to Kie; dropping them silently
+        // weakens verification.
+        verifyPhrases: Array.isArray(body.verifyPhrases) ? body.verifyPhrases.slice(0, 3) : [],
+        mode,
+        // Boolean in the worker (it only gates durationPadS), even though the
+        // planner returns an object.
+        addLine: !!body.addLine,
+        summary: String(body.summary || '').slice(0, 500),
+        handoff: true,
+        // OWNER RULE: a full re-roll is a NEW PERFORMANCE, not an edit. The
+        // worker escalates section -> full on its own after two rounds; when the
+        // owner approved a SECTION fix, that escalation would hand back
+        // something they explicitly did not ask for. Only allow it if the
+        // caller opts in.
+        ...(body.allowFullReroll ? {} : { noAutoFull: true }),
+      };
+
+      const patch: Record<string, unknown> = {
+        song_id: songId,
+        status: 'pending',
+        intake_complete: true,
+        auto_status: 'generating',   // skip linking/understanding/planning
+        // SEED THE WORKER'S FAIRNESS CLOCK. Its mid-pipeline query is
+        // `.order('auto_updated_at', {ascending:true}).limit(3)` and Postgres
+        // sorts NULLS LAST on ASC, so an unstamped row sits behind every
+        // running one. Until now nothing could reach a mid state without
+        // setAuto() stamping it first; this is the first writer that can, and
+        // an unstamped row would be starved (silently — a row that never runs
+        // never reaches needs_human, so it never pings either).
+        auto_updated_at: new Date().toISOString(),
+        auto_round: 0,
+        auto_error: null,
+        auto_takes: [],
+        auto_task_id: null,
+        auto_plan: autoPlan,
+        candidate_audio_url: null,
+        candidate_lyrics: null,
+        candidate_summary: null,
+        candidate_meta: null,
+        staged_at: null,
+        reject_reason: null,
+        worked_by: actor,
+      };
+
+      const note = String(body.customer_request || body.note || '').trim();
+      // A readable instruction even when the owner typed nothing — the queue
+      // card, the WhatsApp ping and any later "give it to Ace" all read
+      // customer_request, and a content-free placeholder dead-ends every one of
+      // them (send-to-ace re-plans FROM this text).
+      const changeText = changes
+        .map((c: any) => (c.before ? `"${c.before}" → "${c.after}"` : `agregar: "${c.after}"`))
+        .join('; ')
+        .slice(0, 900);
+
+      let id = body.request_id || null;
+      // ONE SONG, ONE PIPELINE. Without this, fixing the same song twice from
+      // the Songs tab leaves two open rows racing on the same audio — both
+      // stage, and releasing one silently invalidates the other's chain.
+      if (!id) {
+        const { data: open } = await admin.from('song_fix_requests')
+          .select('id, status')
+          .eq('song_id', songId)
+          // 'in_progress' excluded (2026-08-17): that row belongs to a human
+          // mid-work — silently flipping it to the worker discarded their claim
+          // and whatever they were about to stage.
+          .in('status', ['pending', 'awaiting_approval'])
+          .order('created_at', { ascending: false })
+          .limit(1);
+        if (open?.length) id = open[0].id;
+      }
+      if (id) {
+        const { data: existing } = await admin.from('song_fix_requests').select('id, customer_request, status').eq('id', id).single();
+        if (!existing) return json({ success: false, error: 'Request not found' }, 404);
+        if (existing.status === 'done') return json({ success: false, error: 'Already released — nothing to hand off.' }, 409);
+        if (note && note !== existing.customer_request) {
+          patch.customer_request = `${existing.customer_request || ''}\n\nPLAN APROBADO POR EL DUEÑO: ${note}`.trim();
+        }
+        // Future-only gate: re-stamp so the worker treats this as fresh work.
+        patch.created_at = new Date().toISOString();
+        // .neq guards racing a concurrent Release — never resurrect a shipped fix.
+        const { data: took, error } = await admin.from('song_fix_requests').update(patch).eq('id', id).neq('status', 'done').select('id');
+        if (error) return json({ success: false, error: error.message }, 500);
+        if (!took?.length) return json({ success: false, error: 'Already released — start a fresh handoff instead.' }, 409);
+      } else {
+        patch.customer_request = note || (changeText
+          ? `Corrección aprobada por el dueño: ${changeText}`
+          : 'Corrección aprobada por el dueño desde Arreglar Canción.');
+        patch.created_by = actor;
+        // The staged/failed WhatsApp pings name the customer from context.
+        const { data: sng } = await admin.from('songs').select('recipient_name, whatsapp_phone').eq('id', songId).single();
+        patch.context = {
+          source: 'owner-handoff',
+          customer_name: sng?.recipient_name || null,
+          phone: sng?.whatsapp_phone || null,
+        };
+        const { data: ins, error } = await admin.from('song_fix_requests').insert(patch).select('id').single();
+        if (error) return json({ success: false, error: error.message }, 500);
+        id = ins.id;
+      }
+
+      // Tell the caller whether the worker is actually switched on — a handoff
+      // into a disabled worker looks identical to a handoff into a working one
+      // until nothing happens for an hour.
+      const { data: st } = await admin.from('fix_auto_state').select('enabled').eq('id', 1).single();
+      return json({ success: true, request_id: id, autoEnabled: !!st?.enabled });
     }
 
     if (action === 'claim') {
@@ -334,7 +594,7 @@ serve(async (req) => {
       const publicUrl = await hostAudio(admin, id, bytes);
 
       const corrections = Array.isArray(body.corrections) ? body.corrections : null;
-      const { error } = await admin.from('song_fix_requests').update({
+      const { data: srRows, error } = await admin.from('song_fix_requests').update({
         candidate_audio_url: publicUrl,
         candidate_lyrics: body.fullLyrics || null,
         candidate_summary: body.summary || null,
@@ -351,8 +611,9 @@ serve(async (req) => {
         status: 'awaiting_approval',
         worked_by: actor,
         staged_at: new Date().toISOString(),
-      }).eq('id', id);
+      }).eq('id', id).in('status', OPEN_STATUSES).select('id'); // never stage onto a released request
       if (error) return json({ success: false, error: error.message }, 500);
+      if (!srRows?.length) return json({ success: false, error: 'This request was already resolved — nothing to stage onto.' }, 409);
       return json({ success: true, candidate_audio_url: publicUrl });
     }
 
@@ -367,8 +628,21 @@ serve(async (req) => {
       if (reqRow.status !== 'awaiting_approval') {
         return json({ success: false, error: 'This request is not staged for approval.' }, 409);
       }
+      // ATOMIC CLAIM (2026-08-17). The read-check above races: the owner and
+      // Ivan both get the "fix ready" ping, and two Release taps seconds apart
+      // both passed it. The second releaseCandidate re-snapshotted fix_backup
+      // from the ALREADY-FIXED song — destroying the pre-fix original that undo
+      // exists to restore — and double-counted/notified. Claim the row with a
+      // conditional write first; exactly one caller wins.
+      {
+        const { data: claimed } = await admin.from('song_fix_requests')
+          .update({ status: 'in_progress', worked_by: actor })
+          .eq('id', id).eq('status', 'awaiting_approval')
+          .select('id');
+        if (!claimed?.length) return json({ success: false, error: 'Someone else is releasing this right now.' }, 409);
+      }
       try {
-        const out = await releaseCandidate(admin, reqRow, actor);
+        const out = await releaseCandidate(admin, { ...reqRow, status: 'awaiting_approval' }, actor);
         // ── Notify the customer (owner decision 2026-07-27): email + a WhatsApp
         // message INTO their existing chat thread. Best-effort — a notify failure
         // never rolls back the release; it's reported in the response instead.
@@ -376,11 +650,19 @@ serve(async (req) => {
         try {
           const songLink = `https://regalosquecantan.com/song/${reqRow.song_id}`;
           const { data: song } = await admin.from('songs')
-            .select('email, recipient_name').eq('id', reqRow.song_id).single();
+            .select('email, recipient_name, payment_status').eq('id', reqRow.song_id).single();
           const recipient = song?.recipient_name || 'tu ser querido';
 
+          // PAID GATE (owner decision 2026-08-18): the /song link is the full
+          // paid deliverable. If the song hasn't been paid for, do NOT tell the
+          // customer it's fixed — a fix on an unpaid song stays silent and the
+          // release response says why. (Two unpaid full versions were sent out
+          // this way; the customer had only ever seen the /listen previews.)
+          const isPaid = song?.payment_status === 'paid';
+          if (!isPaid) notified.skipped = 'song not paid — customer not notified';
+
           // Email (SendGrid, same pattern as notify-upsell-ready).
-          if (song?.email && SENDGRID_API_KEY) {
+          if (isPaid && song?.email && SENDGRID_API_KEY) {
             const html = `<div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px">
               <h2 style="color:#4f46e5">🎵 ¡Tu canción ya está corregida!</h2>
               <p>Hicimos el cambio que nos pediste en la canción para <strong>${recipient}</strong>. Ya puedes escucharla aquí:</p>
@@ -410,7 +692,7 @@ serve(async (req) => {
             phone = conv?.phone || null;
           }
           if (!phone && reqRow.context?.phone) phone = String(reqRow.context.phone);
-          if (phone) {
+          if (isPaid && phone) {
             const waBody = `✅ ¡Listo! Ya corregimos tu canción para ${recipient}. Escúchala aquí: ${songLink} 🎶`;
             const wa = await sendWhatsApp(phone, waBody);
             notified.whatsapp = wa.ok;
@@ -432,8 +714,11 @@ serve(async (req) => {
         } catch (notifyErr) {
           console.error('release notify failed:', notifyErr instanceof Error ? notifyErr.message : notifyErr);
         }
-        return json({ success: true, audio_url: out.audioUrl, song_id: reqRow.song_id, notified });
+        return json({ success: true, audio_url: out.audioUrl, song_id: reqRow.song_id, notified, stale_artifacts: out.staleArtifacts });
       } catch (e) {
+        // The claim succeeded but the release failed — put the row back so the
+        // staged candidate isn't stranded in 'in_progress' forever.
+        try { await admin.from('song_fix_requests').update({ status: 'awaiting_approval' }).eq('id', id).eq('status', 'in_progress'); } catch { /* best effort */ }
         return json({ success: false, error: e instanceof Error ? e.message : String(e) }, 500);
       }
     }
@@ -441,13 +726,14 @@ serve(async (req) => {
     if (action === 'reject') {
       const id = body.request_id;
       if (!id) return json({ success: false, error: 'request_id required' }, 400);
-      const { error } = await admin.from('song_fix_requests').update({
+      const { data: rjRows, error } = await admin.from('song_fix_requests').update({
         status: 'rejected',
         approved_by: actor,
         reject_reason: body.reason ? String(body.reason).slice(0, 500) : null,
         resolved_at: new Date().toISOString(),
-      }).eq('id', id);
+      }).eq('id', id).neq('status', 'done').select('id'); // a released fix is history — rejecting it now would rewrite it
       if (error) return json({ success: false, error: error.message }, 500);
+      if (!rjRows?.length) return json({ success: false, error: 'Already released — cannot reject.' }, 409);
       return json({ success: true });
     }
 

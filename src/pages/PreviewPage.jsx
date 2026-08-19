@@ -3,6 +3,7 @@ import { AppContext } from '../App';
 import { createCheckout, validateCoupon, regenerateSong } from '../services/api';
 import genres from '../config/genres';
 import { trackStep } from '../services/tracking';
+import { CenzoMark, CenzoSignature, CenzoGuide } from '../components/Cenzo';
 
 // Preview settings - skip intro, play 30 seconds of vocals
 const PREVIEW_START = 10;  // Skip 10s intro
@@ -217,7 +218,7 @@ export default function PreviewPage() {
   const lyricsSections = formatLyrics(songData?.lyrics);
 
   return (
-    <div className="bg-forest text-white antialiased min-h-screen">
+    <div className="night-sky text-white antialiased min-h-screen">
       {/* ⏰ Urgency Countdown Bar */}
       {!countdownExpired && timeLeft && (
         <div className="bg-gradient-to-r from-red-600/90 via-red-500/90 to-red-600/90 text-white text-center py-3 px-4 font-bold text-sm md:text-base sticky top-0 z-[60] shadow-lg">
@@ -239,7 +240,7 @@ export default function PreviewPage() {
           className="flex items-center gap-2 cursor-pointer"
           onClick={() => navigateTo('landing')}
         >
-          <h2 className="font-display text-white text-xl font-medium tracking-tight">
+          <CenzoMark size={44} /><h2 className="font-display text-white text-xl font-medium tracking-tight">
             RegalosQueCantan
           </h2>
         </div>
@@ -256,6 +257,7 @@ export default function PreviewPage() {
 
         <div className="relative z-20 container mx-auto px-6 max-w-3xl">
           <div className="text-center mb-10">
+            <CenzoGuide size={132} className="mx-auto mb-2 md:mb-3" />
             <h1 className="font-display text-white text-4xl md:text-5xl font-bold mb-4 tracking-tight">
               Escucha tu creación
             </h1>
@@ -293,7 +295,7 @@ export default function PreviewPage() {
                   <div 
                     className={`w-full h-full bg-gradient-to-br from-gold/30 to-bougainvillea/30 rounded-xl items-center justify-center border-2 border-white/10 shadow-lg ${songData?.imageUrl ? 'hidden' : 'flex'}`}
                   >
-                    <span className="material-symbols-outlined text-7xl text-white/40">music_note</span>
+                    <span className="material-symbols-outlined text-7xl text-white/55">music_note</span>
                   </div>
                 </div>
 
@@ -329,7 +331,7 @@ export default function PreviewPage() {
                       </span>
                     </button>
                     <div className="flex flex-col">
-                      <span className="text-[10px] text-white/40 uppercase tracking-widest font-bold">
+                      <span className="text-[10px] text-white/55 uppercase tracking-widest font-bold">
                         {previewEnded ? 'Compra para escuchar completa' : 'Escuchando preview'}
                       </span>
                       <span className="text-xs text-gold font-medium">
@@ -361,7 +363,7 @@ export default function PreviewPage() {
                   </>
                 )}
               </button>
-              <p className="text-white/40 text-xs mt-2">
+              <p className="text-white/55 text-xs mt-2">
                 Tienes 1 regeneración gratuita disponible
               </p>
             </div>
@@ -394,8 +396,8 @@ export default function PreviewPage() {
                 <div className="flex items-center gap-3 justify-center md:justify-start">
                   {couponApplied?.free ? (
                     <>
-                      <span className="text-white/40 line-through text-xl">${basePrice}</span>
-                      <span className="text-green-400 text-4xl font-bold tracking-tight">¡GRATIS!</span>
+                      <span className="text-white/55 line-through text-xl">${basePrice}</span>
+                      <span className="text-turquesa text-4xl font-bold tracking-tight">¡GRATIS!</span>
                     </>
                   ) : (
                     <>
@@ -403,7 +405,7 @@ export default function PreviewPage() {
                         ${couponApplied ? finalPrice : basePrice.toFixed(2)}
                       </span>
                       {couponApplied && (
-                        <span className="bg-green-500 text-white text-[10px] font-black px-2 py-0.5 rounded uppercase tracking-tighter">
+                        <span className="bg-turquesa text-white text-[10px] font-black px-2 py-0.5 rounded uppercase tracking-tighter">
                           {discount}% OFF
                         </span>
                       )}
@@ -413,7 +415,7 @@ export default function PreviewPage() {
                 <p className="text-white/50 text-xs mt-2">
                   {couponApplied?.free ? 'Cupón 100% de descuento aplicado' : 'Menos que unas flores que se mueren en 3 días 🌹'}
                 </p>
-                <p className="text-white/30 text-[10px] mt-1 uppercase tracking-widest">
+                <p className="text-white/55 text-[10px] mt-1 uppercase tracking-widest">
                   Pago único • Acceso de por vida
                 </p>
               </div>
@@ -425,7 +427,7 @@ export default function PreviewPage() {
                     value={couponCode}
                     onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
                     placeholder="Código de Cupón"
-                    className="bg-white/5 border border-white/10 rounded-full py-3 px-6 text-sm focus:ring-gold focus:border-gold w-full md:w-64 placeholder:text-white/20 text-white"
+                    className="bg-white/5 border border-white/10 rounded-full py-3 px-6 text-sm focus:ring-gold focus:border-gold w-full md:w-64 placeholder:text-white/50 text-white"
                     disabled={!!couponApplied}
                   />
                   {!couponApplied ? (
@@ -437,14 +439,14 @@ export default function PreviewPage() {
                       {isLoadingCoupon ? '...' : 'Aplicar'}
                     </button>
                   ) : (
-                    <span className="absolute right-4 text-green-400 material-symbols-outlined text-sm">check_circle</span>
+                    <span className="absolute right-4 text-turquesa material-symbols-outlined text-sm">check_circle</span>
                   )}
                 </div>
                 {couponError && (
                   <p className="text-red-400 text-xs mt-2 text-center md:text-left">{couponError}</p>
                 )}
                 {couponApplied && (
-                  <p className="text-green-400 text-xs mt-2 text-center md:text-left">
+                  <p className="text-turquesa text-xs mt-2 text-center md:text-left">
                     {couponApplied.free ? '¡Cupón GRATIS aplicado!' : `¡Cupón aplicado! -${couponApplied.discount}% adicional`}
                   </p>
                 )}
@@ -462,7 +464,7 @@ export default function PreviewPage() {
               <button
                 onClick={handleCheckout}
                 disabled={isCheckingOut}
-                className="group relative w-full inline-flex items-center justify-center overflow-hidden rounded-full h-20 px-16 bg-gradient-to-r from-bougainvillea to-red-600 text-white text-xl font-bold transition-all hover:scale-[1.02] active:scale-95 shadow-[0_0_25px_rgba(225,29,116,0.4)] disabled:opacity-70 disabled:cursor-not-allowed"
+                className="group relative w-full inline-flex items-center justify-center overflow-hidden rounded-full h-20 px-16 bg-gradient-to-r from-bougainvillea to-red-600 text-white text-xl font-bold transition-all hover:scale-[1.02] active:scale-95 shadow-[0_0_25px_rgba(201,96,63,0.4)] disabled:opacity-70 disabled:cursor-not-allowed"
               >
                 <span className="relative z-10 flex items-center gap-3">
                   {isCheckingOut ? (
@@ -486,7 +488,7 @@ export default function PreviewPage() {
               </button>
 
               {/* All sales final disclaimer */}
-              <p style={{ textAlign: 'center', color: 'rgba(255,255,255,0.3)', fontSize: '10px', marginTop: '12px', lineHeight: 1.5, maxWidth: 340, marginLeft: 'auto', marginRight: 'auto' }}>
+              <p style={{ textAlign: 'center', color: 'rgba(255,255,255,0.58)', fontSize: '10px', marginTop: '12px', lineHeight: 1.5, maxWidth: 340, marginLeft: 'auto', marginRight: 'auto' }}>
                 Al comprar aceptas que todas las ventas son finales. Escucha la vista previa antes de comprar. No se ofrecen reembolsos.
               </p>
             </div>
@@ -516,7 +518,7 @@ export default function PreviewPage() {
           <div className="mt-12 text-center">
             <button
               onClick={handleBack}
-              className="text-white/40 hover:text-white transition-colors text-sm uppercase tracking-widest flex items-center justify-center gap-2 group"
+              className="text-white/55 hover:text-white transition-colors text-sm uppercase tracking-widest flex items-center justify-center gap-2 group"
             >
               <span className="material-symbols-outlined text-sm group-hover:-translate-x-1 transition-transform">arrow_back</span>
               Volver a editar detalles
@@ -530,13 +532,14 @@ export default function PreviewPage() {
 
       <footer className="bg-background-dark py-10 px-8 border-t border-white/5">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-6">
-          <div className="font-display text-white/30 text-lg tracking-wider uppercase">RegalosQueCantan</div>
+          <CenzoMark size={38} /><div className="font-display text-white/55 text-lg tracking-wider uppercase">RegalosQueCantan</div>
           <div className="flex gap-8">
-            <a className="text-white/30 hover:text-gold transition-colors text-[10px] uppercase tracking-[0.2em]" href="#">Ayuda</a>
-            <a className="text-white/30 hover:text-gold transition-colors text-[10px] uppercase tracking-[0.2em]" href="#">Privacidad</a>
-            <a className="text-white/30 hover:text-gold transition-colors text-[10px] uppercase tracking-[0.2em]" href="#">Términos</a>
+            <a className="text-white/55 hover:text-gold transition-colors text-[10px] uppercase tracking-[0.2em]" href="#">Ayuda</a>
+            <a className="text-white/55 hover:text-gold transition-colors text-[10px] uppercase tracking-[0.2em]" href="#">Privacidad</a>
+            <a className="text-white/55 hover:text-gold transition-colors text-[10px] uppercase tracking-[0.2em]" href="#">Términos</a>
           </div>
-          <p className="text-white/20 text-[10px] uppercase tracking-widest">© {new Date().getFullYear()} RegalosQueCantan</p>
+          <CenzoSignature className="justify-center mb-3" />
+          <p className="text-white/50 text-[10px] uppercase tracking-widest">© {new Date().getFullYear()} RegalosQueCantan</p>
         </div>
       </footer>
     </div>

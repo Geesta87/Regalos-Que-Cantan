@@ -1,4 +1,5 @@
 import React, { useContext, useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { AppContext } from '../App';
 import { createCheckout, supabase, checkSongStatus, validateCoupon } from '../services/api';
 import genres from '../config/genres';
@@ -7,6 +8,7 @@ import ExitIntentPopup from '../components/ExitIntentPopup';
 import { AnimadoOffer } from './AnimadoUpsell';
 import GiftAddonField from '../components/GiftAddonField';
 import { OneTapUpsell } from '../components/OneTapUpsell';
+import { CenzoGuide } from '../components/Cenzo';
 
 // Preview settings
 const PREVIEW_START = 10;
@@ -21,8 +23,8 @@ const getGenreImagePath = (genre) => {
 
 // ✅ NEW: Version personality - VIBRANT colors
 const VERSION_VIBES = [
-  { label: 'Versión 1', emoji: '🎵', color: '#4f9cf7', gradient: 'linear-gradient(135deg, #2563eb, #3b82f6)', bgTint: 'rgba(59,130,246,0.12)' },
-  { label: 'Versión 2', emoji: '🎶', color: '#a855f7', gradient: 'linear-gradient(135deg, #7c3aed, #9333ea)', bgTint: 'rgba(168,85,247,0.12)' }
+  { label: 'Versión 1', emoji: '🎵', color: '#4f9cf7', gradient: 'linear-gradient(135deg, #4A4CA8, #8E90E8)', bgTint: 'rgba(59,130,246,0.12)' },
+  { label: 'Versión 2', emoji: '🎶', color: '#8E90E8', gradient: 'linear-gradient(135deg, #4A4CA8, #5A5CC4)', bgTint: 'rgba(142,144,232,0.12)' }
 ];
 
 export default function ComparisonPage() {
@@ -249,6 +251,27 @@ export default function ComparisonPage() {
   // Video add-on toggle (0 = none, 1 = one video, 2 = both videos)
   const [videoAddonCount, setVideoAddonCount] = useState(0);
   const videoAddon = videoAddonCount > 0; // backward-compat derived bool
+
+  // Pre-payment upsell modal: the Comprar CTA opens this instead of routing
+  // straight to Stripe. One-tap add-ons ride the SAME bundled checkout
+  // (createCheckout line items); "No, gracias" continues to payment as-is.
+  const [showUpsellModal, setShowUpsellModal] = useState(false);
+  const [lyricVideoAddon, setLyricVideoAddon] = useState(false);
+  const lyricVideoPrice = 9.99;
+
+  // Paquete Definitivo ($79.99) — the everything bundle at the top of the
+  // upsell modal: 2 canciones + 2 videos con fotos + 2 instrumentales + video
+  // con letra + 1 película animada ($111.96 à la carte). It drives the SAME
+  // add-on state as picking each one by hand, so checkout metadata (and
+  // therefore fulfillment) is identical; only the price differs, via a single
+  // Stripe line item in create-checkout. Coupons don't stack on it.
+  const [ultimateBundle, setUltimateBundle] = useState(false);
+  const ultimateBundlePrice = 79.99;
+  const ultimateBundleList = 111.96;
+  // Items already in the cart when the CTA is tapped are NOT offered again in
+  // the modal (no re-selling what they already added). All four in the cart →
+  // skip the modal entirely and go straight to checkout.
+  const [modalHiddenKeys, setModalHiddenKeys] = useState([]);
 
   // PREVIEW: extras chosen from the new "add to order" upsell grid on this page
   // (animado / instrumental / lyric_video / gift). Display-only for now — these
@@ -826,9 +849,13 @@ export default function ComparisonPage() {
       // matches what the buyer saw. Fall back to the legacy grid selection.
       const gAnimadoCount = animadoCount > 0 ? animadoCount : (gridKeys.has('animado') ? 1 : 0);
       const gAnimadoIds = animadoCount > 0 ? resolveAnimadoSongIds() : (gAnimadoCount ? [target].filter(Boolean) : []);
-      const gKaraoke = gridKeys.has('instrumental');
-      const gKaraokeIds = gKaraoke ? [target].filter(Boolean) : [];
-      const gLyric = gridKeys.has('lyric_video');
+      // Instrumental / lyric-video can come from the grid OR the pre-payment
+      // upsell modal — either source puts them on the Stripe checkout.
+      const gKaraoke = gridKeys.has('instrumental') || karaokeAddon;
+      const gKaraokeIds = gKaraoke
+        ? (karaokeAddon ? resolveKaraokeSongIds() : [target].filter(Boolean))
+        : [];
+      const gLyric = gridKeys.has('lyric_video') || lyricVideoAddon;
       // The gift box already collected + validated the form; its payload matches
       // the giftSms shape the server expects — just flag it enabled.
       const gGift = checkoutExtras.find((e) => e.key === 'gift');
@@ -836,7 +863,7 @@ export default function ComparisonPage() {
         ? { enabled: true, ...gGift.payload }
         : null;
 
-      const result = await createCheckout(songIdsToCheckout, formData?.email || checkoutEmail, codeToSend, purchaseBoth, '', gVideoCount > 0, gVideoCount, gKaraoke, gKaraokeIds, gAnimadoCount, gAnimadoIds, giftSms, gLyric);
+      const result = await createCheckout(songIdsToCheckout, formData?.email || checkoutEmail, codeToSend, purchaseBoth, '', gVideoCount > 0, gVideoCount, gKaraoke, gKaraokeIds, gAnimadoCount, gAnimadoIds, giftSms, gLyric, ultimateBundle);
 
       if (result.url) {
         window.location.href = result.url;
@@ -859,6 +886,18 @@ export default function ComparisonPage() {
   };
 
   const selectSong = (songId) => {
+    // The bundle is a 2-song product — dropping to one song dissolves it
+    // (and the add-ons it had ticked) rather than leaving a 2-video,
+    // 2-instrumental cart on a single-song order.
+    if (ultimateBundle) {
+      setUltimateBundle(false);
+      setVideoAddonCount(0);
+      setKaraokeAddon(false);
+      setKaraokeVersionIds([]);
+      setLyricVideoAddon(false);
+      setAnimadoCount(0);
+      setAnimadoVideoSongId(null);
+    }
     setSelectedSongId(songId);
     setPurchaseBoth(false);
     // 🔥 Meta Pixel: AddToCart when user selects a song
@@ -937,10 +976,45 @@ export default function ComparisonPage() {
 
   // Reset the Animado selection whenever the song selection changes, so the
   // offer never carries a stale "both" choice into a single-song purchase.
+  // The Paquete Definitivo owns its own add-on selection (it sets purchaseBoth
+  // AND animadoCount in the same batch), so skip the reset while it's active
+  // or enabling the bundle would immediately clear the animado it includes.
   useEffect(() => {
+    if (ultimateBundle) return;
     setAnimadoVideoSongId(null);
     setAnimadoCount(0);
-  }, [selectedSongId, purchaseBoth]);
+  }, [selectedSongId, purchaseBoth, ultimateBundle]);
+
+  // Turn the bundle on: switch to the 2-song order and tick every included
+  // add-on. Turning it off clears exactly what it added.
+  const toggleUltimateBundle = () => {
+    const next = !ultimateBundle;
+    setUltimateBundle(next);
+    if (next) {
+      setPurchaseBoth(true);
+      setSelectedSongId(null);
+      setVideoAddonCount(2);
+      setKaraokeAddon(true);
+      setKaraokeVersionIds(songs.map((s) => s.id));
+      setLyricVideoAddon(true);
+      setAnimadoCount(1);
+      setAnimadoVideoSongId(songs[0]?.id || null);
+      trackStep('song_selected', { value: ultimateBundlePrice, content_ids: songs.map((s) => s.id), num_items: songs.length });
+    } else {
+      setVideoAddonCount(0);
+      setKaraokeAddon(false);
+      setKaraokeVersionIds([]);
+      setLyricVideoAddon(false);
+      setAnimadoCount(0);
+      setAnimadoVideoSongId(null);
+    }
+  };
+
+  // Editing any single add-on breaks the bundle definition — drop the flag so
+  // the order reverts to itemized pricing on BOTH sides (create-checkout
+  // applies the same rule server-side), and the quote can never diverge from
+  // the charge. The add-ons themselves stay as the buyer left them.
+  const breakUltimateBundle = () => { if (ultimateBundle) setUltimateBundle(false); };
 
   const getSelectionLabel = () => {
     const videoLabel = videoAddon ? ' + Video' : '';
@@ -954,24 +1028,45 @@ export default function ComparisonPage() {
 
   const getCurrentPrice = () => {
     if (isFree) return 0;
+    // Flat bundle price — coupons don't stack (same rule create-checkout
+    // enforces), so what the modal quotes is exactly what Stripe charges.
+    if (ultimateBundle) return ultimateBundlePrice + (giftState.enabled ? 5 : 0);
     let base = purchaseBoth ? bundlePrice : singlePrice;
     if (videoAddonCount === 2) base += videoDualAddonPrice;
     else if (videoAddonCount === 1) base += videoAddonPrice;
     base += karaokeQty === 2 ? karaokeBundlePrice : karaokeAddonPrice * karaokeQty;
     if (animadoCount === 2) base += animadoPriceBoth;
     else if (animadoCount === 1) base += animadoPriceOne;
+    if (lyricVideoAddon) base += lyricVideoPrice;
     if (giftState.enabled) base += 5;
     return base;
   };
+
+  // Comprar CTA → pre-payment upsell modal. Anything already in the cart is
+  // excluded from the offer; if there's nothing left to offer, skip the modal.
+  const openUpsellModal = () => {
+    if (!hasSelection || isCheckingOut) return;
+    const gridSel = new Set(checkoutExtras.map((e) => e.key));
+    const hidden = [
+      videoAddonCount > 0 && 'video',
+      (animadoCount > 0 || gridSel.has('animado')) && 'animado',
+      (karaokeAddon || gridSel.has('instrumental')) && 'instrumental',
+      (lyricVideoAddon || gridSel.has('lyric_video')) && 'lyric',
+    ].filter(Boolean);
+    if (hidden.length >= 4) { handleCheckout(); return; }
+    setModalHiddenKeys(hidden);
+    setShowUpsellModal(true);
+  };
+
 
   // ==================== RENDER ====================
 
   if (loading) {
     return (
-      <div style={{backgroundColor: '#181114', color: 'white', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
+      <div className="night-sky" style={{color: 'white', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
         <style>{`@keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.15); } }`}</style>
         <div style={{textAlign: 'center'}}>
-          <div style={{fontSize: '48px', marginBottom: '20px', animation: 'pulse 1.5s ease-in-out infinite'}}>🎵</div>
+          <div style={{marginBottom: '12px', animation: 'pulse 1.5s ease-in-out infinite'}}><CenzoGuide size={168} /></div>
           <p style={{fontSize: '20px'}}>Cargando tus canciones...</p>
         </div>
       </div>
@@ -980,10 +1075,11 @@ export default function ComparisonPage() {
 
   if (error || !songs || songs.length === 0) {
     return (
-      <div style={{backgroundColor: '#181114', color: 'white', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
+      <div className="night-sky" style={{color: 'white', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
         <div style={{textAlign: 'center'}}>
-          <p style={{fontSize: '24px'}}>❌ {error || 'No se encontraron canciones'}</p>
-          <button onClick={() => navigateTo('details')} style={{padding: '12px 24px', background: '#e11d74', color: 'white', border: 'none', borderRadius: '8px', marginTop: '20px', cursor: 'pointer'}}>
+          <CenzoGuide size={156} className="mx-auto" />
+          <p style={{fontSize: '22px', marginTop: '6px'}}>{error || 'No se encontraron canciones'}</p>
+          <button onClick={() => navigateTo('details')} style={{padding: '12px 24px', background: '#E4795A', color: '#191A45', border: 'none', borderRadius: '8px', marginTop: '20px', cursor: 'pointer'}}>
             Volver a intentar
           </button>
         </div>
@@ -994,7 +1090,7 @@ export default function ComparisonPage() {
   const recipientName = dbRecipientName || formData?.recipientName || 'ti';
 
   return (
-    <div style={{background: '#0f0b0e', color: 'white', minHeight: '100vh', padding: '0 0 100px 0', overflow: 'hidden'}}>
+    <div className="night-sky" style={{color: 'white', minHeight: '100vh', padding: '0 0 100px 0', overflow: 'hidden'}}>
 
       {/* ✅ Minimal CSS Animations */}
       <style>{`
@@ -1005,8 +1101,8 @@ export default function ComparisonPage() {
         @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.08); } }
         @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
         @keyframes glimmer { 0% { left: -100%; } 100% { left: 200%; } }
-        @keyframes borderGlow { 0%, 100% { box-shadow: 0 0 0 3px rgba(34,197,94,0.4), 0 0 16px rgba(34,197,94,0.3), 0 4px 20px rgba(0,0,0,0.4); border-color: rgba(34,197,94,0.6); } 50% { box-shadow: 0 0 0 8px rgba(34,197,94,0.35), 0 0 60px rgba(34,197,94,0.75), 0 0 100px rgba(34,197,94,0.2), 0 4px 24px rgba(0,0,0,0.5); border-color: #4ade80; } }
-        @keyframes videoBorderGlow { 0%, 100% { box-shadow: 0 0 0 3px rgba(139,92,246,0.4), 0 0 16px rgba(139,92,246,0.3), 0 4px 20px rgba(0,0,0,0.4); border-color: rgba(139,92,246,0.6); } 50% { box-shadow: 0 0 0 8px rgba(139,92,246,0.35), 0 0 60px rgba(139,92,246,0.75), 0 0 100px rgba(139,92,246,0.2), 0 4px 24px rgba(0,0,0,0.5); border-color: #c084fc; } }
+        @keyframes borderGlow { 0%, 100% { box-shadow: 0 0 0 3px rgba(67,194,186,0.4), 0 0 16px rgba(67,194,186,0.3), 0 4px 20px rgba(0,0,0,0.4); border-color: rgba(67,194,186,0.6); } 50% { box-shadow: 0 0 0 8px rgba(67,194,186,0.35), 0 0 60px rgba(67,194,186,0.75), 0 0 100px rgba(67,194,186,0.2), 0 4px 24px rgba(0,0,0,0.5); border-color: #89DAD4; } }
+        @keyframes videoBorderGlow { 0%, 100% { box-shadow: 0 0 0 3px rgba(102,104,210,0.4), 0 0 16px rgba(102,104,210,0.3), 0 4px 20px rgba(0,0,0,0.4); border-color: rgba(102,104,210,0.6); } 50% { box-shadow: 0 0 0 8px rgba(102,104,210,0.35), 0 0 60px rgba(102,104,210,0.75), 0 0 100px rgba(102,104,210,0.2), 0 4px 24px rgba(0,0,0,0.5); border-color: #A9AAEE; } }
         @keyframes song2Reveal { 0% { opacity: 0; transform: scale(0.95) translateY(10px); } 100% { opacity: 1; transform: scale(1) translateY(0); } }
         @keyframes toastIn { 0% { opacity: 0; transform: translate(-50%, 20px); } 15% { opacity: 1; transform: translate(-50%, 0); } 85% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -10px); } }
         @keyframes kbSlide1 { 0%{transform:scale(1);opacity:1} 12%{transform:scale(1.1) translate(-1%,1%);opacity:1} 14.28%{opacity:0} 100%{opacity:0} }
@@ -1026,7 +1122,17 @@ export default function ComparisonPage() {
         @keyframes progressPreview { 0%{width:0%} 100%{width:100%} }
         @keyframes noteFloat { 0%{transform:translateY(0) rotate(0deg);opacity:0.7} 50%{transform:translateY(-8px) rotate(10deg);opacity:1} 100%{transform:translateY(0) rotate(0deg);opacity:0.7} }
         @keyframes videoProgress { 0%{width:0%} 100%{width:100%} }
-        @keyframes pricePulse { 0%, 100% { transform: scale(1); text-shadow: 0 0 10px rgba(192,132,252,0.4), 0 0 20px rgba(192,132,252,0.2); color: #c084fc; } 50% { transform: scale(1.12); text-shadow: 0 0 20px rgba(232,121,249,0.9), 0 0 40px rgba(192,132,252,0.5), 0 0 60px rgba(139,92,246,0.3); color: #f0abfc; } }
+        @keyframes pricePulse { 0%, 100% { transform: scale(1); text-shadow: 0 0 10px rgba(192,132,252,0.4), 0 0 20px rgba(192,132,252,0.2); color: #A9AAEE; } 50% { transform: scale(1.12); text-shadow: 0 0 20px rgba(232,121,249,0.9), 0 0 40px rgba(192,132,252,0.5), 0 0 60px rgba(102,104,210,0.3); color: #f0abfc; } }
+        @keyframes overlayIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes modalIn { from { opacity: 0; transform: translateY(28px) scale(0.96); } to { opacity: 1; transform: translateY(0) scale(1); } }
+        @keyframes mThumbFade { 0% { opacity: 0; transform: scale(1.05); } 8% { opacity: 1; } 30% { opacity: 1; transform: scale(1.16); } 38% { opacity: 0; } 100% { opacity: 0; } }
+        @keyframes mLyric { 0% { opacity: 0; transform: translateY(5px); } 6% { opacity: 1; transform: translateY(0); } 22% { opacity: 1; } 27% { opacity: 0; transform: translateY(-5px); } 100% { opacity: 0; } }
+        @keyframes gradientShift { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+        @keyframes giftBounce { 0%, 100% { transform: translateY(0) rotate(-4deg); } 50% { transform: translateY(-7px) rotate(4deg); } }
+        @keyframes ctaGlow { 0%, 100% { box-shadow: 0 4px 18px rgba(201,96,63,0.45), 0 0 0 rgba(192,38,211,0); } 50% { box-shadow: 0 4px 34px rgba(201,96,63,0.85), 0 0 46px rgba(192,38,211,0.45); } }
+        @keyframes sparkleFloat { 0%, 100% { transform: translateY(0) scale(1); opacity: 0.5; } 50% { transform: translateY(-9px) scale(1.25); opacity: 1; } }
+        @keyframes rowPop { 0% { opacity: 0; transform: translateY(14px) scale(0.97); } 100% { opacity: 1; transform: translateY(0) scale(1); } }
+        .rqcUpsellScroll::-webkit-scrollbar { width: 0; height: 0; display: none; }
       `}</style>
 
       {/* Audio elements (hidden) */}
@@ -1053,7 +1159,10 @@ export default function ComparisonPage() {
         margin: '0 auto',
         padding: '24px 16px 0',
         opacity: isVisible ? 1 : 0,
-        transform: isVisible ? 'translateY(0)' : 'translateY(12px)',
+        // 'none' (not translateY(0)) once visible: a live transform makes this
+        // wrapper the containing block for position:fixed children, which
+        // breaks viewport-anchored overlays (upsell modal, toast, exit popup).
+        transform: isVisible ? 'none' : 'translateY(12px)',
         transition: 'all 0.6s ease-out'
       }}>
 
@@ -1061,24 +1170,25 @@ export default function ComparisonPage() {
             SECTION 1: Header — Recipient name + instructions
             ══════════════════════════════════════════════════════ */}
         <div style={{textAlign: 'center', marginBottom: '28px', animation: 'fadeIn 0.6s ease-out'}}>
-          <p style={{fontSize: '12px', color: 'rgba(255,255,255,0.5)', margin: '0 0 4px', letterSpacing: '2px', textTransform: 'uppercase'}}>
+          <CenzoGuide size={148} className="mx-auto" />
+          <p style={{fontSize: '12px', color: 'rgba(255,255,255,0.7)', margin: '0 0 4px', letterSpacing: '2px', textTransform: 'uppercase'}}>
             Canción personalizada para
           </p>
-          <h1 style={{fontSize: '28px', fontWeight: '800', margin: '0 0 6px', color: '#f74da6'}}>
+          <h1 style={{fontSize: '28px', fontWeight: '800', margin: '0 0 6px', color: '#E7699F'}}>
             {recipientName}
           </h1>
-          <p style={{fontSize: '13px', color: 'rgba(255,255,255,0.45)', margin: 0}}>
+          <p style={{fontSize: '13px', color: 'rgba(255,255,255,0.68)', margin: 0}}>
             Escucha y elige tu versión favorita
           </p>
 
           {/* Auto-play blocked banner */}
           {autoPlayBlocked && !playingId && (
             <div style={{
-              marginTop: '14px', background: 'rgba(242,13,128,0.1)',
-              border: '1px solid rgba(242,13,128,0.2)', borderRadius: '10px',
+              marginTop: '14px', background: 'rgba(228,121,90,0.1)',
+              border: '1px solid rgba(228,121,90,0.2)', borderRadius: '10px',
               padding: '10px 16px', display: 'inline-block'
             }}>
-              <p style={{fontSize: '14px', fontWeight: '700', margin: 0, color: '#f74da6'}}>
+              <p style={{fontSize: '14px', fontWeight: '700', margin: 0, color: '#E7699F'}}>
                 👇 Toca para escuchar · 🔊 Sube el volumen
               </p>
             </div>
@@ -1088,8 +1198,8 @@ export default function ComparisonPage() {
           {autoPlayingIndex >= 0 && (
             <div style={{
               display: 'inline-flex', alignItems: 'center', gap: '8px',
-              background: 'rgba(242,13,128,0.1)', padding: '6px 16px',
-              borderRadius: '20px', fontSize: '13px', color: '#f74da6', marginTop: '12px',
+              background: 'rgba(228,121,90,0.1)', padding: '6px 16px',
+              borderRadius: '20px', fontSize: '13px', color: '#E7699F', marginTop: '12px',
             }}>
               <div style={{display: 'flex', alignItems: 'flex-end', gap: '2px', height: '14px'}}>
                 <div style={{width: '3px', background: 'currentColor', borderRadius: '2px', animation: 'eq1 0.6s ease-in-out infinite'}} />
@@ -1109,8 +1219,8 @@ export default function ComparisonPage() {
           textAlign: 'center',
           padding: '20px 22px',
           marginBottom: '20px',
-          background: 'linear-gradient(135deg, #EC4899 0%, #DB2777 100%)',
-          border: '2px solid #BE185D',
+          background: 'linear-gradient(135deg, #E7699F 0%, #B62463 100%)',
+          border: '2px solid #96204F',
           borderRadius: '14px',
           fontSize: '17px',
           lineHeight: '1.55',
@@ -1158,10 +1268,10 @@ export default function ComparisonPage() {
                 onClick={() => selectSong(song.id)}
                 style={{
                   background: isSelected
-                    ? 'rgba(242,13,128,0.12)'
+                    ? 'rgba(228,121,90,0.12)'
                     : 'rgba(255,255,255,0.06)',
                   border: isSelected
-                    ? '2px solid #f74da6'
+                    ? '2px solid #E7699F'
                     : '2px solid rgba(255,255,255,0.1)',
                   borderRadius: '16px',
                   padding: '16px',
@@ -1176,8 +1286,8 @@ export default function ComparisonPage() {
                 <div style={{
                   position: 'absolute', top: '12px', right: '12px',
                   width: '24px', height: '24px', borderRadius: '50%',
-                  border: isSelected ? '2px solid #f74da6' : '2px solid rgba(255,255,255,0.25)',
-                  background: isSelected ? '#f74da6' : 'transparent',
+                  border: isSelected ? '2px solid #E7699F' : '2px solid rgba(255,255,255,0.25)',
+                  background: isSelected ? '#E7699F' : 'transparent',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   transition: 'all 0.2s'
                 }}>
@@ -1202,7 +1312,7 @@ export default function ComparisonPage() {
                   aspectRatio: '1', borderRadius: '12px',
                   overflow: 'hidden', marginBottom: '12px',
                   position: 'relative',
-                  background: `linear-gradient(135deg, ${vibe.color}30, rgba(225,29,116,0.15))`
+                  background: `linear-gradient(135deg, ${vibe.color}30, rgba(201,96,63,0.15))`
                 }}>
                   {(() => {
                     const genreKey = song.genre || formData?.genre;
@@ -1227,7 +1337,7 @@ export default function ComparisonPage() {
                       display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: '3px', height: '40px'
                     }}>
                       {[0.6, 0.5, 0.7, 0.8, 0.4].map((dur, i) => (
-                        <div key={i} style={{width: '3px', background: '#f20d80', borderRadius: '2px', animation: `eq${(i % 3) + 1} ${dur}s ease-in-out infinite`}} />
+                        <div key={i} style={{width: '3px', background: '#E4795A', borderRadius: '2px', animation: `eq${(i % 3) + 1} ${dur}s ease-in-out infinite`}} />
                       ))}
                     </div>
                   )}
@@ -1238,7 +1348,7 @@ export default function ComparisonPage() {
                   onClick={(e) => { e.stopPropagation(); handlePlay(song.id); }}
                   style={{
                     width: '100%', padding: '12px',
-                    background: isPlaying ? '#f74da6' : vibe.gradient,
+                    background: isPlaying ? '#E7699F' : vibe.gradient,
                     color: 'white', border: 'none', borderRadius: '10px',
                     cursor: 'pointer', fontWeight: 'bold', fontSize: '14px',
                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
@@ -1256,12 +1366,12 @@ export default function ComparisonPage() {
                   }} />
                 </div>
                 <div style={{display: 'flex', justifyContent: 'space-between', marginTop: '4px'}}>
-                  <span style={{fontSize: '11px', color: 'rgba(255,255,255,0.4)'}}>
+                  <span style={{fontSize: '11px', color: 'rgba(255,255,255,0.65)'}}>
                     {formatTime(currentTimes[song.id] || 0)} / {formatTime(PREVIEW_DURATION)}
                   </span>
-                  <span style={{fontSize: '14px', fontWeight: '800', color: isSelected ? '#f74da6' : 'white'}}>
-                    {hasDiscount && <span style={{textDecoration: 'line-through', color: 'rgba(255,255,255,0.35)', fontSize: '12px', marginRight: '6px'}}>${baseSinglePrice}</span>}
-                    <span style={{color: hasDiscount ? '#4ade80' : (isSelected ? '#f74da6' : 'white')}}>${isFree ? 'GRATIS' : singlePrice.toFixed(2)}</span>
+                  <span style={{fontSize: '14px', fontWeight: '800', color: isSelected ? '#E7699F' : 'white'}}>
+                    {hasDiscount && <span style={{textDecoration: 'line-through', color: 'rgba(255,255,255,0.6)', fontSize: '12px', marginRight: '6px'}}>${baseSinglePrice}</span>}
+                    <span style={{color: hasDiscount ? '#89DAD4' : (isSelected ? '#E7699F' : 'white')}}>${isFree ? 'GRATIS' : singlePrice.toFixed(2)}</span>
                   </span>
                 </div>
 
@@ -1296,21 +1406,21 @@ export default function ComparisonPage() {
           {/* Song 2 Loading Placeholder */}
           {song2Loading && songs.length < 2 && (
             <div style={{
-              background: 'rgba(255,255,255,0.03)', border: '2px dashed rgba(168,85,247,0.3)',
+              background: 'rgba(255,255,255,0.03)', border: '2px dashed rgba(142,144,232,0.3)',
               borderRadius: '16px', padding: '16px', display: 'flex', flexDirection: 'column',
               alignItems: 'center', justifyContent: 'center', minHeight: '280px',
               animation: 'fadeIn 0.5s ease-out'
             }}>
-              <div style={{width: '60px', height: '60px', borderRadius: '50%', background: 'rgba(168,85,247,0.15)',
+              <div style={{width: '60px', height: '60px', borderRadius: '50%', background: 'rgba(142,144,232,0.15)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'pulse 2s infinite', marginBottom: '12px'}}>
                 <span style={{fontSize: '28px'}}>🎵</span>
               </div>
               <p style={{color: 'rgba(255,255,255,0.6)', fontSize: '14px', fontWeight: '600', margin: '0 0 4px'}}>
                 Creando versión 2...
               </p>
-              <p style={{color: 'rgba(255,255,255,0.35)', fontSize: '12px', margin: 0}}>Un momento ✨</p>
+              <p style={{color: 'rgba(255,255,255,0.6)', fontSize: '12px', margin: 0}}>Un momento ✨</p>
               <div style={{width: '80%', height: '4px', background: 'rgba(255,255,255,0.06)', borderRadius: '2px', overflow: 'hidden', marginTop: '16px'}}>
-                <div style={{height: '100%', width: '60%', background: '#a855f7', borderRadius: '2px', animation: 'shimmer 1.5s infinite', backgroundSize: '200% 100%'}} />
+                <div style={{height: '100%', width: '60%', background: '#8E90E8', borderRadius: '2px', animation: 'shimmer 1.5s infinite', backgroundSize: '200% 100%'}} />
               </div>
             </div>
           )}
@@ -1326,22 +1436,22 @@ export default function ComparisonPage() {
             onClick={selectBoth}
             style={{
               background: purchaseBoth
-                ? 'linear-gradient(135deg, rgba(34,197,94,0.15), rgba(16,185,129,0.08))'
-                : 'linear-gradient(135deg, rgba(34,197,94,0.07), rgba(255,255,255,0.03))',
-              border: purchaseBoth ? '3px solid #22c55e' : '3px solid rgba(34,197,94,0.75)',
+                ? 'linear-gradient(135deg, rgba(67,194,186,0.15), rgba(16,185,129,0.08))'
+                : 'linear-gradient(135deg, rgba(67,194,186,0.07), rgba(255,255,255,0.03))',
+              border: purchaseBoth ? '3px solid #43C2BA' : '3px solid rgba(67,194,186,0.75)',
               borderRadius: '18px', padding: '22px',
               cursor: 'pointer', marginBottom: '16px',
               position: 'relative', overflow: 'hidden',
               transition: 'all 0.3s', opacity: 1,
               boxShadow: purchaseBoth
-                ? '0 4px 18px rgba(0,0,0,0.3), 0 0 44px rgba(34,197,94,0.75)'
-                : '0 4px 16px rgba(0,0,0,0.3), 0 0 36px rgba(34,197,94,0.55)',
+                ? '0 4px 18px rgba(0,0,0,0.3), 0 0 44px rgba(67,194,186,0.75)'
+                : '0 4px 16px rgba(0,0,0,0.3), 0 0 36px rgba(67,194,186,0.55)',
             }}
           >
             {/* Glimmer sweep */}
             <div style={{
               position: 'absolute', top: 0, width: '60%', height: '100%',
-              background: 'linear-gradient(90deg, transparent, rgba(34,197,94,0.08), rgba(255,255,255,0.06), transparent)',
+              background: 'linear-gradient(90deg, transparent, rgba(67,194,186,0.08), rgba(255,255,255,0.06), transparent)',
               animation: 'glimmer 3s ease-in-out infinite',
               pointerEvents: 'none'
             }} />
@@ -1349,10 +1459,10 @@ export default function ComparisonPage() {
             {/* Top badge */}
             <div style={{
               position: 'absolute', top: '-1px', left: '50%', transform: 'translateX(-50%)',
-              background: 'linear-gradient(90deg, #22c55e, #10b981)',
+              background: 'linear-gradient(90deg, #43C2BA, #1F8C86)',
               color: 'white', padding: '4px 18px', borderRadius: '0 0 10px 10px',
               fontSize: '11px', fontWeight: '800', letterSpacing: '0.5px',
-              boxShadow: '0 4px 12px rgba(34,197,94,0.3)',
+              boxShadow: '0 4px 12px rgba(67,194,186,0.3)',
             }}>
               MEJOR OFERTA
             </div>
@@ -1362,11 +1472,11 @@ export default function ComparisonPage() {
                 {/* Radio */}
                 <div style={{
                   width: '28px', height: '28px', borderRadius: '50%', flexShrink: 0,
-                  border: purchaseBoth ? '3px solid #22c55e' : '3px solid rgba(255,255,255,0.2)',
-                  background: purchaseBoth ? '#22c55e' : 'transparent',
+                  border: purchaseBoth ? '3px solid #43C2BA' : '3px solid rgba(255,255,255,0.2)',
+                  background: purchaseBoth ? '#43C2BA' : 'transparent',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   transition: 'all 0.2s',
-                  boxShadow: purchaseBoth ? '0 0 12px rgba(34,197,94,0.4)' : 'none',
+                  boxShadow: purchaseBoth ? '0 0 12px rgba(67,194,186,0.4)' : 'none',
                 }}>
                   {purchaseBoth && <span style={{color: 'white', fontSize: '14px', fontWeight: 'bold'}}>✓</span>}
                 </div>
@@ -1375,9 +1485,9 @@ export default function ComparisonPage() {
                   {songs.slice(0, 2).map((song, i) => (
                     <div key={song.id} style={{
                       width: '56px', height: '56px', borderRadius: '12px', overflow: 'hidden',
-                      border: '3px solid #0f0b0e', marginLeft: i > 0 ? '-14px' : 0,
-                      background: `linear-gradient(135deg, ${VERSION_VIBES[i]?.color || '#3b82f6'}30, rgba(225,29,116,0.2))`,
-                      boxShadow: `0 4px 12px ${VERSION_VIBES[i]?.color || '#3b82f6'}25`,
+                      border: '3px solid #1B1C48', marginLeft: i > 0 ? '-14px' : 0,
+                      background: `linear-gradient(135deg, ${VERSION_VIBES[i]?.color || '#8E90E8'}30, rgba(201,96,63,0.2))`,
+                      boxShadow: `0 4px 12px ${VERSION_VIBES[i]?.color || '#8E90E8'}25`,
                     }}>
                       {(() => {
                         const genreKey = song.genre || formData?.genre;
@@ -1388,29 +1498,29 @@ export default function ComparisonPage() {
                   ))}
                 </div>
                 <div>
-                  <p style={{margin: 0, fontSize: '17px', fontWeight: '800', color: purchaseBoth ? '#22c55e' : 'white'}}>
+                  <p style={{margin: 0, fontSize: '17px', fontWeight: '800', color: purchaseBoth ? '#43C2BA' : 'white'}}>
                     🎁 Ambas Versiones
                   </p>
-                  <p style={{margin: '2px 0 0', fontSize: '13px', color: 'rgba(255,255,255,0.5)'}}>
+                  <p style={{margin: '2px 0 0', fontSize: '13px', color: 'rgba(255,255,255,0.7)'}}>
                     🎵 Versión 1 + 🎶 Versión 2
                   </p>
                 </div>
               </div>
               <div style={{textAlign: 'right', flexShrink: 0}}>
-                <p style={{margin: 0, color: 'rgba(255,255,255,0.35)', textDecoration: 'line-through', fontSize: '13px'}}>
+                <p style={{margin: 0, color: 'rgba(255,255,255,0.6)', textDecoration: 'line-through', fontSize: '13px'}}>
                   ${(baseSinglePrice * 2).toFixed(2)}
                 </p>
-                <p style={{margin: 0, fontSize: '28px', fontWeight: '900', color: hasDiscount ? '#4ade80' : (purchaseBoth ? '#22c55e' : '#f74da6'), lineHeight: 1}}>
+                <p style={{margin: 0, fontSize: '28px', fontWeight: '900', color: hasDiscount ? '#89DAD4' : (purchaseBoth ? '#43C2BA' : '#E7699F'), lineHeight: 1}}>
                   {isFree ? '¡GRATIS!' : `$${bundlePrice.toFixed(2)}`}
                 </p>
                 {hasDiscount && (
-                  <p style={{margin: '2px 0 0', fontSize: '11px', color: '#4ade80', fontWeight: '700'}}>
+                  <p style={{margin: '2px 0 0', fontSize: '11px', color: '#89DAD4', fontWeight: '700'}}>
                     🏷️ {discountPercent}% OFF aplicado
                   </p>
                 )}
                 <span style={{
-                  fontSize: '11px', fontWeight: '700', color: '#22c55e',
-                  background: 'rgba(34,197,94,0.15)', padding: '2px 10px',
+                  fontSize: '11px', fontWeight: '700', color: '#43C2BA',
+                  background: 'rgba(67,194,186,0.15)', padding: '2px 10px',
                   borderRadius: '6px', display: 'inline-block', marginTop: '4px'
                 }}>
                   Ahorras ${bundleSavings.toFixed(0)}
@@ -1431,7 +1541,7 @@ export default function ComparisonPage() {
             <span style={{fontSize: '18px', fontWeight: 800, color: 'rgba(255,255,255,0.92)'}}>Hazlo aún más especial</span>
             <span style={{flex: 1, height: '1px', background: 'rgba(255,255,255,0.1)'}} />
           </div>
-          <p style={{margin: '6px 0 0', fontSize: '12px', color: 'rgba(255,255,255,0.45)'}}>Opcional — elige lo que quieras, o solo la canción.</p>
+          <p style={{margin: '6px 0 0', fontSize: '12px', color: 'rgba(255,255,255,0.68)'}}>Opcional — elige lo que quieras, o solo la canción.</p>
         </div>
         <div ref={videoAddonRef} />
         {/* Standalone hero video-with-photos card ($9.99) — shown ABOVE the
@@ -1442,9 +1552,9 @@ export default function ComparisonPage() {
             onClick={() => setVideoAddonCount(c => c > 0 ? 0 : 1)}
             style={{
               background: videoAddon
-                ? 'linear-gradient(135deg, rgba(109,40,217,0.22), rgba(139,92,246,0.1))'
+                ? 'linear-gradient(135deg, rgba(109,40,217,0.22), rgba(102,104,210,0.1))'
                 : 'linear-gradient(160deg, rgba(109,40,217,0.1) 0%, rgba(15,11,14,0.9) 60%)',
-              border: videoAddon ? '2px solid #a855f7' : '2px solid rgba(139,92,246,0.4)',
+              border: videoAddon ? '2px solid #8E90E8' : '2px solid rgba(102,104,210,0.4)',
               borderRadius: '20px', padding: '0',
               cursor: 'pointer', marginBottom: '16px',
               position: 'relative', overflow: 'hidden',
@@ -1455,7 +1565,7 @@ export default function ComparisonPage() {
             {/* Glimmer sweep */}
             <div style={{
               position: 'absolute', top: 0, width: '50%', height: '100%',
-              background: 'linear-gradient(90deg, transparent, rgba(168,85,247,0.07), rgba(255,255,255,0.05), transparent)',
+              background: 'linear-gradient(90deg, transparent, rgba(142,144,232,0.07), rgba(255,255,255,0.05), transparent)',
               animation: 'glimmer 3.5s ease-in-out infinite',
               pointerEvents: 'none', zIndex: 1,
             }} />
@@ -1463,10 +1573,10 @@ export default function ComparisonPage() {
             {/* Top badge */}
             <div style={{
               position: 'absolute', top: '-1px', left: '50%', transform: 'translateX(-50%)',
-              background: 'linear-gradient(90deg, #7c3aed, #a855f7)',
+              background: 'linear-gradient(90deg, #4A4CA8, #8E90E8)',
               color: 'white', padding: '5px 20px', borderRadius: '0 0 12px 12px',
               fontSize: '11px', fontWeight: '800', letterSpacing: '0.5px',
-              boxShadow: '0 4px 14px rgba(124,58,237,0.45)',
+              boxShadow: '0 4px 14px rgba(74,76,168,0.45)',
               whiteSpace: 'nowrap', zIndex: 2,
             }}>
               ⭐ Más popular
@@ -1477,7 +1587,7 @@ export default function ComparisonPage() {
               position: 'relative', overflow: 'hidden',
               aspectRatio: '16/9',
               borderRadius: '18px 18px 0 0',
-              background: '#0a0015',
+              background: '#150E2E',
             }}>
               {[
                 'https://images.unsplash.com/photo-1543342384-1f1350e27861?w=700&h=394&fit=crop',
@@ -1519,9 +1629,9 @@ export default function ComparisonPage() {
               }}>
                 <div style={{
                   width: '60px', height: '60px', borderRadius: '50%',
-                  background: 'rgba(124,58,237,0.9)', backdropFilter: 'blur(12px)',
+                  background: 'rgba(74,76,168,0.9)', backdropFilter: 'blur(12px)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  boxShadow: '0 0 0 8px rgba(124,58,237,0.2), 0 8px 32px rgba(124,58,237,0.6)',
+                  boxShadow: '0 0 0 8px rgba(74,76,168,0.2), 0 8px 32px rgba(74,76,168,0.6)',
                   animation: 'pulse 2.5s ease-in-out infinite',
                 }}>
                   <span style={{ fontSize: '22px', marginLeft: '4px', color: 'white' }}>▶</span>
@@ -1551,23 +1661,23 @@ export default function ComparisonPage() {
                   }}>
                     {[0,1,2].map(i => (
                       <div key={i} style={{
-                        width: '3px', borderRadius: '2px', background: '#a78bfa',
+                        width: '3px', borderRadius: '2px', background: '#A9AAEE',
                         animation: `eq${i+1} ${[0.6,0.5,0.7][i]}s ease-in-out infinite`,
                       }} />
                     ))}
                   </div>
-                  <span style={{ fontSize: '12px', color: '#c4b5fd', fontWeight: 700 }}>Tu canción sonando</span>
+                  <span style={{ fontSize: '12px', color: '#BCBDF2', fontWeight: 700 }}>Tu canción sonando</span>
                 </div>
                 <span style={{
-                  fontSize: '10px', color: '#a78bfa', fontWeight: 700,
-                  background: 'rgba(124,58,237,0.45)', padding: '2px 8px', borderRadius: '5px',
+                  fontSize: '10px', color: '#A9AAEE', fontWeight: 700,
+                  background: 'rgba(74,76,168,0.45)', padding: '2px 8px', borderRadius: '5px',
                   backdropFilter: 'blur(4px)',
                 }}>HD 1080p</span>
               </div>
 
               {/* Progress bar */}
-              <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '3px', background: 'rgba(124,58,237,0.2)', zIndex: 4 }}>
-                <div style={{ height: '100%', background: 'linear-gradient(90deg, #7c3aed, #a78bfa)', animation: 'progressPreview 28s linear infinite' }} />
+              <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '3px', background: 'rgba(74,76,168,0.2)', zIndex: 4 }}>
+                <div style={{ height: '100%', background: 'linear-gradient(90deg, #4A4CA8, #A9AAEE)', animation: 'progressPreview 28s linear infinite' }} />
               </div>
             </div>
 
@@ -1577,10 +1687,10 @@ export default function ComparisonPage() {
               {/* Title row */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
                 <div>
-                  <h3 style={{ fontSize: '19px', fontWeight: '900', margin: '0 0 3px', color: '#e9d5ff', lineHeight: 1.2 }}>
+                  <h3 style={{ fontSize: '19px', fontWeight: '900', margin: '0 0 3px', color: '#DCDCF8', lineHeight: 1.2 }}>
                     🎬 Video Musical para {recipientName}
                   </h3>
-                  <p style={{ margin: 0, fontSize: '12px', color: 'rgba(255,255,255,0.45)', lineHeight: 1.4 }}>
+                  <p style={{ margin: 0, fontSize: '12px', color: 'rgba(255,255,255,0.68)', lineHeight: 1.4 }}>
                     Convierte la canción en un regalo que se ve y se siente
                   </p>
                 </div>
@@ -1591,18 +1701,18 @@ export default function ComparisonPage() {
                     flexShrink: 0, marginLeft: '12px',
                     padding: '9px 18px',
                     borderRadius: '50px',
-                    border: videoAddon ? '2px solid #22c55e' : '2px solid #a855f7',
+                    border: videoAddon ? '2px solid #43C2BA' : '2px solid #8E90E8',
                     background: videoAddon
-                      ? 'linear-gradient(135deg, #16a34a, #22c55e)'
-                      : 'linear-gradient(135deg, #7c3aed, #a855f7)',
+                      ? 'linear-gradient(135deg, #1F8C86, #43C2BA)'
+                      : 'linear-gradient(135deg, #4A4CA8, #8E90E8)',
                     color: 'white',
                     fontSize: '13px', fontWeight: '800',
                     cursor: 'pointer',
                     display: 'flex', alignItems: 'center', gap: '6px',
                     transition: 'all 0.25s',
                     boxShadow: videoAddon
-                      ? '0 0 14px rgba(34,197,94,0.5), 0 4px 12px rgba(0,0,0,0.3)'
-                      : '0 0 14px rgba(139,92,246,0.5), 0 4px 12px rgba(0,0,0,0.3)',
+                      ? '0 0 14px rgba(67,194,186,0.5), 0 4px 12px rgba(0,0,0,0.3)'
+                      : '0 0 14px rgba(102,104,210,0.5), 0 4px 12px rgba(0,0,0,0.3)',
                     whiteSpace: 'nowrap',
                   }}
                 >
@@ -1619,14 +1729,14 @@ export default function ComparisonPage() {
                 ].map(({ icon, label, sub }, i) => (
                   <div key={i} style={{
                     display: 'flex', alignItems: 'flex-start', gap: '12px',
-                    background: 'rgba(139,92,246,0.07)', borderRadius: '10px',
+                    background: 'rgba(102,104,210,0.07)', borderRadius: '10px',
                     padding: '10px 12px',
-                    border: '1px solid rgba(139,92,246,0.12)',
+                    border: '1px solid rgba(102,104,210,0.12)',
                   }}>
                     <span style={{ fontSize: '20px', flexShrink: 0, lineHeight: 1 }}>{icon}</span>
                     <div>
-                      <p style={{ margin: 0, fontSize: '13px', fontWeight: '700', color: '#e9d5ff', lineHeight: 1.2 }}>{label}</p>
-                      <p style={{ margin: '2px 0 0', fontSize: '11px', color: 'rgba(255,255,255,0.45)', lineHeight: 1.4 }}>{sub}</p>
+                      <p style={{ margin: 0, fontSize: '13px', fontWeight: '700', color: '#DCDCF8', lineHeight: 1.2 }}>{label}</p>
+                      <p style={{ margin: '2px 0 0', fontSize: '11px', color: 'rgba(255,255,255,0.68)', lineHeight: 1.4 }}>{sub}</p>
                     </div>
                   </div>
                 ))}
@@ -1636,19 +1746,19 @@ export default function ComparisonPage() {
               <div style={{
                 display: 'flex', flexDirection: 'column', alignItems: 'center',
                 background: videoAddon
-                  ? 'linear-gradient(90deg, rgba(124,58,237,0.25), rgba(168,85,247,0.15))'
-                  : 'rgba(139,92,246,0.08)',
+                  ? 'linear-gradient(90deg, rgba(74,76,168,0.25), rgba(142,144,232,0.15))'
+                  : 'rgba(102,104,210,0.08)',
                 borderRadius: '12px', padding: '16px',
-                border: videoAddon ? '1px solid rgba(168,85,247,0.4)' : '1px solid rgba(139,92,246,0.2)',
+                border: videoAddon ? '1px solid rgba(142,144,232,0.4)' : '1px solid rgba(102,104,210,0.2)',
                 transition: 'all 0.3s',
               }}>
                 <div style={{ textAlign: 'center', width: '100%' }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginBottom: '4px' }}>
-                    <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.3)', textDecoration: 'line-through' }}>$29.99</span>
+                    <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.58)', textDecoration: 'line-through' }}>$29.99</span>
                     <span style={{
-                      fontSize: '11px', fontWeight: '800', color: '#fbbf24',
-                      background: 'rgba(251,191,36,0.15)', padding: '2px 8px',
-                      borderRadius: '6px', border: '1px solid rgba(251,191,36,0.3)',
+                      fontSize: '11px', fontWeight: '800', color: '#E8B44A',
+                      background: 'rgba(232,180,74,0.15)', padding: '2px 8px',
+                      borderRadius: '6px', border: '1px solid rgba(232,180,74,0.3)',
                       letterSpacing: '0.5px'
                     }}>SOLO</span>
                   </div>
@@ -1656,16 +1766,16 @@ export default function ComparisonPage() {
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', marginBottom: '12px' }}>
                     <span style={{
                       fontSize: '40px', fontWeight: '900', lineHeight: 1, display: 'inline-block',
-                      color: '#e9d5ff',
+                      color: '#DCDCF8',
                     }}>$9.99</span>
                     <div>
                       <span style={{
-                        display: 'block', fontSize: '13px', fontWeight: '800', color: '#22c55e',
-                        background: 'rgba(34,197,94,0.15)', padding: '4px 12px',
-                        borderRadius: '20px', border: '1px solid rgba(34,197,94,0.25)',
+                        display: 'block', fontSize: '13px', fontWeight: '800', color: '#43C2BA',
+                        background: 'rgba(67,194,186,0.15)', padding: '4px 12px',
+                        borderRadius: '20px', border: '1px solid rgba(67,194,186,0.25)',
                         marginBottom: '4px', whiteSpace: 'nowrap',
                       }}>Ahorra 67%</span>
-                      <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.35)' }}>precio de lanzamiento</span>
+                      <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.6)' }}>precio de lanzamiento</span>
                     </div>
                   </div>
                   {/* Big add button — 3-way selector in combo mode, toggle in single mode */}
@@ -1673,8 +1783,8 @@ export default function ComparisonPage() {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%' }}>
                       {[
                         { count: 0, label: '❌ Sin video', sub: 'Solo las canciones en MP3', price: null, color: 'rgba(255,255,255,0.06)', border: '2px solid rgba(255,255,255,0.1)', textColor: 'rgba(255,255,255,0.5)' },
-                        { count: 1, label: '🎬 Video con fotos para 1 canción', sub: 'Slideshow cinematográfico con tus fotos — tú eliges cuál canción', price: '$9.99', color: videoAddonCount === 1 ? 'linear-gradient(135deg, #7c3aed, #a855f7)' : 'rgba(139,92,246,0.12)', border: videoAddonCount === 1 ? '2px solid #a855f7' : '2px solid rgba(139,92,246,0.4)', textColor: 'white' },
-                        { count: 2, label: '🎬🎬 Un video por cada canción', sub: 'Slideshow con fotos para cada una de las 2 canciones — $9 c/u', price: '$17.99', color: videoAddonCount === 2 ? 'linear-gradient(135deg, #16a34a, #22c55e)' : 'rgba(34,197,94,0.12)', border: videoAddonCount === 2 ? '2px solid #22c55e' : '2px solid rgba(34,197,94,0.4)', textColor: 'white' },
+                        { count: 1, label: '🎬 Video con fotos para 1 canción', sub: 'Slideshow cinematográfico con tus fotos — tú eliges cuál canción', price: '$9.99', color: videoAddonCount === 1 ? 'linear-gradient(135deg, #4A4CA8, #8E90E8)' : 'rgba(102,104,210,0.12)', border: videoAddonCount === 1 ? '2px solid #8E90E8' : '2px solid rgba(102,104,210,0.4)', textColor: 'white' },
+                        { count: 2, label: '🎬🎬 Un video por cada canción', sub: 'Slideshow con fotos para cada una de las 2 canciones — $9 c/u', price: '$17.99', color: videoAddonCount === 2 ? 'linear-gradient(135deg, #1F8C86, #43C2BA)' : 'rgba(67,194,186,0.12)', border: videoAddonCount === 2 ? '2px solid #43C2BA' : '2px solid rgba(67,194,186,0.4)', textColor: 'white' },
                       ].map(({ count, label, sub, price, color, border, textColor }) => (
                         <button
                           key={count}
@@ -1700,11 +1810,11 @@ export default function ComparisonPage() {
                               display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                               flexShrink: 0,
                             }}>
-                              {videoAddonCount === count && <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: count === 0 ? '#666' : count === 2 ? '#16a34a' : '#7c3aed' }} />}
+                              {videoAddonCount === count && <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: count === 0 ? '#666' : count === 2 ? '#1F8C86' : '#4A4CA8' }} />}
                             </span>
                             <div>
                               <div>{label}</div>
-                              {sub && <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)', fontWeight: '400', marginTop: '1px' }}>{sub}</div>}
+                              {sub && <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.7)', fontWeight: '400', marginTop: '1px' }}>{sub}</div>}
                             </div>
                           </div>
                           {price && <span style={{ fontWeight: '800', fontSize: '15px', flexShrink: 0 }}>{price}</span>}
@@ -1717,25 +1827,25 @@ export default function ComparisonPage() {
                       style={{
                         width: '100%', padding: '16px',
                         borderRadius: '14px',
-                        border: videoAddon ? '2px solid #22c55e' : '2px solid #a855f7',
+                        border: videoAddon ? '2px solid #43C2BA' : '2px solid #8E90E8',
                         background: videoAddon
-                          ? 'linear-gradient(135deg, #16a34a, #22c55e)'
-                          : 'linear-gradient(135deg, #7c3aed, #a855f7)',
+                          ? 'linear-gradient(135deg, #1F8C86, #43C2BA)'
+                          : 'linear-gradient(135deg, #4A4CA8, #8E90E8)',
                         color: 'white',
                         fontSize: '18px', fontWeight: '900',
                         cursor: 'pointer',
                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
                         transition: 'all 0.25s',
                         boxShadow: videoAddon
-                          ? '0 0 24px rgba(34,197,94,0.55), 0 6px 16px rgba(0,0,0,0.4)'
-                          : '0 0 24px rgba(139,92,246,0.55), 0 6px 16px rgba(0,0,0,0.4)',
+                          ? '0 0 24px rgba(67,194,186,0.55), 0 6px 16px rgba(0,0,0,0.4)'
+                          : '0 0 24px rgba(102,104,210,0.55), 0 6px 16px rgba(0,0,0,0.4)',
                         letterSpacing: '0.3px',
                       }}
                     >
                       {videoAddon ? '✓ Video Agregado' : '🎬 Agregar Video — $9.99'}
                     </button>
                   )}
-                  <p style={{ margin: '6px 0 0', fontSize: '11px', color: 'rgba(255,255,255,0.35)', textAlign: 'center' }}>
+                  <p style={{ margin: '6px 0 0', fontSize: '11px', color: 'rgba(255,255,255,0.6)', textAlign: 'center' }}>
                     Se agrega a tu pedido
                   </p>
                 </div>
@@ -1745,7 +1855,7 @@ export default function ComparisonPage() {
               <p style={{
                 textAlign: 'center', margin: '12px 0 0',
                 fontSize: '12px', transition: 'all 0.3s',
-                color: videoAddon ? '#86efac' : 'rgba(255,255,255,0.35)',
+                color: videoAddon ? '#A8E5E0' : 'rgba(255,255,255,0.35)',
                 fontWeight: videoAddon ? '600' : '400',
               }}>
                 {videoAddon
@@ -1788,9 +1898,9 @@ export default function ComparisonPage() {
             onClick={toggleKaraoke}
             style={{
               background: karaokeAddon
-                ? 'linear-gradient(135deg, rgba(34,197,94,0.18), rgba(15,11,14,0.7))'
-                : 'linear-gradient(135deg, rgba(245,158,11,0.12), rgba(15,11,14,0.5))',
-              border: karaokeAddon ? '2px solid #22c55e' : '2px solid rgba(251,191,36,0.55)',
+                ? 'linear-gradient(135deg, rgba(67,194,186,0.18), rgba(15,11,14,0.7))'
+                : 'linear-gradient(135deg, rgba(201,138,27,0.12), rgba(15,11,14,0.5))',
+              border: karaokeAddon ? '2px solid #43C2BA' : '2px solid rgba(232,180,74,0.55)',
               borderRadius: '14px',
               padding: '14px',
               marginBottom: '16px',
@@ -1807,8 +1917,8 @@ export default function ComparisonPage() {
             <div style={{
               position: 'absolute', top: '-8px', left: '14px',
               background: karaokeAddon
-                ? 'linear-gradient(90deg, #16a34a, #22c55e)'
-                : 'linear-gradient(90deg, #d97706, #f59e0b)',
+                ? 'linear-gradient(90deg, #1F8C86, #43C2BA)'
+                : 'linear-gradient(90deg, #C98A1B, #C98A1B)',
               color: 'white', padding: '3px 10px', borderRadius: '4px',
               fontSize: '10px', fontWeight: '900', letterSpacing: '0.5px',
               boxShadow: '0 2px 6px rgba(0,0,0,0.3)',
@@ -1819,7 +1929,7 @@ export default function ComparisonPage() {
             {/* Small icon */}
             <div style={{
               width: '54px', height: '54px', borderRadius: '10px',
-              background: 'linear-gradient(135deg, #451a03, #78350f)',
+              background: 'linear-gradient(135deg, #451a03, #66460E)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               fontSize: '28px', flexShrink: 0,
             }}>
@@ -1830,7 +1940,7 @@ export default function ComparisonPage() {
             <div style={{ flex: 1, minWidth: 0 }}>
               <p style={{
                 margin: '0 0 2px', fontSize: '14px', fontWeight: 800,
-                color: '#fef3c7', lineHeight: 1.2,
+                color: '#F7E6C6', lineHeight: 1.2,
               }}>
                 Pista Instrumental · sin voz
               </p>
@@ -1841,17 +1951,17 @@ export default function ComparisonPage() {
                 Solo la música, sin letras en pantalla — para cantar tú encima
               </p>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
-                <span style={{ fontSize: '16px', fontWeight: 900, color: '#fbbf24' }}>
+                <span style={{ fontSize: '16px', fontWeight: 900, color: '#E8B44A' }}>
                   +${karaokeAddonPrice.toFixed(2)}
                 </span>
                 <span style={{
-                  fontSize: '11px', color: 'rgba(255,255,255,0.35)',
+                  fontSize: '11px', color: 'rgba(255,255,255,0.6)',
                   textDecoration: 'line-through',
                 }}>
                   $14.99
                 </span>
                 {purchaseBoth && (
-                  <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)' }}>
+                  <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.7)' }}>
                     cada canción
                   </span>
                 )}
@@ -1863,15 +1973,15 @@ export default function ComparisonPage() {
               onClick={(e) => { e.stopPropagation(); toggleKaraoke(); }}
               style={{
                 flexShrink: 0, padding: '10px 18px', borderRadius: '50px',
-                border: karaokeAddon ? '2px solid #22c55e' : '2px solid #fbbf24',
+                border: karaokeAddon ? '2px solid #43C2BA' : '2px solid #E8B44A',
                 background: karaokeAddon
-                  ? 'linear-gradient(135deg, #16a34a, #22c55e)'
-                  : 'linear-gradient(135deg, #f59e0b, #fbbf24)',
+                  ? 'linear-gradient(135deg, #1F8C86, #43C2BA)'
+                  : 'linear-gradient(135deg, #C98A1B, #E8B44A)',
                 color: 'white', fontSize: '13px', fontWeight: 800,
                 cursor: 'pointer', whiteSpace: 'nowrap',
                 boxShadow: karaokeAddon
-                  ? '0 0 12px rgba(34,197,94,0.5)'
-                  : '0 0 12px rgba(251,191,36,0.5)',
+                  ? '0 0 12px rgba(67,194,186,0.5)'
+                  : '0 0 12px rgba(232,180,74,0.5)',
                 transition: 'all 0.25s',
               }}
             >
@@ -1885,10 +1995,10 @@ export default function ComparisonPage() {
         {karaokeAddon && purchaseBoth && songs.length > 1 && (
           <div style={{
             marginTop: '-6px', marginBottom: '16px', padding: '12px 14px',
-            background: 'rgba(245,158,11,0.06)',
-            border: '1px solid rgba(251,191,36,0.3)', borderRadius: '12px',
+            background: 'rgba(201,138,27,0.06)',
+            border: '1px solid rgba(232,180,74,0.3)', borderRadius: '12px',
           }}>
-            <p style={{ margin: '0 0 8px', fontSize: '12px', fontWeight: 700, color: '#fef3c7' }}>
+            <p style={{ margin: '0 0 8px', fontSize: '12px', fontWeight: 700, color: '#F7E6C6' }}>
               ¿Para cuál canción quieres la pista? Puedes elegir una o ambas.
             </p>
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
@@ -1899,8 +2009,8 @@ export default function ComparisonPage() {
                     onClick={(e) => { e.stopPropagation(); toggleKaraokeVersion(s.id); }}
                     style={{
                       flex: 1, minWidth: '130px', padding: '10px 12px', borderRadius: '10px',
-                      border: on ? '2px solid #22c55e' : '2px solid rgba(251,191,36,0.5)',
-                      background: on ? 'rgba(34,197,94,0.15)' : 'transparent',
+                      border: on ? '2px solid #43C2BA' : '2px solid rgba(232,180,74,0.5)',
+                      background: on ? 'rgba(67,194,186,0.15)' : 'transparent',
                       color: 'white', fontSize: '13px', fontWeight: 700, cursor: 'pointer',
                       transition: 'all 0.2s',
                     }}>
@@ -1909,10 +2019,10 @@ export default function ComparisonPage() {
                 );
               })}
             </div>
-            <p style={{ margin: '8px 0 0', fontSize: '12px', fontWeight: 800, color: '#fbbf24' }}>
+            <p style={{ margin: '8px 0 0', fontSize: '12px', fontWeight: 800, color: '#E8B44A' }}>
               {karaokeVersionIds.length} {karaokeVersionIds.length === 1 ? 'pista' : 'pistas'} · ${(karaokeVersionIds.length === 2 ? karaokeBundlePrice : karaokeAddonPrice * karaokeVersionIds.length).toFixed(2)}
               {karaokeVersionIds.length === 2 && (
-                <span style={{ color: '#22c55e', marginLeft: '6px', fontWeight: 800 }}>
+                <span style={{ color: '#43C2BA', marginLeft: '6px', fontWeight: 800 }}>
                   ¡Ahorras ${(karaokeAddonPrice * 2 - karaokeBundlePrice).toFixed(2)}!
                 </span>
               )}
@@ -2009,14 +2119,14 @@ export default function ComparisonPage() {
             <div style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
               padding: '10px 16px', marginBottom: '12px',
-              background: 'rgba(74,222,128,0.1)', borderRadius: '10px',
-              border: '1px solid rgba(74,222,128,0.3)'
+              background: 'rgba(137,218,212,0.1)', borderRadius: '10px',
+              border: '1px solid rgba(137,218,212,0.3)'
             }}>
               <span style={{fontSize: '16px'}}>🏷️</span>
-              <span style={{color: '#4ade80', fontSize: '14px', fontWeight: '700'}}>
+              <span style={{color: '#89DAD4', fontSize: '14px', fontWeight: '700'}}>
                 ¡Descuento del {discountPercent}% aplicado!
               </span>
-              <span style={{color: 'rgba(255,255,255,0.5)', fontSize: '12px'}}>
+              <span style={{color: 'rgba(255,255,255,0.7)', fontSize: '12px'}}>
                 Código: {couponApplied?.code}
               </span>
             </div>
@@ -2026,11 +2136,11 @@ export default function ComparisonPage() {
             <div style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
               padding: '9px 16px', marginBottom: '12px',
-              background: 'rgba(242,13,128,0.1)', borderRadius: '10px',
-              border: '1px solid rgba(242,13,128,0.3)'
+              background: 'rgba(228,121,90,0.1)', borderRadius: '10px',
+              border: '1px solid rgba(228,121,90,0.3)'
             }}>
               <span style={{ fontSize: '15px' }}>🎁</span>
-              <span style={{ color: '#f9a8d4', fontSize: '13px', fontWeight: 700 }}>
+              <span style={{ color: '#F2A0C2', fontSize: '13px', fontWeight: 700 }}>
                 Código de paquete · te quedan {couponApplied.remaining}{couponApplied.max_uses ? ` de ${couponApplied.max_uses}` : ''} canciones · una a la vez
               </span>
             </div>
@@ -2039,17 +2149,44 @@ export default function ComparisonPage() {
           {hasSelection && (() => {
             const rows = [];
             const selectedVersion = songs.find(s => s.id === selectedSongId)?.version || 1;
+            // Bundle collapses to a single line — matching the one Stripe line item.
+            if (ultimateBundle) {
+              rows.push({ label: 'Paquete Definitivo · todo incluido', price: ultimateBundlePrice });
+              if (giftState.enabled) rows.push({ label: 'Envío sorpresa por mensaje', price: 5 });
+              return (
+                <div style={{ background: 'rgba(232,180,74,0.06)', border: '1px solid rgba(232,180,74,0.3)', borderRadius: '14px', padding: '14px 16px', marginBottom: '12px' }}>
+                  <p style={{ margin: '0 0 10px', fontSize: '11px', letterSpacing: '1.5px', textTransform: 'uppercase', color: 'rgba(255,255,255,0.65)' }}>Tu pedido</p>
+                  {rows.map((r, i) => (
+                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '7px' }}>
+                      <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.85)' }}>{r.label}</span>
+                      <span style={{ fontSize: '13px', fontWeight: 600, color: 'rgba(255,255,255,0.9)' }}>${r.price.toFixed(2)}</span>
+                    </div>
+                  ))}
+                  <p style={{ margin: '2px 0 0', fontSize: '11.5px', color: 'rgba(255,255,255,0.68)', lineHeight: 1.5 }}>
+                    2 canciones · 2 videos con fotos · 2 pistas instrumentales · video con letra · película animada
+                  </p>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '10px', paddingTop: '11px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+                    <span style={{ fontSize: '14px', fontWeight: 600, color: 'rgba(255,255,255,0.8)' }}>Total</span>
+                    <span style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+                      <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.6)', textDecoration: 'line-through' }}>${ultimateBundleList.toFixed(2)}</span>
+                      <span style={{ fontSize: '22px', fontWeight: 800, color: '#E8B44A' }}>${(getCurrentPrice() + extrasTotal).toFixed(2)}</span>
+                    </span>
+                  </div>
+                </div>
+              );
+            }
             rows.push({ label: purchaseBoth ? 'Ambas versiones (1 + 2)' : `Canción · Versión ${selectedVersion}`, price: purchaseBoth ? bundlePrice : singlePrice });
             if (videoAddonCount === 2) rows.push({ label: 'Video con fotos · 2', price: videoDualAddonPrice });
             else if (videoAddonCount === 1) rows.push({ label: 'Video con fotos', price: videoAddonPrice });
             if (karaokeAddon) rows.push({ label: karaokeQty === 2 ? 'Pista instrumental · 2' : 'Pista instrumental', price: karaokeQty === 2 ? karaokeBundlePrice : karaokeAddonPrice * karaokeQty });
             if (animadoCount === 2) rows.push({ label: 'Película animada · 2', price: animadoPriceBoth });
             else if (animadoCount === 1) rows.push({ label: 'Película animada', price: animadoPriceOne });
+            if (lyricVideoAddon) rows.push({ label: 'Video con letra', price: lyricVideoPrice });
             if (giftState.enabled) rows.push({ label: 'Envío sorpresa por mensaje', price: 5 });
             checkoutExtras.forEach((e) => rows.push({ label: e.label || e.title || e.key, price: e.price }));
             return (
               <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '14px', padding: '14px 16px', marginBottom: '12px' }}>
-                <p style={{ margin: '0 0 10px', fontSize: '11px', letterSpacing: '1.5px', textTransform: 'uppercase', color: 'rgba(255,255,255,0.4)' }}>Tu pedido</p>
+                <p style={{ margin: '0 0 10px', fontSize: '11px', letterSpacing: '1.5px', textTransform: 'uppercase', color: 'rgba(255,255,255,0.65)' }}>Tu pedido</p>
                 {rows.map((r, i) => (
                   <div key={i} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '7px' }}>
                     <span style={{ fontSize: '13px', color: i === 0 ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.55)' }}>{r.label}</span>
@@ -2058,7 +2195,7 @@ export default function ComparisonPage() {
                 ))}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '10px', paddingTop: '11px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
                   <span style={{ fontSize: '14px', fontWeight: 600, color: 'rgba(255,255,255,0.8)' }}>Total{hasDiscount ? ` · ${discountPercent}% OFF` : ''}</span>
-                  <span style={{ fontSize: '22px', fontWeight: 800, color: hasDiscount ? '#4ade80' : '#f5b942' }}>{isFree && extrasTotal === 0 ? '¡GRATIS!' : `$${(getCurrentPrice() + extrasTotal).toFixed(2)}`}</span>
+                  <span style={{ fontSize: '22px', fontWeight: 800, color: hasDiscount ? '#89DAD4' : '#E8B44A' }}>{isFree && extrasTotal === 0 ? '¡GRATIS!' : `$${(getCurrentPrice() + extrasTotal).toFixed(2)}`}</span>
                 </div>
               </div>
             );
@@ -2091,9 +2228,9 @@ export default function ComparisonPage() {
                   disabled={couponValidating || !couponInput.trim()}
                   style={{
                     padding: '14px 22px',
-                    background: (couponValidating || !couponInput.trim()) ? 'rgba(255,255,255,0.06)' : 'rgba(74,222,128,0.15)',
-                    color: (couponValidating || !couponInput.trim()) ? 'rgba(255,255,255,0.3)' : '#4ade80',
-                    border: `1px solid ${(couponValidating || !couponInput.trim()) ? 'rgba(255,255,255,0.08)' : 'rgba(74,222,128,0.35)'}`,
+                    background: (couponValidating || !couponInput.trim()) ? 'rgba(255,255,255,0.06)' : 'rgba(137,218,212,0.15)',
+                    color: (couponValidating || !couponInput.trim()) ? 'rgba(255,255,255,0.3)' : '#89DAD4',
+                    border: `1px solid ${(couponValidating || !couponInput.trim()) ? 'rgba(255,255,255,0.08)' : 'rgba(137,218,212,0.35)'}`,
                     borderRadius: '12px',
                     fontSize: '14px', fontWeight: '700',
                     cursor: (couponValidating || !couponInput.trim()) ? 'not-allowed' : 'pointer',
@@ -2114,16 +2251,16 @@ export default function ComparisonPage() {
             <div style={{
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
               padding: '12px 16px', marginBottom: '12px',
-              background: 'rgba(74,222,128,0.08)', borderRadius: '12px',
-              border: '1px solid rgba(74,222,128,0.25)'
+              background: 'rgba(137,218,212,0.08)', borderRadius: '12px',
+              border: '1px solid rgba(137,218,212,0.25)'
             }}>
               <div style={{display: 'flex', alignItems: 'center', gap: '10px'}}>
                 <span style={{fontSize: '16px'}}>✅</span>
                 <div>
-                  <p style={{margin: 0, color: '#4ade80', fontSize: '13px', fontWeight: '700', letterSpacing: '1px'}}>
+                  <p style={{margin: 0, color: '#89DAD4', fontSize: '13px', fontWeight: '700', letterSpacing: '1px'}}>
                     {couponApplied.code}
                   </p>
-                  <p style={{margin: '2px 0 0', color: 'rgba(255,255,255,0.5)', fontSize: '11px'}}>
+                  <p style={{margin: '2px 0 0', color: 'rgba(255,255,255,0.7)', fontSize: '11px'}}>
                     {couponApplied.free ? 'Gratis aplicado' : `${couponApplied.discount}% de descuento aplicado`}
                   </p>
                 </div>
@@ -2169,22 +2306,23 @@ export default function ComparisonPage() {
           {/* Main CTA */}
           <button
             ref={checkoutCtaRef}
-            onClick={handleCheckout}
+            onClick={openUpsellModal}
             disabled={isCheckingOut || !hasSelection}
             style={{
               width: '100%', padding: '18px',
-              background: hasSelection ? 'linear-gradient(90deg, #e11d74, #c026d3)' : 'rgba(255,255,255,0.06)',
+              background: hasSelection ? 'linear-gradient(90deg, #C9603F, #B62463)' : 'rgba(255,255,255,0.06)',
               color: hasSelection ? 'white' : 'rgba(255,255,255,0.25)',
               border: 'none', borderRadius: '12px',
               fontSize: '18px', fontWeight: 'bold',
               cursor: hasSelection ? 'pointer' : 'not-allowed',
               transition: 'all 0.3s',
-              boxShadow: hasSelection ? '0 4px 20px rgba(225,29,116,0.4)' : 'none'
+              boxShadow: hasSelection ? '0 4px 20px rgba(201,96,63,0.4)' : 'none'
             }}
           >
             {isCheckingOut ? '⏳ Procesando...'
               : !hasSelection ? '👆 Selecciona una opción'
               : isFree && extrasTotal === 0 ? '🎉 Descargar Gratis'
+              : ultimateBundle ? `💳 Paquete Definitivo — $${(getCurrentPrice() + extrasTotal).toFixed(2)}`
               : `💳 ${purchaseBoth ? 'Comprar Ambas' : 'Comprar Canción'}${videoAddonCount === 2 ? ' + 2 Videos' : videoAddonCount === 1 ? ' + Video' : ''}${checkoutExtras.length ? ` + ${checkoutExtras.length} extra${checkoutExtras.length > 1 ? 's' : ''}` : ''} — $${(getCurrentPrice() + extrasTotal).toFixed(2)}`
             }
           </button>
@@ -2192,20 +2330,425 @@ export default function ComparisonPage() {
           {/* Trust line */}
           <div style={{display: 'flex', justifyContent: 'center', gap: '16px', marginTop: '14px', flexWrap: 'wrap'}}>
             {['🔒 Pago seguro', '⚡ Entrega instantánea', '🎵 Preview 35s · Canción ~3 min'].map((t, i) => (
-              <span key={i} style={{color: 'rgba(255,255,255,0.35)', fontSize: '11px'}}>{t}</span>
+              <span key={i} style={{color: 'rgba(255,255,255,0.6)', fontSize: '11px'}}>{t}</span>
             ))}
           </div>
 
           {/* Sales final disclaimer */}
-          <p style={{textAlign: 'center', color: 'rgba(255,255,255,0.2)', fontSize: '10px', marginTop: '10px', lineHeight: 1.5}}>
+          <p style={{textAlign: 'center', color: 'rgba(255,255,255,0.5)', fontSize: '10px', marginTop: '10px', lineHeight: 1.5}}>
             Todas las ventas son finales. Escucha la vista previa antes de comprar.
           </p>
         </div>
 
         {/* Footer */}
-        <p style={{textAlign: 'center', marginTop: '40px', color: 'rgba(255,255,255,0.2)', fontSize: '11px'}}>
+        <p style={{textAlign: 'center', marginTop: '40px', color: 'rgba(255,255,255,0.5)', fontSize: '11px'}}>
           RegalosQueCantan © {new Date().getFullYear()}
         </p>
+
+        {/* ══════════════════════════════════════════════════════
+            Pre-payment upsell modal — opens on the Comprar CTA.
+            One-tap add-ons that ride the same Stripe checkout;
+            "No, gracias" continues straight to payment.
+            ══════════════════════════════════════════════════════ */}
+        {showUpsellModal && (() => {
+          const gridSel = new Set(checkoutExtras.map((e) => e.key));
+          // Compact animated preview thumbnails — same previews the upsell grid
+          // uses (real animado sample, photo crossfade, EQ bars, synced lyrics),
+          // shrunk to a 96×68 tile so every row SELLS, not just describes.
+          const thumbBase = { width: '86px', height: '60px', borderRadius: '10px', overflow: 'hidden', position: 'relative', flexShrink: 0, background: '#191A45', border: '1px solid rgba(255,255,255,0.1)' };
+          const photoThumb = (
+            <div style={thumbBase}>
+              {[
+                'https://images.unsplash.com/photo-1543342384-1f1350e27861?w=200&h=140&fit=crop',
+                'https://images.unsplash.com/photo-1511895426328-dc8714191300?w=200&h=140&fit=crop',
+                'https://images.unsplash.com/photo-1516589178581-6cd7833ae3b2?w=200&h=140&fit=crop',
+              ].map((s, i) => (
+                <img key={i} src={s} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', opacity: 0, animation: `mThumbFade 9s ease-in-out ${i * 3}s infinite` }} />
+              ))}
+              <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(10,0,21,0.05), rgba(10,0,21,0.55))' }} />
+              <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', width: '26px', height: '26px', borderRadius: '50%', background: 'rgba(74,76,168,0.92)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 0 5px rgba(74,76,168,0.22)' }}>
+                <span style={{ color: '#fff', fontSize: '11px', marginLeft: '2px' }}>▶</span>
+              </div>
+              <span style={{ position: 'absolute', bottom: '4px', left: 0, right: 0, textAlign: 'center', fontSize: '7.5px', color: 'rgba(255,255,255,0.85)', fontWeight: 700, letterSpacing: '1px' }}>TUS FOTOS AQUÍ</span>
+            </div>
+          );
+          const animadoThumb = (
+            <div style={thumbBase}>
+              <video src="/animado-sample.mp4" poster="/animado-sample-poster.jpg" muted loop playsInline autoPlay
+                style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center 18%', display: 'block' }} />
+              <span style={{ position: 'absolute', top: '4px', left: '4px', display: 'inline-flex', alignItems: 'center', gap: '3px', background: 'rgba(0,0,0,0.6)', padding: '2px 6px', borderRadius: '20px', fontSize: '7.5px', color: '#fff', fontWeight: 700 }}>
+                <span style={{ width: '4px', height: '4px', borderRadius: '50%', background: '#5fcf8a' }} />Muestra real
+              </span>
+            </div>
+          );
+          const instrumentalThumb = (
+            <div style={{ ...thumbBase, background: 'linear-gradient(135deg, #262756, #1B1C48)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '5px' }}>
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: '3px', height: '26px' }}>
+                {[0.6, 0.45, 0.7, 0.55, 0.8, 0.5, 0.65, 0.75, 0.4, 0.6].map((dur, i) => (
+                  <span key={i} style={{ width: '4px', borderRadius: '2px', background: i % 3 === 0 ? 'rgba(246,88,159,0.25)' : 'rgba(255,255,255,0.6)', animation: `eq${(i % 3) + 1} ${dur + 0.3}s ease-in-out infinite` }} />
+                ))}
+              </div>
+              <span style={{ fontSize: '8px', fontWeight: 700, color: '#E8B44A' }}>Sin voz · instrumental</span>
+            </div>
+          );
+          const lyricThumb = (
+            <div style={{ ...thumbBase, background: 'linear-gradient(135deg, #2a1245, #120b22)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <span style={{ position: 'absolute', top: '4px', left: '5px', fontSize: '7px', color: 'rgba(255,255,255,0.7)', fontWeight: 700 }}>♪ LETRA</span>
+              <div style={{ position: 'relative', width: '100%', height: '14px', textAlign: 'center' }}>
+                {['Desde el día que llegaste', 'todo cambió para bien', 'hoy te canto esta canción'].map((l, i) => (
+                  <span key={i} style={{ position: 'absolute', left: '3px', right: '3px', fontSize: '8.5px', fontWeight: 700, color: '#fff', textShadow: '0 1px 6px rgba(0,0,0,0.7)', opacity: 0, animation: `mLyric 6s ease-in-out ${i * 2}s infinite` }}>{l}</span>
+                ))}
+              </div>
+              <span style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '2.5px', background: 'rgba(255,255,255,0.12)' }}>
+                <span style={{ display: 'block', height: '100%', width: '45%', background: 'linear-gradient(90deg, #8E90E8, #E7699F)' }} />
+              </span>
+            </div>
+          );
+          const modalItems = [
+            {
+              key: 'video', thumb: photoThumb, title: 'Video musical con fotos',
+              sub: `Hasta 15 fotos de ${recipientName} en un video cinematográfico HD`,
+              price: videoAddonPrice, was: 29.99,
+              added: videoAddonCount > 0, inGrid: false,
+              toggle: () => setVideoAddonCount((c) => (c > 0 ? 0 : 1)),
+            },
+            {
+              key: 'animado', thumb: animadoThumb, title: 'Película animada',
+              sub: 'Su rostro animado en su propia película',
+              price: animadoPriceOne, was: 49.00,
+              added: animadoCount > 0 || gridSel.has('animado'), inGrid: gridSel.has('animado'),
+              toggle: () => setAnimadoCount((c) => (c > 0 ? 0 : 1)),
+            },
+            {
+              key: 'instrumental', thumb: instrumentalThumb, title: 'Pista instrumental',
+              sub: 'La música sin voz, lista para cantar tú',
+              price: karaokeAddonPrice, was: 14.99,
+              added: karaokeAddon || gridSel.has('instrumental'), inGrid: gridSel.has('instrumental'),
+              toggle: toggleKaraoke,
+            },
+            {
+              key: 'lyric', thumb: lyricThumb, title: 'Video con letra',
+              sub: 'La letra en pantalla, al ritmo de la canción',
+              price: lyricVideoPrice, was: 19.99,
+              added: lyricVideoAddon || gridSel.has('lyric_video'), inGrid: gridSel.has('lyric_video'),
+              toggle: () => setLyricVideoAddon((v) => !v),
+            },
+          ].filter((it) => !modalHiddenKeys.includes(it.key));
+          const modalTotal = getCurrentPrice() + extrasTotal;
+          const addedCount = modalItems.filter((it) => it.added).length;
+          const proceedToPayment = () => { setShowUpsellModal(false); handleCheckout(); };
+          // Mobile = bottom sheet with a sticky pay footer (total + CTAs always
+          // visible, no scrolling past the fold to find the pay button).
+          const isNarrow = typeof window !== 'undefined' && window.innerWidth <= 520;
+          // Portal to <body>: position:fixed must anchor to the VIEWPORT. Any
+          // ancestor with a transform (e.g. the page wrapper mid entrance
+          // transition) would otherwise become the containing block and pin the
+          // modal to the page instead of the screen.
+          return createPortal(
+            <div
+              onClick={() => setShowUpsellModal(false)}
+              style={{
+                position: 'fixed', inset: 0, zIndex: 100000,
+                background: 'rgba(8,5,10,0.78)', backdropFilter: 'blur(5px)',
+                display: 'flex', alignItems: isNarrow ? 'flex-end' : 'center', justifyContent: 'center',
+                padding: isNarrow ? 0 : '16px', animation: 'overlayIn 0.25s ease-out',
+              }}
+            >
+              {/* Animated gradient glow frame */}
+              <div
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  width: '100%', maxWidth: isNarrow ? '100%' : '420px', maxHeight: isNarrow ? '92dvh' : '90vh',
+                  padding: isNarrow ? '2.5px 2.5px 0' : '2.5px',
+                  borderRadius: isNarrow ? '22px 22px 0 0' : '24px',
+                  background: 'linear-gradient(120deg, #E4795A, #8E90E8, #E8B44A, #E4795A)',
+                  backgroundSize: '300% 300%',
+                  animation: 'modalIn 0.32s cubic-bezier(0.21, 1.02, 0.55, 1), gradientShift 4s linear infinite, ctaGlow 2.6s ease-in-out infinite',
+                  display: 'flex',
+                }}
+              >
+              <div
+                style={{
+                  width: '100%', maxHeight: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden',
+                  background: 'linear-gradient(170deg, #1c1219 0%, #140d12 100%)',
+                  borderRadius: isNarrow ? '20px 20px 0 0' : '22px',
+                  position: 'relative',
+                }}
+              >
+                {/* Close */}
+                <button
+                  onClick={() => setShowUpsellModal(false)}
+                  aria-label="Cerrar"
+                  style={{
+                    position: 'absolute', top: '12px', right: '12px', zIndex: 5,
+                    width: '30px', height: '30px', borderRadius: '50%',
+                    background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)',
+                    color: 'rgba(255,255,255,0.55)', fontSize: '14px', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}
+                >
+                  ✕
+                </button>
+
+                {/* Scrollable region: header + add-on rows (footer stays pinned) */}
+                <div className="rqcUpsellScroll" style={{ overflowY: 'auto', minHeight: 0, flex: '1 1 auto', WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none', padding: isNarrow ? '16px 14px 4px' : '20px 18px 4px' }}>
+
+                {/* Header */}
+                <div style={{ textAlign: 'center', marginBottom: '12px', position: 'relative' }}>
+                  <span style={{ position: 'absolute', top: '-4px', left: '10%', fontSize: '13px', animation: 'sparkleFloat 2.2s ease-in-out infinite' }}>✨</span>
+                  <span style={{ position: 'absolute', top: '8px', right: '9%', fontSize: '11px', animation: 'sparkleFloat 2.8s ease-in-out 0.7s infinite' }}>✨</span>
+                  <div style={{ fontSize: '26px', marginBottom: '2px', display: 'inline-block', animation: 'giftBounce 1.8s ease-in-out infinite' }}>🎁</div>
+                  <h3 style={{ margin: '0 0 3px', fontSize: '17px', fontWeight: 900, lineHeight: 1.25, background: 'linear-gradient(90deg, #fff, #F2A0C2, #fff)', backgroundSize: '200% auto', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent', animation: 'gradientShift 3s linear infinite' }}>
+                    Antes de pagar… ¿algo más para {recipientName}?
+                  </h3>
+                  <p style={{ margin: 0, fontSize: '11.5px', color: 'rgba(255,255,255,0.55)' }}>
+                    Precio especial solo en este paso · <span style={{ color: '#F2A0C2', fontWeight: 700 }}>agrega los que quieras</span>
+                  </p>
+                </div>
+
+                {/* ── Paquete Definitivo — everything, one price. Needs 2 songs
+                    (it IS the 2-song product) and is hidden on free-coupon
+                    orders, where a flat bundle price makes no sense. ── */}
+                {songs.length >= 2 && !isFree && (
+                  <div
+                    onClick={toggleUltimateBundle}
+                    style={{
+                      position: 'relative', marginBottom: '14px', padding: '13px 12px 12px',
+                      borderRadius: '15px', cursor: 'pointer', transition: 'all 0.2s',
+                      background: ultimateBundle
+                        ? 'linear-gradient(150deg, rgba(67,194,186,0.16), rgba(20,13,18,0.9))'
+                        : 'linear-gradient(150deg, rgba(232,180,74,0.14), rgba(192,38,211,0.1))',
+                      border: ultimateBundle ? '2px solid #43C2BA' : '2px solid rgba(232,180,74,0.6)',
+                      boxShadow: ultimateBundle
+                        ? '0 0 22px rgba(67,194,186,0.35)'
+                        : '0 0 22px rgba(232,180,74,0.25)',
+                      animation: 'rowPop 0.4s ease-out both',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    {/* Sweep */}
+                    <div style={{
+                      position: 'absolute', top: 0, width: '55%', height: '100%',
+                      background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.07), transparent)',
+                      animation: 'glimmer 3s ease-in-out infinite', pointerEvents: 'none',
+                    }} />
+                    {/* Badge */}
+                    <div style={{
+                      position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)',
+                      background: ultimateBundle ? 'linear-gradient(90deg, #1F8C86, #43C2BA)' : 'linear-gradient(90deg, #C98A1B, #E8B44A)',
+                      color: ultimateBundle ? 'white' : '#3A2A22', padding: '3px 14px', borderRadius: '0 0 9px 9px',
+                      fontSize: '9.5px', fontWeight: 900, letterSpacing: '0.6px', whiteSpace: 'nowrap',
+                    }}>
+                      {ultimateBundle ? '✓ EL MEJOR VALOR — AGREGADO' : '⭐ EL MEJOR VALOR'}
+                    </div>
+
+                    <p style={{ margin: '12px 0 2px', fontSize: '16px', fontWeight: 900, color: ultimateBundle ? '#89DAD4' : '#E8B44A', textAlign: 'center' }}>
+                      🎁 Paquete Definitivo
+                    </p>
+                    <p style={{ margin: '0 0 9px', fontSize: '11px', color: 'rgba(255,255,255,0.55)', textAlign: 'center', lineHeight: 1.4 }}>
+                      Todo lo de abajo, incluido — el regalo completo para {recipientName}
+                    </p>
+
+                    {/* What's inside */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '10px' }}>
+                      {[
+                        'Las 2 versiones de su canción',
+                        '2 videos con tus fotos (uno por canción)',
+                        '2 pistas instrumentales para cantar',
+                        'Video con la letra en pantalla',
+                        'Película animada estilo Pixar',
+                      ].map((line, i) => (
+                        <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: '7px' }}>
+                          <span style={{ color: '#89DAD4', fontSize: '11px', fontWeight: 900, flexShrink: 0, marginTop: '1px' }}>✓</span>
+                          <span style={{ fontSize: '11.5px', color: 'rgba(255,255,255,0.8)', lineHeight: 1.35 }}>{line}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Price + CTA */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                      <p style={{ margin: 0, display: 'flex', alignItems: 'baseline', gap: '6px', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '11.5px', color: 'rgba(255,255,255,0.6)', textDecoration: 'line-through' }}>
+                          ${ultimateBundleList.toFixed(2)}
+                        </span>
+                        <span style={{ fontSize: '20px', fontWeight: 900, color: ultimateBundle ? '#89DAD4' : '#E8B44A' }}>
+                          ${ultimateBundlePrice.toFixed(2)}
+                        </span>
+                        <span style={{
+                          fontSize: '9.5px', fontWeight: 800, color: '#89DAD4',
+                          background: 'rgba(67,194,186,0.14)', border: '1px solid rgba(67,194,186,0.3)',
+                          padding: '1px 6px', borderRadius: '5px',
+                        }}>
+                          AHORRAS ${(ultimateBundleList - ultimateBundlePrice).toFixed(0)}
+                        </span>
+                      </p>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); toggleUltimateBundle(); }}
+                        style={{
+                          flexShrink: 0, padding: '9px 15px', borderRadius: '50px',
+                          border: ultimateBundle ? '2px solid #43C2BA' : '2px solid #E8B44A',
+                          background: ultimateBundle
+                            ? 'linear-gradient(135deg, #1F8C86, #43C2BA)'
+                            : 'linear-gradient(135deg, #C98A1B, #E8B44A)',
+                          color: ultimateBundle ? 'white' : '#3A2A22',
+                          fontSize: '12.5px', fontWeight: 900, cursor: 'pointer', whiteSpace: 'nowrap',
+                          boxShadow: ultimateBundle ? '0 0 14px rgba(67,194,186,0.5)' : '0 0 14px rgba(232,180,74,0.5)',
+                        }}
+                      >
+                        {ultimateBundle ? '✓ Agregado' : 'Lo quiero todo'}
+                      </button>
+                    </div>
+                    {ultimateBundle && (
+                      <p style={{ margin: '8px 0 0', fontSize: '10px', color: 'rgba(255,255,255,0.65)', textAlign: 'center' }}>
+                        Precio de paquete — no se combina con cupones
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {songs.length >= 2 && !isFree && (
+                  <p style={{ margin: '0 0 8px', fontSize: '10px', letterSpacing: '1.2px', textTransform: 'uppercase', color: 'rgba(255,255,255,0.58)', textAlign: 'center' }}>
+                    o agrégalos por separado
+                  </p>
+                )}
+
+                {/* One-tap add-on rows — tap to add/remove; pay via the CTA below */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '9px', marginBottom: '4px', pointerEvents: isCheckingOut ? 'none' : 'auto' }}>
+                  {modalItems.map((it, idx) => (
+                    <div
+                      key={it.key}
+                      onClick={() => { if (!it.inGrid) { breakUltimateBundle(); it.toggle(); } }}
+                      style={{
+                        padding: '10px 11px', borderRadius: '13px',
+                        background: it.added ? 'rgba(67,194,186,0.1)' : 'rgba(255,255,255,0.045)',
+                        border: it.added ? '1.5px solid rgba(67,194,186,0.55)' : '1.5px solid rgba(255,255,255,0.1)',
+                        cursor: it.inGrid ? 'default' : 'pointer',
+                        transition: 'all 0.2s',
+                        boxShadow: it.added ? '0 0 18px rgba(67,194,186,0.3)' : 'none',
+                        animation: `rowPop 0.4s ease-out ${0.08 + idx * 0.09}s both`,
+                        overflow: 'hidden',
+                      }}
+                    >
+                      {/* Tier 1: thumbnail + title/sub */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        {it.thumb}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <p style={{ margin: 0, fontSize: '13.5px', fontWeight: 800, color: 'white', lineHeight: 1.2 }}>
+                            {it.title}
+                          </p>
+                          <p style={{ margin: '3px 0 0', fontSize: '10.5px', color: 'rgba(255,255,255,0.48)', lineHeight: 1.35 }}>
+                            {it.sub}
+                          </p>
+                        </div>
+                      </div>
+                      {/* Tier 2: full-width price bar + add button (never collides) */}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginTop: '9px' }}>
+                        <p style={{ margin: 0, fontSize: '14px', fontWeight: 900, color: it.added ? '#89DAD4' : '#E8B44A', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          {it.was && (
+                            <span style={{ fontSize: '11px', fontWeight: 500, color: 'rgba(255,255,255,0.6)', textDecoration: 'line-through' }}>
+                              ${it.was.toFixed(2)}
+                            </span>
+                          )}
+                          <span>+${it.price.toFixed(2)}</span>
+                          {it.was && (
+                            <span style={{
+                              fontSize: '9.5px', fontWeight: 800, color: '#89DAD4',
+                              background: 'rgba(67,194,186,0.14)', border: '1px solid rgba(67,194,186,0.3)',
+                              padding: '1px 6px', borderRadius: '5px', letterSpacing: '0.3px',
+                            }}>
+                              -{Math.round((1 - it.price / it.was) * 100)}%
+                            </span>
+                          )}
+                        </p>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); if (!it.inGrid) { breakUltimateBundle(); it.toggle(); } }}
+                          style={{
+                            flexShrink: 0, padding: '7px 14px', borderRadius: '50px',
+                            border: it.added ? '2px solid #43C2BA' : '2px solid #E7699F',
+                            background: it.added ? 'linear-gradient(135deg, #1F8C86, #43C2BA)' : 'linear-gradient(135deg, rgba(228,121,90,0.18), rgba(192,38,211,0.18))',
+                            color: it.added ? 'white' : '#F2A0C2',
+                            fontSize: '12px', fontWeight: 800, cursor: it.inGrid ? 'default' : 'pointer',
+                            whiteSpace: 'nowrap', transition: 'all 0.2s',
+                            boxShadow: it.added ? '0 0 12px rgba(67,194,186,0.5)' : '0 0 10px rgba(228,121,90,0.25)',
+                          }}
+                        >
+                          {it.added ? '✓ Agregado' : '+ Agregar'}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                </div>{/* /scroll region */}
+
+                {/* Pinned pay footer — total + CTAs always visible */}
+                <div style={{
+                  flexShrink: 0,
+                  padding: isNarrow ? '10px 14px calc(12px + env(safe-area-inset-bottom))' : '10px 18px 14px',
+                  borderTop: '1px solid rgba(255,255,255,0.09)',
+                  background: 'rgba(18,11,16,0.98)',
+                }}>
+                {/* Total */}
+                <div style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: '8px 12px', marginBottom: '10px',
+                  background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
+                  borderRadius: '11px',
+                }}>
+                  <span style={{ fontSize: '13px', fontWeight: 600, color: 'rgba(255,255,255,0.75)' }}>
+                    Total{addedCount > 0 ? ` · ${addedCount} extra${addedCount > 1 ? 's' : ''}` : ''}
+                  </span>
+                  <span style={{ fontSize: '21px', fontWeight: 900, color: hasDiscount ? '#89DAD4' : '#E8B44A' }}>
+                    {isFree && extrasTotal === 0 ? '¡GRATIS!' : `$${modalTotal.toFixed(2)}`}
+                  </span>
+                </div>
+
+                {/* Primary CTA — pay with whatever was added */}
+                <button
+                  onClick={proceedToPayment}
+                  disabled={isCheckingOut}
+                  style={{
+                    width: '100%', padding: '14px',
+                    background: 'linear-gradient(90deg, #C9603F, #B62463)',
+                    color: 'white', border: 'none', borderRadius: '12px',
+                    fontSize: '15.5px', fontWeight: 800, cursor: 'pointer',
+                    position: 'relative', overflow: 'hidden',
+                    animation: 'ctaGlow 2.2s ease-in-out infinite',
+                  }}
+                >
+                  <span style={{
+                    position: 'absolute', top: 0, bottom: 0, width: '55%',
+                    background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.22), transparent)',
+                    animation: 'glimmer 2.4s ease-in-out infinite', pointerEvents: 'none',
+                  }} />
+                  {isCheckingOut ? '⏳ Procesando...' : `💳 Pagar ahora — $${modalTotal.toFixed(2)}`}
+                </button>
+
+                {/* Secondary — continue without extras */}
+                <button
+                  onClick={proceedToPayment}
+                  disabled={isCheckingOut}
+                  style={{
+                    width: '100%', padding: '11px', marginTop: '8px',
+                    background: 'rgba(255,255,255,0.06)',
+                    border: '1.5px solid rgba(255,255,255,0.22)', borderRadius: '12px',
+                    color: 'rgba(255,255,255,0.85)', fontSize: '14px', fontWeight: 700,
+                    cursor: 'pointer', transition: 'all 0.2s',
+                  }}
+                >
+                  No, gracias — continuar al pago →
+                </button>
+
+                <p style={{ textAlign: 'center', margin: '7px 0 0', fontSize: '10px', color: 'rgba(255,255,255,0.58)' }}>
+                  🔒 Pago seguro con Stripe · Todo en un solo cobro
+                </p>
+                </div>{/* /pay footer */}
+              </div>
+              </div>
+            </div>,
+            document.body
+          );
+        })()}
 
         {/* Exit Intent Popup */}
         <ExitIntentPopup
@@ -2223,8 +2766,8 @@ export default function ComparisonPage() {
         {song2Ready && (
           <div style={{
             position: 'fixed', bottom: '30px', left: '50%', transform: 'translateX(-50%)',
-            background: '#7c3aed', color: 'white', padding: '12px 24px', borderRadius: '50px',
-            fontSize: '14px', fontWeight: 'bold', boxShadow: '0 6px 24px rgba(124,58,237,0.5)',
+            background: '#4A4CA8', color: 'white', padding: '12px 24px', borderRadius: '50px',
+            fontSize: '14px', fontWeight: 'bold', boxShadow: '0 6px 24px rgba(74,76,168,0.5)',
             zIndex: 100, display: 'flex', alignItems: 'center', gap: '6px',
             animation: 'toastIn 3.5s ease-in-out forwards'
           }}>

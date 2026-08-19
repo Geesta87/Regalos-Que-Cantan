@@ -1,6 +1,7 @@
 import React, { useContext, useState, useEffect } from 'react';
 import { AppContext } from '../App';
 import { trackStep } from '../services/tracking';
+import { CenzoMark, CenzoSignature, CenzoGuide } from '../components/Cenzo';
 
 const inspirationPrompts = [
   { id: 'memories', label: 'Recuerdos Especiales', prompt: '¿Qué momentos han compartido que nunca olvidarán?' },
@@ -102,23 +103,23 @@ export default function DetailsStep() {
 
   // Quality indicator — use full Tailwind class strings (dynamic interpolation breaks JIT)
   const getQualityLevel = () => {
-    if (charCount === 0) return { level: 'empty', label: 'Vacío', dotClass: 'bg-white/30', textClass: 'text-white/30' };
-    if (charCount < 50) return { level: 'low', label: 'Básico', dotClass: 'bg-yellow-400', textClass: 'text-yellow-400' };
+    if (charCount === 0) return { level: 'empty', label: 'Vacío', dotClass: 'bg-white/30', textClass: 'text-white/55' };
+    if (charCount < 50) return { level: 'low', label: 'Básico', dotClass: 'bg-marigold', textClass: 'text-marigold' };
     if (charCount < 150) return { level: 'medium', label: 'Bueno', dotClass: 'bg-gold', textClass: 'text-gold' };
-    return { level: 'high', label: '¡Excelente!', dotClass: 'bg-green-400', textClass: 'text-green-400' };
+    return { level: 'high', label: '¡Excelente!', dotClass: 'bg-turquesa', textClass: 'text-turquesa' };
   };
 
   const quality = getQualityLevel();
 
   return (
-    <div className="bg-forest text-white antialiased min-h-screen">
+    <div className="night-sky text-white antialiased min-h-screen">
       {/* Header */}
       <header className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-8 md:px-24 py-6 bg-forest/80 backdrop-blur-md">
         <div 
           className="flex items-center gap-2 group cursor-pointer"
           onClick={() => navigateTo('landing')}
         >
-          <h2 className="font-display text-white text-2xl font-medium tracking-tight">
+          <CenzoMark size={44} /><h2 className="hidden sm:block font-display text-white text-2xl font-medium tracking-tight">
             RegalosQueCantan
           </h2>
         </div>
@@ -145,6 +146,7 @@ export default function DetailsStep() {
           {/* Title */}
           <div className="text-center mb-10">
             <span className="text-gold uppercase tracking-[0.4em] text-[10px] font-bold mb-4 block">Personaliza tu Mensaje</span>
+            <CenzoGuide size={132} className="mx-auto mb-2 md:mb-3" />
             <h1 className="font-display text-4xl md:text-6xl font-black mb-4 leading-tight">
               Cuéntanos la <span className="italic text-transparent bg-clip-text bg-gradient-to-r from-gold via-white to-gold">historia</span>
             </h1>
@@ -238,7 +240,7 @@ export default function DetailsStep() {
                     setShowQualityWarning(false);
                   }}
                   placeholder={`Escribe aquí los momentos especiales con ${formData.recipientName || 'esta persona'}, sus apodos cariñosos, o ese lugar donde todo comenzó...`}
-                  className="w-full h-72 bg-white/5 border border-gold/20 rounded-2xl p-6 text-white focus:ring-1 focus:ring-gold focus:border-gold outline-none transition-all resize-none text-base leading-relaxed placeholder:italic placeholder:text-gold/40"
+                  className="w-full h-72 bg-white/5 border border-gold/20 rounded-2xl p-6 text-white focus:ring-1 focus:ring-gold focus:border-gold outline-none transition-all resize-none text-base leading-relaxed placeholder:italic placeholder:text-gold/75"
                 />
                 <div className="absolute bottom-4 left-6 right-6 flex items-center justify-between">
                   {/* Quality indicator */}
@@ -248,7 +250,7 @@ export default function DetailsStep() {
                       {quality.label}
                     </span>
                   </div>
-                  <span className="text-[10px] font-bold tracking-widest text-gold/60 uppercase">
+                  <span className="text-[10px] font-bold tracking-widest text-gold/85 uppercase">
                     {charCount} / {maxChars}
                   </span>
                 </div>
@@ -256,7 +258,7 @@ export default function DetailsStep() {
 
               {/* Inspiration tags */}
               <div className="space-y-3">
-                <span className="text-xs font-bold text-white/40 uppercase tracking-widest">Ideas para incluir:</span>
+                <span className="text-xs font-bold text-white/55 uppercase tracking-widest">Ideas para incluir:</span>
                 <div className="flex flex-wrap gap-2">
                   {inspirationPrompts.map((prompt) => (
                     <button
@@ -283,7 +285,7 @@ export default function DetailsStep() {
               {/* High-visibility card: the old bg-gold/[0.07] + border-gold/40
                   treatment sank into the dark background and buyers scrolled
                   past it (owner feedback 2026-08). */}
-              <div className="bg-gold/25 border-2 border-gold rounded-2xl p-5 space-y-3 shadow-[0_0_25px_rgba(242,13,128,0.25)]">
+              <div className="bg-gold/25 border-2 border-gold rounded-2xl p-5 space-y-3 shadow-[0_0_25px_rgba(228,121,90,0.25)]">
                 <div className="flex items-center gap-2">
                   <span className="material-symbols-outlined text-white text-xl">star</span>
                   <span className="text-base font-extrabold text-white uppercase tracking-widest">
@@ -301,7 +303,7 @@ export default function DetailsStep() {
                     updateFormData('songwriterNotes', v);
                   }}
                   placeholder={`Ej: que al final diga "siempre serás mi héroe"; que mencione a sus tres hijos: Ana, Luis y Sofía...`}
-                  className="w-full h-24 bg-background-dark/60 border-2 border-white/40 rounded-xl p-4 text-white focus:ring-1 focus:ring-white focus:border-white outline-none transition-all resize-none text-sm leading-relaxed placeholder:italic placeholder:text-white/45"
+                  className="w-full h-24 bg-background-dark/60 border-2 border-white/40 rounded-xl p-4 text-white focus:ring-1 focus:ring-white focus:border-white outline-none transition-all resize-none text-sm leading-relaxed placeholder:italic placeholder:text-white/60"
                 />
                 <div className="text-right">
                   <span className="text-[10px] font-bold tracking-widest text-white/70 uppercase">
@@ -315,8 +317,8 @@ export default function DetailsStep() {
               {/* Own-lyrics mode: the song is sung with these EXACT words. */}
               {useOwnLyrics && (
                 <div className="space-y-4">
-                  <div className="bg-yellow-400/15 border-2 border-yellow-400/70 rounded-2xl px-6 py-5 shadow-lg shadow-yellow-400/10">
-                    <p className="text-yellow-300 text-base md:text-lg font-extrabold uppercase tracking-wide mb-2 flex items-center gap-2">
+                  <div className="bg-marigold/15 border-2 border-marigold/70 rounded-2xl px-6 py-5 shadow-lg shadow-marigold/10">
+                    <p className="text-marigold-soft text-base md:text-lg font-extrabold uppercase tracking-wide mb-2 flex items-center gap-2">
                       <span className="text-2xl leading-none">⚠️</span> Importante — solo para letras completas
                     </p>
                     <p className="text-white text-sm md:text-base leading-relaxed">
@@ -344,22 +346,22 @@ export default function DetailsStep() {
                         setLyricsError(false);
                       }}
                       placeholder={`Pega o escribe aquí tu letra completa...\n\n[Verso 1]\nTu primera estrofa...\n\n[Coro]\nEl gancho que se repite...\n\nPuedes incluir o no las etiquetas como [Verso], [Coro], [Puente].`}
-                      className="w-full h-96 bg-white/5 border border-gold/20 rounded-2xl p-6 text-white focus:ring-1 focus:ring-gold focus:border-gold outline-none transition-all resize-none text-base leading-relaxed placeholder:italic placeholder:text-gold/40 whitespace-pre-wrap"
+                      className="w-full h-96 bg-white/5 border border-gold/20 rounded-2xl p-6 text-white focus:ring-1 focus:ring-gold focus:border-gold outline-none transition-all resize-none text-base leading-relaxed placeholder:italic placeholder:text-gold/75 whitespace-pre-wrap"
                     />
                     <div className="absolute bottom-4 right-6">
-                      <span className="text-[10px] font-bold tracking-widest text-gold/60 uppercase">
+                      <span className="text-[10px] font-bold tracking-widest text-gold/85 uppercase">
                         {customLyrics.length} / {maxLyricsChars}
                       </span>
                     </div>
                   </div>
                   {lyricsError && (
-                    <p className="text-yellow-400 text-sm flex items-center gap-2">
+                    <p className="text-marigold text-sm flex items-center gap-2">
                       <span className="material-symbols-outlined text-base">info</span>
                       Escribe la letra completa de tu canción para continuar (mínimo {minLyricsChars} caracteres).
                     </p>
                   )}
-                  <p className="text-white/40 text-xs leading-relaxed">
-                    El género que elegiste ({formData.subGenreName || formData.genreName || formData.genre || 'tu estilo'}) define la música; tu letra define las palabras. Consejo: las etiquetas <span className="text-gold/70">[Verso]</span>, <span className="text-gold/70">[Coro]</span> ayudan a que suene mejor, pero son opcionales.
+                  <p className="text-white/55 text-xs leading-relaxed">
+                    El género que elegiste ({formData.subGenreName || formData.genreName || formData.genre || 'tu estilo'}) define la música; tu letra define las palabras. Consejo: las etiquetas <span className="text-gold/90">[Verso]</span>, <span className="text-gold/90">[Coro]</span> ayudan a que suene mejor, pero son opcionales.
                   </p>
                 </div>
               )}
@@ -376,10 +378,10 @@ export default function DetailsStep() {
                   No te preocupes por la redacción. Cuanto más natural y específico sea lo que escribas, más auténtica sonará la letra.
                 </p>
                 <div className="pt-4 border-t border-gold/10 space-y-2">
-                  <p className="text-[10px] text-gold/50 italic leading-snug">
+                  <p className="text-[10px] text-gold/80 italic leading-snug">
                     "Siempre nos reímos de aquella vez que perdimos el tren en Madrid..."
                   </p>
-                  <p className="text-[10px] text-gold/50 italic leading-snug">
+                  <p className="text-[10px] text-gold/80 italic leading-snug">
                     "Le digo 'gordito' aunque ya no lo es..."
                   </p>
                 </div>
@@ -418,7 +420,7 @@ export default function DetailsStep() {
           <div className="mt-12 flex flex-col md:flex-row items-center justify-between gap-6 pt-8 border-t border-white/5">
             <button
               onClick={handleBack}
-              className="text-white/40 hover:text-white transition-colors flex items-center gap-2 group uppercase text-xs font-bold tracking-[0.2em]"
+              className="text-white/55 hover:text-white transition-colors flex items-center gap-2 group uppercase text-xs font-bold tracking-[0.2em]"
             >
               <span className="material-symbols-outlined text-sm group-hover:-translate-x-1 transition-transform">arrow_back</span>
               Volver
@@ -451,7 +453,7 @@ export default function DetailsStep() {
           
           <div className="relative bg-forest border border-gold/30 rounded-3xl p-8 max-w-md w-full shadow-2xl">
             <div className="text-center mb-6">
-              <span className="material-symbols-outlined text-yellow-400 text-5xl mb-4">info</span>
+              <span className="material-symbols-outlined text-marigold text-5xl mb-4">info</span>
               {useOwnLyrics ? (
                 <>
                   <h3 className="font-display text-2xl font-bold text-white mb-2">¿Letra muy corta?</h3>
@@ -529,13 +531,14 @@ export default function DetailsStep() {
       {/* Footer */}
       <footer className="bg-background-dark py-10 px-8 border-t border-white/5">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-8">
-          <div className="font-display text-white/50 text-xl">RegalosQueCantan</div>
+          <CenzoMark size={38} /><div className="font-display text-white/50 text-xl">RegalosQueCantan</div>
           <div className="flex gap-10">
-            <a className="text-white/30 hover:text-gold transition-colors text-xs uppercase tracking-widest" href="#">Privacidad</a>
-            <a className="text-white/30 hover:text-gold transition-colors text-xs uppercase tracking-widest" href="#">Términos</a>
-            <a className="text-white/30 hover:text-gold transition-colors text-xs uppercase tracking-widest" href="#">FAQ</a>
+            <a className="text-white/55 hover:text-gold transition-colors text-xs uppercase tracking-widest" href="#">Privacidad</a>
+            <a className="text-white/55 hover:text-gold transition-colors text-xs uppercase tracking-widest" href="#">Términos</a>
+            <a className="text-white/55 hover:text-gold transition-colors text-xs uppercase tracking-widest" href="#">FAQ</a>
           </div>
-          <p className="text-white/20 text-xs">© 2026 RegalosQueCantan.</p>
+          <CenzoSignature className="justify-center mb-3" />
+          <p className="text-white/50 text-xs">© 2026 RegalosQueCantan.</p>
         </div>
       </footer>
     </div>

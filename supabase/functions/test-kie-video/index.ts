@@ -10,6 +10,12 @@
 //   { mode: 'create', model?, prompt, first_frame_url?, last_frame_url?, reference_image_urls?,
 //     resolution?, aspect_ratio?, duration?, generate_audio? }  -> returns { taskId, raw }
 //   { mode: 'status', taskId }                                  -> returns Kie recordInfo payload
+//   { mode: 'music', prompt (lyrics), style, title, vocalGender?, negativeTags? }
+//                                                               -> returns { taskId, raw }
+//   { mode: 'music-status', taskId }                            -> returns Kie record-info payload
+//   { mode: 'lyrics', taskId, audioId }                         -> Suno's ALIGNED lyric timings
+//   { mode: 'replace-section', taskId, audioId, prompt, tags, title,
+//     infillStartS, infillEndS, fullLyrics, negativeTags? }     -> returns { taskId, raw }
 //
 // Kie unified jobs API (mirrors how docs.kie.ai documents it):
 //   POST https://api.kie.ai/api/v1/jobs/createTask   { model, input, callBackUrl? }
@@ -19,6 +25,12 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 
 const KIE_API_KEY = Deno.env.get('KIE_API_KEY');
 const BASE = 'https://api.kie.ai/api/v1/jobs';
+// Atlas Cloud — SECOND Seedance provider, ~2.3x cheaper than Kie for the same
+// model ($0.134/sec flat incl. reference-to-video vs Kie's ~63 credits/sec ≈
+// $0.315/sec, verified 2026-08-14). Separate account + key; Kie stays the
+// fallback and keeps every other model (music, images, Grok, Kling).
+const ATLAS_API_KEY = Deno.env.get('ATLAS_API_KEY');
+const ATLAS = 'https://api.atlascloud.ai/api/v1/model';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -34,6 +46,19 @@ serve(async (req) => {
     if (!KIE_API_KEY) throw new Error('KIE_API_KEY not set');
     const body = await req.json();
 
+    // CALLBACK RECEIPT — must 200 (2026-08-12). Kie posts the finished job to
+    // callBackUrl; a callback that does not answer 2xx makes Kie mark the task
+    // GENERATE_AUDIO_FAILED / "Internal Error, Please try again later" even
+    // though the audio generated fine. This harness used to default callBackUrl
+    // to itself, where a mode-less body threw "Missing prompt" and returned 500
+    // — so every job submitted through it "failed", and because callBackUrl is
+    // NOT echoed in Kie's stored `param`, a field-by-field diff against a
+    // successful production task showed no difference. That cost an hour and a
+    // wrong "Kie is down" call. Swallow the callback quietly instead.
+    if (!body.mode && (body.data || body.code || body.msg)) {
+      return json(200, { ok: true, received: true });
+    }
+
     if (body.mode === 'status') {
       if (!body.taskId) throw new Error('Missing taskId');
       const r = await fetch(`${BASE}/recordInfo?taskId=${encodeURIComponent(body.taskId)}`, {
@@ -42,38 +67,284 @@ serve(async (req) => {
       return json(200, await r.json().catch(() => ({ error: 'non-json response', status: r.status })));
     }
 
-    // ---- MUSIC (house/marketing songs) ------------------------------------
-    // Kie's music API is a DIFFERENT base than the jobs API above:
-    //   POST https://api.kie.ai/api/v1/generate                  (submit)
-    //   GET  https://api.kie.ai/api/v1/generate/record-info?taskId=...  (poll)
-    // Kie REQUIRES callBackUrl (422 "Please enter callBackUrl." without it), but
-    // for house songs point it at a dead path — NEVER song-callback — so nothing
-    // writes a `songs` row. These are marketing assets, not customer orders, and
-    // must stay out of that table; poll music-status for the result instead.
-    //   { mode: 'music', prompt, style, title, vocalGender?, negativeTags?, model? }
-    //   { mode: 'music-status', taskId }
+    // --- Suno music (house tracks for ad builds) -----------------------------
+    // Kie's music API lives on a DIFFERENT base path than the unified jobs API
+    // above (/api/v1/generate, not /api/v1/jobs), so it needs its own branch.
+    // No callBackUrl: standalone one-off tracks are polled, not delivered to a
+    // song row. Never point this at a customer order — use generate-song.
     if (body.mode === 'music') {
-      if (!body.prompt || !body.style) throw new Error('Missing prompt (lyrics) or style');
-      const payload: Record<string, unknown> = {
-        prompt: body.prompt,
+      if (!body.prompt) throw new Error('Missing prompt (lyrics)');
+      const payload = {
+        prompt: String(body.prompt).substring(0, 5000),
         customMode: true,
         instrumental: false,
         model: body.model || Deno.env.get('KIE_MODEL') || 'V5_5',
-        style: body.style,
-        title: body.title || 'Untitled',
+        // Kie rejects the request without one, but a standalone house track has
+        // no song row to deliver to. Point it back at this same function: the
+        // callback arrives with no `mode`, throws "Missing prompt" and 500s.
+        // Deliberately NOT song-callback — that would touch real order rows.
+        callBackUrl: body.callBackUrl || 'https://yzbvajungshqcpusfiia.supabase.co/functions/v1/test-kie-video',
+        style: String(body.style || '').substring(0, 1000),
+        title: String(body.title || 'untitled').substring(0, 80),
+        vocalGender: body.vocalGender || 'f',
+        negativeTags: String(body.negativeTags || '').substring(0, 200),
         styleWeight: body.styleWeight ?? 0.85,
+        weirdnessConstraint: body.weirdnessConstraint ?? 0.3,
         audioWeight: body.audioWeight ?? 0.7,
-      };
-      if (body.vocalGender) payload.vocalGender = body.vocalGender;
-      if (body.negativeTags) payload.negativeTags = body.negativeTags;
-      if (body.callBackUrl) payload.callBackUrl = body.callBackUrl;
+      } as Record<string, unknown>;
+      // Same-voice re-roll: pass the song's minted persona so the new take is
+      // sung by the ORIGINAL singer, not a fresh voice. Mirrors
+      // fix-song-section's submitFullGenerate exactly (personaModel is required
+      // alongside personaId; `duration` is V5_5-only length pinning). Pinning is
+      // OPTIONAL on purpose — a pinned take can pad the sheet with repeated
+      // sections, so unpinned is the escalation, not the fallback.
+      if (body.personaId) { payload.personaId = body.personaId; payload.personaModel = 'voice_persona'; }
+      if (body.durationS && body.durationS >= 10 && body.durationS <= 360) payload.duration = Math.round(body.durationS);
       const r = await fetch('https://api.kie.ai/api/v1/generate', {
         method: 'POST',
         headers: { Authorization: `Bearer ${KIE_API_KEY}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
       const raw = await r.json().catch(() => ({ error: 'non-json response', status: r.status }));
-      return json(200, { http: r.status, taskId: raw?.data?.taskId || raw?.taskId || null, raw });
+      return json(200, { http: r.status, taskId: raw?.data?.taskId || null, raw });
+    }
+
+    // --- Atlas Cloud (Seedance) — cheaper second provider --------------------
+    // { mode:'atlas', variant?: 't2v'|'i2v'|'ref', prompt, duration?, resolution?,
+    //   aspect_ratio?, generate_audio?, image_url?, input?: {...passthrough} }
+    // -> { predictionId, raw }   then { mode:'atlas-status', predictionId }
+    // `input` is merged LAST so any field this code doesn't know about (e.g.
+    // whatever reference-to-video calls its image array) works without a
+    // redeploy — same escape hatch as the Kie full-control mode above.
+    if (body.mode === 'atlas') {
+      if (!ATLAS_API_KEY) throw new Error('ATLAS_API_KEY not set');
+      if (!body.prompt) throw new Error('Missing prompt');
+      const variant = body.variant === 'i2v' ? 'image-to-video'
+        : body.variant === 'ref' ? 'reference-to-video'
+        : 'text-to-video';
+      const payload: Record<string, unknown> = {
+        model: body.model || `bytedance/seedance-2.5/${variant}`,
+        prompt: body.prompt,
+        duration: body.duration ?? 10,
+        resolution: body.resolution || '720p',
+        ratio: body.aspect_ratio || '9:16',
+        output_format: 'mp4',
+        generate_audio: body.generate_audio ?? true,
+      };
+      if (body.image_url) payload.image_url = body.image_url;
+      if (body.input && typeof body.input === 'object') Object.assign(payload, body.input);
+      const r = await fetch(`${ATLAS}/generateVideo`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${ATLAS_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const raw = await r.json().catch(() => ({ error: 'non-json response', status: r.status }));
+      return json(200, { http: r.status, predictionId: raw?.data?.id || raw?.id || null, raw });
+    }
+    if (body.mode === 'atlas-status') {
+      if (!ATLAS_API_KEY) throw new Error('ATLAS_API_KEY not set');
+      const id = body.predictionId || body.taskId;
+      if (!id) throw new Error('Missing predictionId');
+      const r = await fetch(`${ATLAS}/prediction/${encodeURIComponent(String(id))}`, {
+        headers: { Authorization: `Bearer ${ATLAS_API_KEY}` },
+      });
+      const raw = await r.json().catch(() => ({ error: 'non-json response', status: r.status }));
+      const d = raw?.data || raw;
+      return json(200, {
+        state: d?.status || null,                 // completed | failed | pending
+        url: Array.isArray(d?.outputs) ? d.outputs[0] : null,
+        error: d?.error || null,
+        raw,
+      });
+    }
+
+    // --- Veo (Google) — SEPARATE endpoint from the jobs market ---------------
+    // Kie serves Veo at /api/v1/veo/generate (verified docs.kie.ai 2026-08-13),
+    // not jobs/createTask. imageUrls (1-2) = image-to-video. Status via
+    // /api/v1/veo/record-info?taskId= (successFlag 0 gen / 1 ok / 2,3 failed).
+    // Added for the Character Studio video-model bake-off.
+    if (body.mode === 'veo') {
+      if (!body.prompt) throw new Error('Missing prompt');
+      const payload: Record<string, unknown> = {
+        prompt: body.prompt,
+        model: body.model || 'veo3_fast',
+        aspect_ratio: body.aspect_ratio || 'Auto',
+      };
+      if (Array.isArray(body.imageUrls) && body.imageUrls.length) payload.imageUrls = body.imageUrls;
+      if (body.resolution) payload.resolution = body.resolution;
+      if (body.duration) payload.duration = body.duration;
+      if (body.generationType) payload.generationType = body.generationType;
+      const r = await fetch('https://api.kie.ai/api/v1/veo/generate', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${KIE_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const raw = await r.json().catch(() => ({ error: 'non-json response', status: r.status }));
+      return json(200, { http: r.status, taskId: raw?.data?.taskId || null, raw });
+    }
+    if (body.mode === 'veo-status') {
+      if (!body.taskId) throw new Error('Missing taskId');
+      const r = await fetch(`https://api.kie.ai/api/v1/veo/record-info?taskId=${encodeURIComponent(body.taskId)}`, {
+        headers: { Authorization: `Bearer ${KIE_API_KEY}` },
+      });
+      return json(200, await r.json().catch(() => ({ error: 'non-json response', status: r.status })));
+    }
+
+    // --- Account credit balance ---------------------------------------------
+    // Read-only. "Credits insufficient" is normally transient here (the account
+    // auto-tops-up), so a low balance is easy to ASSUME rather than check —
+    // which is exactly why this exists. Tries the known credit paths and reports
+    // whichever answers.
+    if (body.mode === 'credits') {
+      const paths = [
+        'https://api.kie.ai/api/v1/chat/credit',
+        'https://api.kie.ai/api/v1/common/credit',
+        'https://api.kie.ai/api/v1/generate/credit',
+      ];
+      const out: unknown[] = [];
+      for (const p of paths) {
+        try {
+          const r = await fetch(p, { headers: { Authorization: `Bearer ${KIE_API_KEY}` } });
+          const txt = await r.text();
+          out.push({ path: p, http: r.status, body: txt.slice(0, 300) });
+        } catch (e) {
+          out.push({ path: p, error: String((e as Error).message).slice(0, 120) });
+        }
+      }
+      return json(200, { results: out });
+    }
+
+    // --- End-trim / rehost via the in-house renderer (RESCUE tool) -----------
+    // The ONLY audio surgery the owner permits: a single end-cut + fade at the
+    // song's true final line (whole-takes rule; no splicing, no stretching).
+    // Same Cloud Run call fix-song-section's 'splice' action makes; secrets are
+    // project-wide so this function sees them too. Used to salvage a finished
+    // take when the browser flow that would normally trim it has died.
+    if (body.mode === 'trim' || body.mode === 'rehost') {
+      const RENDERER = Deno.env.get('INHOUSE_RENDERER_URL');
+      const RTOKEN = Deno.env.get('RENDER_TOKEN') || '';
+      if (!RENDERER) throw new Error('INHOUSE_RENDERER_URL not configured');
+      if (!body.pristineUrl) throw new Error('Missing pristineUrl');
+      if (body.mode === 'trim' && !(Number(body.trimAtS) > 0)) throw new Error('Missing trimAtS');
+      // HOST ALLOWLIST (2026-08-17). This function is auth-free and this branch
+      // forwards RENDER_TOKEN to Cloud Run, which fetches whatever URL it is
+      // handed — an open passthrough is an SSRF primitive plus a free transcode-
+      // and-host-on-our-domain service. The only legitimate sources are Kie's
+      // take hosting and our own storage; everything else is refused.
+      {
+        let host = '';
+        try { host = new URL(String(body.pristineUrl)).hostname; } catch { throw new Error('Invalid pristineUrl'); }
+        const ok = host === 'tempfile.aiquickdraw.com' || host.endsWith('.aiquickdraw.com') || host === 'yzbvajungshqcpusfiia.supabase.co';
+        if (!ok) throw new Error(`pristineUrl host not allowed: ${host}`);
+      }
+      const r = await fetch(`${RENDERER}/splice-audio`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-render-token': RTOKEN },
+        body: JSON.stringify({
+          mode: body.mode,
+          pristine_url: body.pristineUrl,
+          ...(body.mode === 'trim' ? { trimAtS: Number(body.trimAtS), fadeS: Number(body.fadeS) > 0 ? Number(body.fadeS) : 1.8 } : {}),
+        }),
+      });
+      const d = await r.json().catch(() => ({}));
+      return json(200, { ok: r.ok && !!d?.success, url: d?.url || null, error: d?.error || null });
+    }
+
+    // --- Mint a voice persona from an existing take (RESCUE tool) ------------
+    // Kie clones the singer from a 10-30s vocal window of a finished take; the
+    // returned personaId then re-sings a whole song in THAT voice (mode 'music'
+    // with personaId). fix-song-section owns the real flow — it persists the id
+    // into songs.kie_source.personaId so a song is only ever minted ONCE. If you
+    // mint here, write the id back to that column yourself or the next full
+    // re-roll pays to mint a second one.
+    if (body.mode === 'mint-persona') {
+      if (!body.taskId || !body.audioId) throw new Error('Missing taskId or audioId');
+      const r = await fetch('https://api.kie.ai/api/v1/generate/generate-persona', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${KIE_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          taskId: body.taskId,
+          audioId: body.audioId,
+          name: String(body.name || 'voz').substring(0, 60),
+          description: String(body.description || '').substring(0, 300),
+          vocalStart: Number(body.vocalStart) >= 0 ? Number(body.vocalStart) : 12,
+          vocalEnd: Number(body.vocalEnd) > 0 ? Number(body.vocalEnd) : 40,
+        }),
+      });
+      const raw = await r.json().catch(() => ({ error: 'non-json response', status: r.status }));
+      return json(200, { http: r.status, personaId: raw?.data?.personaId || null, raw });
+    }
+
+    // --- Replace-section passthrough (RESCUE tool) ---------------------------
+    // The fix-song pipeline owns the real flow (it plans the window with Claude,
+    // validates with Whisper, chains fixes and logs attempts) — use it, not this.
+    // This is the manual override for rescuing ONE already-generated take when
+    // the ladder has stalled and the owner is waiting: the operator supplies the
+    // window and the corrected section text directly.
+    //
+    // Why it earns its keep (2026-08-12, Rafael 9dd5efe4): a chorus line that
+    // repeats needs a SECOND window on the FIRST fix's take, and re-running the
+    // whole pipeline regenerates from scratch. Nothing here touches a song row —
+    // the result is a Kie-hosted take that still has to be previewed and applied
+    // through fix-song-section like any other.
+    if (body.mode === 'replace-section') {
+      for (const k of ['prompt', 'fullLyrics']) {
+        if (!body[k]) throw new Error(`Missing ${k}`);
+      }
+      // Kie takes the source as EITHER {taskId + audioId} (a track it already
+      // hosts) OR {uploadUrl + model} (audio we hand it). Same infill either
+      // way — everything outside the window stays the source audio.
+      const byUpload = !!body.uploadUrl;
+      if (!byUpload && !(body.taskId && body.audioId)) {
+        throw new Error('Need taskId+audioId, or uploadUrl');
+      }
+      const startS = Number(body.infillStartS);
+      const endS = Number(body.infillEndS);
+      if (!(endS > startS)) throw new Error('infillEndS must be greater than infillStartS');
+      // Kie's hard limits — fail loudly here rather than getting a vague 400.
+      const span = endS - startS;
+      // 10 is Kie's real floor (422 "Selected section must be between 10-480
+      // seconds"); 60 is our own ceiling, same as fix-song-section's.
+      if (span < 10 || span > 60) throw new Error(`window must be 10-60s (got ${span.toFixed(1)}s)`);
+      const payload: Record<string, unknown> = {
+        ...(byUpload ? { uploadUrl: body.uploadUrl } : { taskId: body.taskId, audioId: body.audioId }),
+        prompt: String(body.prompt).substring(0, 1000),
+        tags: String(body.tags || '').substring(0, 1000),
+        title: String(body.title || 'untitled').substring(0, 80),
+        infillStartS: startS,
+        infillEndS: endS,
+        fullLyrics: String(body.fullLyrics).substring(0, 5000),
+        negativeTags: String(body.negativeTags || '').substring(0, 200),
+        model: body.model || Deno.env.get('KIE_MODEL') || 'V5_5',
+        callBackUrl: body.callBackUrl || 'https://yzbvajungshqcpusfiia.supabase.co/functions/v1/test-kie-video',
+      };
+      const r = await fetch('https://api.kie.ai/api/v1/generate/replace-section', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${KIE_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const raw = await r.json().catch(() => ({ error: 'non-json response', status: r.status }));
+      return json(200, { http: r.status, taskId: raw?.data?.taskId || null, raw });
+    }
+
+    // Word-level sung timings straight from Suno, for cutting a song to picture.
+    // transcribe-song does this too but only for a songId in the DB; ad tracks
+    // have no song row, so this takes the raw {taskId, audioId} instead.
+    //
+    // NOT A TRANSCRIPT (2026-08-12): Suno ALIGNS the lyric sheet it was given to
+    // the audio, so these words are what Suno was ASKED to sing. If the take
+    // dropped or changed a word, this endpoint still reports the sheet's version.
+    // Verifying a correction landed took a Whisper pass (transcribe-song with a
+    // raw {audioUrl}); this endpoint reported a fix in a chorus the audio never
+    // sang. Use it for TIMING and STRUCTURE, never to prove wording.
+    if (body.mode === 'lyrics') {
+      if (!body.taskId || !body.audioId) throw new Error('Missing taskId or audioId');
+      const r = await fetch('https://api.kie.ai/api/v1/generate/get-timestamped-lyrics', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${KIE_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ taskId: body.taskId, audioId: body.audioId }),
+      });
+      return json(200, await r.json().catch(() => ({ error: 'non-json response', status: r.status })));
     }
 
     if (body.mode === 'music-status') {

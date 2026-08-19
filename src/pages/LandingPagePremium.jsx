@@ -2,6 +2,7 @@ import React, { useContext, useEffect, useRef, useState } from 'react';
 import { AppContext } from '../App';
 import { trackStep } from '../services/tracking';
 import SocialProofToast from '../components/SocialProofToast';
+import { CenzoSignature } from '../components/Cenzo';
 
 const HEART_SVG = "M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z";
 
@@ -89,7 +90,7 @@ export default function LandingPagePremium() {
   };
 
   return (
-    <div style={{ background: '#0a0507', color: 'white', fontFamily: "'Plus Jakarta Sans', sans-serif", overflowX: 'hidden', minHeight: '100vh' }}>
+    <div style={{ background: '#150E2E', color: 'white', fontFamily: "'Plus Jakarta Sans', sans-serif", overflowX: 'hidden', minHeight: '100vh' }}>
       {/* Google Fonts */}
       <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400;1,700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
 
@@ -108,25 +109,25 @@ export default function LandingPagePremium() {
           50% { transform: translateY(-20px); }
         }
         @keyframes lpp-ctaPulse {
-          0%, 100% { transform: scale(1) rotate(0deg); box-shadow: 0 8px 32px rgba(201,24,74,0.3); }
-          25% { transform: scale(1.03) rotate(-1.5deg); box-shadow: 0 12px 40px rgba(201,24,74,0.5); }
-          50% { transform: scale(1.05) rotate(0deg); box-shadow: 0 14px 44px rgba(201,24,74,0.55); }
-          75% { transform: scale(1.03) rotate(1.5deg); box-shadow: 0 12px 40px rgba(201,24,74,0.5); }
+          0%, 100% { transform: scale(1) rotate(0deg); box-shadow: 0 8px 32px rgba(180,79,53,0.3); }
+          25% { transform: scale(1.03) rotate(-1.5deg); box-shadow: 0 12px 40px rgba(180,79,53,0.5); }
+          50% { transform: scale(1.05) rotate(0deg); box-shadow: 0 14px 44px rgba(180,79,53,0.55); }
+          75% { transform: scale(1.03) rotate(1.5deg); box-shadow: 0 12px 40px rgba(180,79,53,0.5); }
         }
         .lpp-shimmer {
-          background: linear-gradient(90deg, #c9184a, #ff6b8a, #c9184a, #ff6b8a, #c9184a);
+          background: linear-gradient(90deg, #B44F35, #ff6b8a, #B44F35, #ff6b8a, #B44F35);
           background-size: 200% auto;
           -webkit-background-clip: text; background-clip: text;
           -webkit-text-fill-color: transparent;
           animation: lpp-shimmer 4s linear infinite;
         }
         .lpp-hero-cta { animation: lpp-ctaPulse 2.5s ease-in-out infinite !important; }
-        .lpp-hero-cta:hover { animation: none !important; transform: scale(1.05) !important; box-shadow: 0 12px 40px rgba(201,24,74,0.4) !important; }
-        .lpp-cta-btn:hover { transform: scale(1.03) !important; box-shadow: 0 8px 30px rgba(201,24,74,0.35) !important; }
-        .lpp-header-cta:hover { background: rgba(201,24,74,0.1) !important; border-color: #c9184a !important; }
-        .lpp-step:hover { border-color: rgba(201,24,74,0.2) !important; background: rgba(201,24,74,0.03) !important; }
-        .lpp-video-card:hover { border-color: rgba(201,24,74,0.3) !important; transform: translateY(-4px) !important; }
-        .lpp-video-card:hover .lpp-play-btn { transform: scale(1.1) !important; background: rgba(201,24,74,0.95) !important; }
+        .lpp-hero-cta:hover { animation: none !important; transform: scale(1.05) !important; box-shadow: 0 12px 40px rgba(180,79,53,0.4) !important; }
+        .lpp-cta-btn:hover { transform: scale(1.03) !important; box-shadow: 0 8px 30px rgba(180,79,53,0.35) !important; }
+        .lpp-header-cta:hover { background: rgba(180,79,53,0.1) !important; border-color: #B44F35 !important; }
+        .lpp-step:hover { border-color: rgba(180,79,53,0.2) !important; background: rgba(180,79,53,0.03) !important; }
+        .lpp-video-card:hover { border-color: rgba(180,79,53,0.3) !important; transform: translateY(-4px) !important; }
+        .lpp-video-card:hover .lpp-play-btn { transform: scale(1.1) !important; background: rgba(180,79,53,0.95) !important; }
         .lpp-video-card:hover .lpp-play-overlay { background: rgba(0,0,0,0.15) !important; }
         @media (max-width: 768px) {
           .lpp-steps-grid { flex-direction: column !important; align-items: center !important; }
@@ -143,7 +144,7 @@ export default function LandingPagePremium() {
 
       {/* URGENCY BAR */}
       <div style={{
-        background: 'linear-gradient(90deg, #f20d80, #d40b6e, #f20d80)',
+        background: 'linear-gradient(90deg, #E4795A, #B44F35, #E4795A)',
         textAlign: 'center', padding: '10px 20px',
         fontSize: '14px', fontWeight: 800, color: '#1a1a2e',
         position: 'sticky', top: 0, zIndex: 100,
@@ -165,7 +166,7 @@ export default function LandingPagePremium() {
           fontFamily: "'Playfair Display', serif", fontSize: '22px', fontWeight: 700,
           color: 'white', letterSpacing: '-0.02em'
         }}>
-          Regalos<span style={{ color: '#f20d80' }}>Que</span>Cantan
+          Regalos<span style={{ color: '#E4795A' }}>Que</span>Cantan
         </button>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <a
@@ -182,7 +183,7 @@ export default function LandingPagePremium() {
             title="English version — Gifts That Sing"
           >
             <span aria-hidden="true">🇺🇸</span>
-            <span>English</span>
+            <span className="hidden sm:inline">English</span>
           </a>
           <button onClick={() => navigateTo('recoverSong')} style={{
             background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.18)',
@@ -197,7 +198,7 @@ export default function LandingPagePremium() {
             <span>Mi canción</span>
           </button>
           <button className="lpp-header-cta" onClick={handleCTA} style={{
-            background: 'transparent', border: '1px solid rgba(201,24,74,0.4)', color: '#ff8fa3',
+            background: 'transparent', border: '1px solid rgba(180,79,53,0.4)', color: '#ff8fa3',
             padding: '10px 28px', borderRadius: '999px', fontSize: '13px', fontWeight: 600,
             letterSpacing: '0.1em', textTransform: 'uppercase', cursor: 'pointer', transition: 'all 0.3s'
           }}>
@@ -214,7 +215,7 @@ export default function LandingPagePremium() {
         {/* Radial glow */}
         <div style={{
           position: 'absolute', inset: 0,
-          background: 'radial-gradient(ellipse at 50% 20%, rgba(201,24,74,0.15) 0%, transparent 50%), radial-gradient(ellipse at 30% 70%, rgba(242,13,128,0.1) 0%, transparent 40%)'
+          background: 'radial-gradient(ellipse at 50% 20%, rgba(180,79,53,0.15) 0%, transparent 50%), radial-gradient(ellipse at 30% 70%, rgba(228,121,90,0.1) 0%, transparent 40%)'
         }} />
 
         {/* Floating hearts */}
@@ -224,7 +225,7 @@ export default function LandingPagePremium() {
               position: 'absolute', left: h.left, opacity: 0,
               animation: `lpp-floatUp ${h.dur} linear ${h.delay} infinite`
             }}>
-              <svg width={h.size} height={h.size} viewBox="0 0 24 24" style={{ fill: '#c9184a', opacity: 0.07 }}>
+              <svg width={h.size} height={h.size} viewBox="0 0 24 24" style={{ fill: '#B44F35', opacity: 0.07 }}>
                 <path d={HEART_SVG} />
               </svg>
             </div>
@@ -234,7 +235,7 @@ export default function LandingPagePremium() {
         {/* Ambient particles */}
         {['♪','✦','♫','✧'].map((p, i) => (
           <div key={i} style={{
-            position: 'absolute', color: 'rgba(201,24,74,0.06)',
+            position: 'absolute', color: 'rgba(180,79,53,0.06)',
             animation: `lpp-float 6s ease-in-out ${i * 0.5}s infinite`,
             pointerEvents: 'none', fontSize: '24px',
             ...[{ top: '15%', left: '8%' }, { top: '25%', right: '12%' }, { bottom: '30%', left: '15%' }, { bottom: '20%', right: '8%' }][i]
@@ -255,10 +256,10 @@ export default function LandingPagePremium() {
         <div style={{ position: 'relative', zIndex: 10, maxWidth: '700px' }}>
           <div style={{
             display: 'inline-flex', alignItems: 'center', gap: '10px',
-            background: 'rgba(242,13,128,0.08)', border: '1px solid rgba(242,13,128,0.25)',
+            background: 'rgba(228,121,90,0.08)', border: '1px solid rgba(228,121,90,0.25)',
             borderRadius: '999px', padding: '8px 22px', marginBottom: '32px',
             fontSize: '11px', letterSpacing: '0.25em', textTransform: 'uppercase',
-            color: '#f20d80', fontWeight: 600
+            color: '#E4795A', fontWeight: 600
           }}>
             <span style={{ display: 'inline-block', fontSize: '10px' }}>✨</span>
             Canciones Personalizadas
@@ -276,20 +277,20 @@ export default function LandingPagePremium() {
           </h1>
 
           <p style={{
-            fontSize: '20px', color: 'rgba(255,255,255,0.5)', fontWeight: 300,
+            fontSize: '20px', color: 'rgba(255,255,255,0.7)', fontWeight: 300,
             lineHeight: 1.7, maxWidth: '520px', margin: '0 auto 40px'
           }}>
             Una canción compuesta exclusivamente para esa persona especial.
             Su nombre, su historia, su género favorito. Un regalo{' '}
-            <em style={{ color: 'rgba(242,13,128,0.8)', fontStyle: 'italic' }}>irrepetible</em>.
+            <em style={{ color: 'rgba(228,121,90,0.8)', fontStyle: 'italic' }}>irrepetible</em>.
           </p>
 
           <button className="lpp-hero-cta" onClick={handleCTA} style={{
             display: 'inline-flex', alignItems: 'center', gap: '10px',
-            background: 'linear-gradient(135deg, #c9184a, #a01540)',
+            background: 'linear-gradient(135deg, #B44F35, #8E3A26)',
             color: 'white', padding: '18px 48px', borderRadius: '999px', border: 'none',
             fontSize: '16px', fontWeight: 800, cursor: 'pointer',
-            boxShadow: '0 8px 32px rgba(201,24,74,0.3)',
+            boxShadow: '0 8px 32px rgba(180,79,53,0.3)',
             transition: 'all 0.3s', letterSpacing: '0.02em'
           }}>
             ♥ &nbsp; Crear Su Canción
@@ -298,27 +299,27 @@ export default function LandingPagePremium() {
           {/* INSTANT DELIVERY BADGE */}
           <div style={{
             display: 'inline-flex', alignItems: 'center', gap: '6px',
-            marginTop: '16px', background: 'rgba(34,197,94,0.15)',
-            border: '1px solid rgba(34,197,94,0.3)', borderRadius: '999px',
-            padding: '6px 16px', fontSize: '12px', color: '#4ade80', fontWeight: 700
+            marginTop: '16px', background: 'rgba(67,194,186,0.15)',
+            border: '1px solid rgba(67,194,186,0.3)', borderRadius: '999px',
+            padding: '6px 16px', fontSize: '12px', color: '#89DAD4', fontWeight: 700
           }}>
             ⚡ Lista en ~3 minutos · Entrega instantánea
           </div>
 
-          <p style={{ marginTop: '20px', fontSize: '14px', color: 'rgba(255,255,255,0.5)', letterSpacing: '0.02em' }}>
-            ✓ Preview gratis antes de pagar • ✓ Desde <span style={{ textDecoration: 'line-through', color: 'rgba(255,255,255,0.35)' }}>$59.99</span>{' '}
+          <p style={{ marginTop: '20px', fontSize: '14px', color: 'rgba(255,255,255,0.7)', letterSpacing: '0.02em' }}>
+            ✓ Preview gratis antes de pagar • ✓ Desde <span style={{ textDecoration: 'line-through', color: 'rgba(255,255,255,0.6)' }}>$59.99</span>{' '}
             <span style={{ color: '#f4c025', fontWeight: 700 }}>$29.99</span>
           </p>
 
-          <p style={{ marginTop: '10px', fontSize: '13px', color: 'rgba(255,255,255,0.3)', letterSpacing: '0.05em' }}>
+          <p style={{ marginTop: '10px', fontSize: '13px', color: 'rgba(255,255,255,0.58)', letterSpacing: '0.05em' }}>
             Preview gratis · Listo en ~3 minutos · Entrega instantánea
           </p>
         </div>
       </section>
 
       {/* DIVIDER */}
-      <div style={{ width: '60px', height: '1px', margin: '0 auto', background: 'linear-gradient(90deg, transparent, #c9184a, transparent)' }} />
-      <div style={{ textAlign: 'center', padding: '8px 0', color: '#c9184a', fontSize: '10px', opacity: 0.3, letterSpacing: '12px' }}>♥ ♥ ♥</div>
+      <div style={{ width: '60px', height: '1px', margin: '0 auto', background: 'linear-gradient(90deg, transparent, #B44F35, transparent)' }} />
+      <div style={{ textAlign: 'center', padding: '8px 0', color: '#B44F35', fontSize: '10px', opacity: 0.3, letterSpacing: '12px' }}>♥ ♥ ♥</div>
 
       {/* VIDEO TESTIMONIALS */}
       <div style={{ padding: '80px 24px', maxWidth: '1100px', margin: '0 auto' }}>
@@ -329,7 +330,7 @@ export default function LandingPagePremium() {
           textAlign: 'center', fontFamily: "'Playfair Display', serif",
           fontSize: 'clamp(28px, 4vw, 42px)', fontWeight: 400, marginBottom: '48px', lineHeight: 1.2
         }}>
-          Mira lo que pasa cuando <em style={{ fontStyle: 'italic', color: '#c9184a' }}>escuchan su canción</em>
+          Mira lo que pasa cuando <em style={{ fontStyle: 'italic', color: '#B44F35' }}>escuchan su canción</em>
         </h2>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '20px', alignItems: 'start' }}>
@@ -347,10 +348,13 @@ export default function LandingPagePremium() {
                   position: 'relative', width: '100%', height: '100%', cursor: 'pointer',
                   borderRadius: '16px', overflow: 'hidden'
                 }}>
+                  {/* preload="none" + a real poster. The old "auto" plus the "#t=0.5"
+                      fragment showed a first frame by downloading the whole clip. */}
                   <video
                     ref={el => { videoRefs.current[v.id] = el; }}
                     playsInline
-                    preload="auto"
+                    preload="none"
+                    poster={v.src.replace('/videos/', '/images/posters/').replace(/\.mp4$/, '.jpg')}
                     src={v.src + '#t=0.5'}
                     onEnded={() => setPlayingVideo(null)}
                     style={{
@@ -365,10 +369,10 @@ export default function LandingPagePremium() {
                     }}>
                       <div className="lpp-play-btn" style={{
                         width: '64px', height: '64px', borderRadius: '50%',
-                        background: 'rgba(201,24,74,0.85)', backdropFilter: 'blur(8px)',
+                        background: 'rgba(180,79,53,0.85)', backdropFilter: 'blur(8px)',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         fontSize: '22px', color: 'white', paddingLeft: '4px',
-                        boxShadow: '0 8px 32px rgba(201,24,74,0.3)',
+                        boxShadow: '0 8px 32px rgba(180,79,53,0.3)',
                         transition: 'all 0.3s', border: '2px solid rgba(255,255,255,0.15)'
                       }}>▶</div>
                     </div>
@@ -379,14 +383,14 @@ export default function LandingPagePremium() {
           })}
         </div>
 
-        <p style={{ textAlign: 'center', marginTop: '24px', fontSize: '13px', color: 'rgba(255,255,255,0.25)', letterSpacing: '0.05em' }}>
+        <p style={{ textAlign: 'center', marginTop: '24px', fontSize: '13px', color: 'rgba(255,255,255,0.55)', letterSpacing: '0.05em' }}>
           ♥ &nbsp; Videos reales de clientes &nbsp; ♥
         </p>
       </div>
 
       {/* DIVIDER */}
-      <div style={{ width: '60px', height: '1px', margin: '0 auto', background: 'linear-gradient(90deg, transparent, #c9184a, transparent)' }} />
-      <div style={{ textAlign: 'center', padding: '8px 0', color: '#c9184a', fontSize: '10px', opacity: 0.3, letterSpacing: '12px' }}>♥ ♥ ♥</div>
+      <div style={{ width: '60px', height: '1px', margin: '0 auto', background: 'linear-gradient(90deg, transparent, #B44F35, transparent)' }} />
+      <div style={{ textAlign: 'center', padding: '8px 0', color: '#B44F35', fontSize: '10px', opacity: 0.3, letterSpacing: '12px' }}>♥ ♥ ♥</div>
 
       {/* HOW IT WORKS */}
       <div style={{ padding: '80px 24px', maxWidth: '1000px', margin: '0 auto' }}>
@@ -397,7 +401,7 @@ export default function LandingPagePremium() {
           textAlign: 'center', fontFamily: "'Playfair Display', serif",
           fontSize: 'clamp(28px, 4vw, 42px)', fontWeight: 400, marginBottom: '48px', lineHeight: 1.2
         }}>
-          Tres pasos. <em style={{ fontStyle: 'italic', color: '#c9184a' }}>Una canción para siempre.</em>
+          Tres pasos. <em style={{ fontStyle: 'italic', color: '#B44F35' }}>Una canción para siempre.</em>
         </h2>
 
         <div className="lpp-steps-grid" style={{ display: 'flex', gap: '32px', flexWrap: 'wrap', justifyContent: 'center' }}>
@@ -411,18 +415,18 @@ export default function LandingPagePremium() {
               <span style={{ fontSize: '28px', marginBottom: '12px', display: 'block' }}>{s.emoji}</span>
               <div style={{
                 fontFamily: "'Playfair Display', serif", fontSize: '48px', fontWeight: 900,
-                color: 'rgba(201,24,74,0.12)', marginBottom: '16px', lineHeight: 1
+                color: 'rgba(180,79,53,0.12)', marginBottom: '16px', lineHeight: 1
               }}>{s.num}</div>
               <h3 style={{ fontSize: '18px', fontWeight: 700, marginBottom: '8px' }}>{s.title}</h3>
-              <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.45)', lineHeight: 1.6, fontWeight: 300 }}>{s.desc}</p>
+              <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.68)', lineHeight: 1.6, fontWeight: 300 }}>{s.desc}</p>
             </div>
           ))}
         </div>
       </div>
 
       {/* DIVIDER */}
-      <div style={{ width: '60px', height: '1px', margin: '0 auto', background: 'linear-gradient(90deg, transparent, #c9184a, transparent)' }} />
-      <div style={{ textAlign: 'center', padding: '8px 0', color: '#c9184a', fontSize: '10px', opacity: 0.3, letterSpacing: '12px' }}>♥ ♥ ♥</div>
+      <div style={{ width: '60px', height: '1px', margin: '0 auto', background: 'linear-gradient(90deg, transparent, #B44F35, transparent)' }} />
+      <div style={{ textAlign: 'center', padding: '8px 0', color: '#B44F35', fontSize: '10px', opacity: 0.3, letterSpacing: '12px' }}>♥ ♥ ♥</div>
 
       {/* PRICING */}
       <div style={{ padding: '80px 24px', maxWidth: '1000px', margin: '0 auto' }}>
@@ -433,38 +437,38 @@ export default function LandingPagePremium() {
           textAlign: 'center', fontFamily: "'Playfair Display', serif",
           fontSize: 'clamp(28px, 4vw, 42px)', fontWeight: 400, marginBottom: '48px', lineHeight: 1.2
         }}>
-          Un regalo que <em style={{ fontStyle: 'italic', color: '#c9184a' }}>no tiene precio</em>
+          Un regalo que <em style={{ fontStyle: 'italic', color: '#B44F35' }}>no tiene precio</em>
         </h2>
 
         <div className="lpp-pricing-card" style={{
           maxWidth: '420px', margin: '0 auto', textAlign: 'center',
-          background: 'linear-gradient(170deg, rgba(201,24,74,0.05) 0%, rgba(0,0,0,0) 60%)',
-          border: '1px solid rgba(201,24,74,0.2)',
+          background: 'linear-gradient(170deg, rgba(180,79,53,0.05) 0%, rgba(0,0,0,0) 60%)',
+          border: '1px solid rgba(180,79,53,0.2)',
           borderRadius: '24px', padding: '48px 40px', position: 'relative', overflow: 'hidden'
         }}>
           {/* Top line accent */}
           <div style={{
             position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)',
-            width: '120px', height: '1px', background: 'linear-gradient(90deg, transparent, #c9184a, transparent)'
+            width: '120px', height: '1px', background: 'linear-gradient(90deg, transparent, #B44F35, transparent)'
           }} />
           {/* Rose glow */}
           <div style={{
             position: 'absolute', top: '-40%', left: '50%', transform: 'translateX(-50%)',
             width: '200%', height: '80%', borderRadius: '50%',
-            background: 'radial-gradient(ellipse, rgba(201,24,74,0.04) 0%, transparent 70%)',
+            background: 'radial-gradient(ellipse, rgba(180,79,53,0.04) 0%, transparent 70%)',
             pointerEvents: 'none'
           }} />
 
           <div style={{ fontSize: '11px', letterSpacing: '0.3em', textTransform: 'uppercase', color: '#ff8fa3', marginBottom: '24px', fontWeight: 600, position: 'relative', zIndex: 1 }}>
             ✨ Canción Personalizada ✨
           </div>
-          <div style={{ fontSize: '16px', color: 'rgba(255,255,255,0.35)', textDecoration: 'line-through', marginBottom: '4px', position: 'relative', zIndex: 1 }}>
+          <div style={{ fontSize: '16px', color: 'rgba(255,255,255,0.6)', textDecoration: 'line-through', marginBottom: '4px', position: 'relative', zIndex: 1 }}>
             Precio normal $49.99
           </div>
           <div style={{ fontFamily: "'Playfair Display', serif", fontSize: '56px', fontWeight: 900, marginBottom: '4px', position: 'relative', zIndex: 1 }}>
-            $29<span style={{ fontSize: '28px', color: 'rgba(255,255,255,0.4)' }}>.99</span>
+            $29<span style={{ fontSize: '28px', color: 'rgba(255,255,255,0.65)' }}>.99</span>
           </div>
-          <div style={{ fontSize: '14px', color: 'rgba(255,255,255,0.4)', marginBottom: '32px', position: 'relative', zIndex: 1 }}>
+          <div style={{ fontSize: '14px', color: 'rgba(255,255,255,0.65)', marginBottom: '32px', position: 'relative', zIndex: 1 }}>
             Pago único · Acceso de por vida
           </div>
 
@@ -474,7 +478,7 @@ export default function LandingPagePremium() {
                 padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.04)',
                 fontSize: '14px', color: 'rgba(255,255,255,0.65)', display: 'flex', alignItems: 'center', gap: '12px'
               }}>
-                <span style={{ color: '#c9184a', fontSize: '8px' }}>♥</span> {f}
+                <span style={{ color: '#B44F35', fontSize: '8px' }}>♥</span> {f}
               </li>
             ))}
           </ul>
@@ -482,10 +486,10 @@ export default function LandingPagePremium() {
           <button className="lpp-cta-btn" onClick={handleCTA} style={{
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
             width: '100%', padding: '16px', borderRadius: '999px', border: 'none',
-            background: 'linear-gradient(135deg, #c9184a, #a01540)',
+            background: 'linear-gradient(135deg, #B44F35, #8E3A26)',
             color: 'white', fontSize: '15px', fontWeight: 800, cursor: 'pointer',
             transition: 'all 0.3s', letterSpacing: '0.02em',
-            boxShadow: '0 4px 20px rgba(201,24,74,0.25)',
+            boxShadow: '0 4px 20px rgba(180,79,53,0.25)',
             position: 'relative', zIndex: 1
           }}>
             ♥ &nbsp; Crear Mi Canción
@@ -494,28 +498,28 @@ export default function LandingPagePremium() {
           {/* Combo */}
           <div style={{
             marginTop: '20px', padding: '16px', borderRadius: '12px',
-            background: 'rgba(201,24,74,0.06)', border: '1px solid rgba(201,24,74,0.15)',
+            background: 'rgba(180,79,53,0.06)', border: '1px solid rgba(180,79,53,0.15)',
             position: 'relative', zIndex: 1
           }}>
             <div style={{ fontSize: '11px', letterSpacing: '0.2em', textTransform: 'uppercase', color: '#ff8fa3', fontWeight: 600, marginBottom: '4px' }}>
               ♥ Paquete Doble
             </div>
             <div style={{ fontFamily: "'Playfair Display', serif", fontSize: '28px', fontWeight: 700 }}>
-              $39<span style={{ fontSize: '18px', color: 'rgba(255,255,255,0.4)' }}>.99</span>{' '}
-              <span style={{ fontSize: '14px', color: 'rgba(255,255,255,0.35)', fontWeight: 300, fontFamily: "'Plus Jakarta Sans'" }}>por 2 canciones</span>{' '}
+              $39<span style={{ fontSize: '18px', color: 'rgba(255,255,255,0.65)' }}>.99</span>{' '}
+              <span style={{ fontSize: '14px', color: 'rgba(255,255,255,0.6)', fontWeight: 300, fontFamily: "'Plus Jakarta Sans'" }}>por 2 canciones</span>{' '}
               <span style={{
-                display: 'inline-block', background: '#c9184a', color: 'white',
+                display: 'inline-block', background: '#B44F35', color: 'white',
                 fontSize: '10px', fontWeight: 700, padding: '3px 10px', borderRadius: '999px',
                 letterSpacing: '0.05em', marginLeft: '8px', verticalAlign: 'middle'
               }}>AHORRA $20</span>
             </div>
-            <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.35)', marginTop: '4px' }}>
+            <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.6)', marginTop: '4px' }}>
               Regala ambas versiones — el doble de emoción
             </div>
           </div>
 
           <p style={{
-            marginTop: '16px', fontSize: '12px', color: 'rgba(255,255,255,0.25)',
+            marginTop: '16px', fontSize: '12px', color: 'rgba(255,255,255,0.55)',
             letterSpacing: '0.05em', position: 'relative', zIndex: 1
           }}>
             🔒 Preview gratis antes de pagar
@@ -526,43 +530,43 @@ export default function LandingPagePremium() {
       {/* FINAL CTA */}
       <div style={{
         textAlign: 'center', padding: '100px 24px',
-        background: 'linear-gradient(180deg, rgba(201,24,74,0.04) 0%, #0a0507 100%)',
+        background: 'linear-gradient(180deg, rgba(180,79,53,0.04) 0%, #150E2E 100%)',
         position: 'relative', overflow: 'hidden'
       }}>
         <div style={{
           position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)',
           width: '600px', height: '600px', borderRadius: '50%',
-          background: 'radial-gradient(circle, rgba(201,24,74,0.06) 0%, transparent 60%)',
+          background: 'radial-gradient(circle, rgba(180,79,53,0.06) 0%, transparent 60%)',
           pointerEvents: 'none'
         }} />
         <span style={{
           fontSize: '48px', display: 'block', margin: '0 auto 20px',
           animation: 'lpp-heartbeat 1.4s ease-in-out infinite',
-          filter: 'drop-shadow(0 0 20px rgba(201,24,74,0.3))'
+          filter: 'drop-shadow(0 0 20px rgba(180,79,53,0.3))'
         }}>♥</span>
         <h2 style={{
           fontFamily: "'Playfair Display', serif",
           fontSize: 'clamp(32px, 5vw, 48px)', fontWeight: 400, marginBottom: '16px', position: 'relative'
         }}>
-          Regala algo que<br /><em style={{ fontStyle: 'italic', color: '#c9184a' }}>nadie más puede dar</em>
+          Regala algo que<br /><em style={{ fontStyle: 'italic', color: '#B44F35' }}>nadie más puede dar</em>
         </h2>
         <p style={{
-          fontSize: '16px', color: 'rgba(255,255,255,0.4)', maxWidth: '400px',
+          fontSize: '16px', color: 'rgba(255,255,255,0.65)', maxWidth: '400px',
           margin: '0 auto 32px', lineHeight: 1.6, fontWeight: 300, position: 'relative'
         }}>
           Tu canción lista en minutos. El regalo más único y personal para cumpleaños, aniversarios, o simplemente porque sí.
         </p>
         <button className="lpp-hero-cta" onClick={handleCTA} style={{
           display: 'inline-flex', alignItems: 'center', gap: '10px',
-          background: 'linear-gradient(135deg, #c9184a, #a01540)',
+          background: 'linear-gradient(135deg, #B44F35, #8E3A26)',
           color: 'white', padding: '18px 48px', borderRadius: '999px', border: 'none',
           fontSize: '16px', fontWeight: 800, cursor: 'pointer',
-          boxShadow: '0 8px 32px rgba(201,24,74,0.3)',
+          boxShadow: '0 8px 32px rgba(180,79,53,0.3)',
           transition: 'all 0.3s', letterSpacing: '0.02em', position: 'relative'
         }}>
           ♥ &nbsp; Crear Su Canción Ahora
         </button>
-        <p style={{ marginTop: '16px', fontSize: '13px', color: 'rgba(255,255,255,0.2)', position: 'relative' }}>
+        <p style={{ marginTop: '16px', fontSize: '13px', color: 'rgba(255,255,255,0.5)', position: 'relative' }}>
           No necesitas experiencia musical. Solo cuéntanos su historia.
         </p>
       </div>
@@ -571,10 +575,11 @@ export default function LandingPagePremium() {
       <div style={{
         padding: '24px 40px', textAlign: 'center',
         borderTop: '1px solid rgba(255,255,255,0.04)',
-        fontSize: '12px', color: 'rgba(255,255,255,0.15)', letterSpacing: '0.1em'
+        fontSize: '12px', color: 'rgba(255,255,255,0.45)', letterSpacing: '0.1em'
       }}>
         RegalosQueCantan &nbsp;·&nbsp; © {new Date().getFullYear()} &nbsp;·&nbsp; Hecho con ♥
       </div>
+      <CenzoSignature className="justify-center my-6" />
     </div>
   );
 }

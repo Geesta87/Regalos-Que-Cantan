@@ -1,5 +1,6 @@
 import React, { useContext, useState } from 'react';
 import { AppContext } from '../App';
+import { CenzoMark } from '../components/Cenzo';
 
 const occasions = [
   { id: 'cumpleanos', name: 'Cumpleaños', icon: 'cake' },
@@ -37,20 +38,20 @@ export default function OccasionPage() {
   };
 
   return (
-    <div className="bg-forest text-white antialiased min-h-screen">
+    <div className="night-sky text-white antialiased min-h-screen">
       {/* Header */}
       <header className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-8 md:px-24 py-6 bg-forest/80 backdrop-blur-md border-b border-white/5">
         <div 
           className="flex items-center gap-2 group cursor-pointer"
           onClick={() => navigateTo('landing')}
         >
-          <h2 className="font-display text-white text-xl font-medium tracking-tight">
+          <CenzoMark size={44} /><h2 className="font-display text-white text-xl font-medium tracking-tight">
             RegalosQueCantan
           </h2>
         </div>
         <div className="flex items-center gap-4">
           <div className="hidden md:flex flex-col items-end mr-4">
-            <span className="text-[10px] uppercase tracking-widest text-white/40">Paso 2 de 5</span>
+            <span className="text-[10px] uppercase tracking-widest text-white/55">Paso 2 de 5</span>
             <span className="text-xs font-bold text-gold">Selecciona la Ocasión</span>
           </div>
           <div className="w-24 h-1 bg-white/10 rounded-full overflow-hidden">
@@ -142,7 +143,7 @@ export default function OccasionPage() {
               transition-all hover:scale-105 active:scale-95 flex items-center gap-2
               ${selectedOccasion
                 ? 'bg-bougainvillea hover:bg-bougainvillea/90 text-white'
-                : 'bg-white/10 text-white/30 cursor-not-allowed hover:scale-100'}
+                : 'bg-white/10 text-white/55 cursor-not-allowed hover:scale-100'}
             `}
           >
             Continuar

@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { validateCoupon } from '../services/api';
 import { OneTapUpsell } from '../components/OneTapUpsell';
+import { CenzoGuide } from '../components/Cenzo';
 
 const supabase = import.meta.env.VITE_SUPABASE_URL
   ? createClient(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_ANON_KEY)
@@ -62,8 +63,8 @@ const isSongPaid = (song) => {
 
 // Version personality - matches ComparisonPage
 const VERSION_VIBES = [
-  { label: 'Emotiva', emoji: '💫', color: '#4f9cf7', gradient: 'linear-gradient(135deg, #2563eb, #3b82f6)', bgTint: 'rgba(59,130,246,0.12)' },
-  { label: 'Enérgica', emoji: '🔥', color: '#a855f7', gradient: 'linear-gradient(135deg, #7c3aed, #9333ea)', bgTint: 'rgba(168,85,247,0.12)' }
+  { label: 'Emotiva', emoji: '💫', color: '#4f9cf7', gradient: 'linear-gradient(135deg, #4A4CA8, #8E90E8)', bgTint: 'rgba(59,130,246,0.12)' },
+  { label: 'Enérgica', emoji: '🔥', color: '#8E90E8', gradient: 'linear-gradient(135deg, #4A4CA8, #5A5CC4)', bgTint: 'rgba(142,144,232,0.12)' }
 ];
 
 // Extract lyrics preview (first meaningful lines)
@@ -130,7 +131,7 @@ function CountdownTimer({ createdAt }) {
               {unit.val}
             </span>
           </div>
-          <span style={{fontSize: '11px', color: 'rgba(255,255,255,0.4)', fontWeight: '600'}}>{unit.label}</span>
+          <span style={{fontSize: '11px', color: 'rgba(255,255,255,0.65)', fontWeight: '600'}}>{unit.label}</span>
           {i < 2 && <span style={{color: 'rgba(239,68,68,0.5)', fontWeight: '900', fontSize: '18px', marginLeft: '2px'}}>:</span>}
         </div>
       ))}
@@ -437,8 +438,8 @@ export default function ShareablePreviewPage() {
   // rather than the layout. A/ADEEP/RGB/RGB2 are the accent palette.
   const HERO = heroIsAnimado
     ? {
-        A: '#f5b942', ADEEP: '#f74da6', RGB: '245,185,66', RGB2: '247,77,166',
-        TITLE_COLOR: '#fde68a',
+        A: '#E8B44A', ADEEP: '#E7699F', RGB: '245,185,66', RGB2: '247,77,166',
+        TITLE_COLOR: '#F4D08A',
         badge: '⭐ Hazlo inolvidable',
         title: `🎬 Película Animada${recipientName ? ` para ${recipientName}` : ''}`,
         sub: 'Su rostro convertido en personaje — su historia hecha película',
@@ -466,8 +467,8 @@ export default function ShareablePreviewPage() {
         count: animadoCount, setCount: setAnimadoCount, added: animadoAdded,
       }
     : {
-        A: '#a855f7', ADEEP: '#7c3aed', RGB: '139,92,246', RGB2: '124,58,237',
-        TITLE_COLOR: '#e9d5ff',
+        A: '#8E90E8', ADEEP: '#4A4CA8', RGB: '139,92,246', RGB2: '124,58,237',
+        TITLE_COLOR: '#DCDCF8',
         badge: '⭐ Más popular',
         title: `🎬 Video Musical${recipientName ? ` para ${recipientName}` : ''}`,
         sub: 'Convierte la canción en un regalo que se ve y se siente',
@@ -550,7 +551,7 @@ export default function ShareablePreviewPage() {
         <div style={{textAlign: 'center', maxWidth: '400px'}}>
           <div style={{fontSize: '48px', marginBottom: '16px'}}>😕</div>
           <p style={{color: '#f87171', marginBottom: '16px', fontSize: '18px'}}>{error}</p>
-          <a href="/" style={{color: '#4ade80', textDecoration: 'underline'}}>Ir al inicio</a>
+          <a href="/" style={{color: '#89DAD4', textDecoration: 'underline'}}>Ir al inicio</a>
         </div>
       </div>
     );
@@ -560,10 +561,10 @@ export default function ShareablePreviewPage() {
     return (
       <div style={{...styles.fullScreen, padding: '20px'}}>
         <div style={styles.card}>
-          <div style={{fontSize: '48px', marginBottom: '16px'}}>⏳</div>
+          <CenzoGuide size={156} className="mx-auto mb-3" alt="Cenzo está trabajando" />
           <h1 style={{fontSize: '22px', fontWeight: 'bold', marginBottom: '12px'}}>Canciones en proceso</h1>
           <p style={{color: 'rgba(255,255,255,0.6)', fontSize: '15px', marginBottom: '24px'}}>
-            Las canciones para <span style={{color: '#f74da6', fontWeight: '600'}}>{recipientName}</span> todavía se están generando.
+            Las canciones para <span style={{color: '#E7699F', fontWeight: '600'}}>{recipientName}</span> todavía se están generando.
           </p>
           <button onClick={loadSongs} style={styles.retryBtn}>🔄 Verificar de nuevo</button>
         </div>
@@ -573,12 +574,12 @@ export default function ShareablePreviewPage() {
 
   // ==================== MAIN PREVIEW PAGE ====================
   return (
-    <div style={{background: 'linear-gradient(160deg, #110d0f 0%, #181114 40%, #1e1519 70%, #151015 100%)', color: 'white', minHeight: '100vh', padding: '0 0 40px', overflow: 'hidden'}}>
+    <div style={{background: 'linear-gradient(160deg, #110d0f 0%, #1B1C48 40%, #1e1519 70%, #151015 100%)', color: 'white', minHeight: '100vh', padding: '0 0 40px', overflow: 'hidden'}}>
 
       <style>{`
         @keyframes fadeInUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
-        @keyframes glow { 0%, 100% { box-shadow: 0 0 20px rgba(242,13,128,0.3); } 50% { box-shadow: 0 0 35px rgba(242,13,128,0.5); } }
+        @keyframes glow { 0%, 100% { box-shadow: 0 0 20px rgba(228,121,90,0.3); } 50% { box-shadow: 0 0 35px rgba(228,121,90,0.5); } }
         @keyframes eq1 { 0%, 100% { height: 10px; } 50% { height: 28px; } }
         @keyframes eq2 { 0%, 100% { height: 20px; } 50% { height: 10px; } }
         @keyframes eq3 { 0%, 100% { height: 15px; } 50% { height: 30px; } }
@@ -589,9 +590,9 @@ export default function ShareablePreviewPage() {
         @keyframes slideIn { from { transform: translateX(-100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
         @keyframes ribbonFloat { 0%, 100% { transform: translateX(-50%) translateY(0); } 50% { transform: translateX(-50%) translateY(-4px); } }
         @keyframes btnPulse { 0%, 100% { box-shadow: 0 4px 18px var(--pulse-color); } 50% { box-shadow: 0 8px 30px var(--pulse-color), 0 0 60px var(--pulse-color); } }
-        @keyframes borderGlow { 0%, 100% { box-shadow: 0 0 0 3px rgba(34,197,94,0.4), 0 0 16px rgba(34,197,94,0.3), 0 0 40px rgba(34,197,94,0.1); border-color: rgba(34,197,94,0.6); } 50% { box-shadow: 0 0 0 8px rgba(34,197,94,0.35), 0 0 60px rgba(34,197,94,0.75), 0 0 100px rgba(34,197,94,0.2), inset 0 0 30px rgba(34,197,94,0.05); border-color: #4ade80; } }
-        @keyframes videoBorderGlow { 0%, 100% { box-shadow: 0 0 0 3px rgba(139,92,246,0.4), 0 0 16px rgba(139,92,246,0.3), 0 0 40px rgba(139,92,246,0.1); border-color: rgba(139,92,246,0.6); } 50% { box-shadow: 0 0 0 8px rgba(139,92,246,0.35), 0 0 60px rgba(139,92,246,0.75), 0 0 100px rgba(139,92,246,0.2), inset 0 0 30px rgba(139,92,246,0.05); border-color: #c084fc; } }
-        @keyframes pricePulse { 0%, 100% { transform: scale(1); text-shadow: 0 0 10px rgba(192,132,252,0.4), 0 0 20px rgba(192,132,252,0.2); color: #c084fc; } 50% { transform: scale(1.12); text-shadow: 0 0 20px rgba(232,121,249,0.9), 0 0 40px rgba(192,132,252,0.6), 0 0 60px rgba(139,92,246,0.3); color: #f0abfc; } }
+        @keyframes borderGlow { 0%, 100% { box-shadow: 0 0 0 3px rgba(67,194,186,0.4), 0 0 16px rgba(67,194,186,0.3), 0 0 40px rgba(67,194,186,0.1); border-color: rgba(67,194,186,0.6); } 50% { box-shadow: 0 0 0 8px rgba(67,194,186,0.35), 0 0 60px rgba(67,194,186,0.75), 0 0 100px rgba(67,194,186,0.2), inset 0 0 30px rgba(67,194,186,0.05); border-color: #89DAD4; } }
+        @keyframes videoBorderGlow { 0%, 100% { box-shadow: 0 0 0 3px rgba(102,104,210,0.4), 0 0 16px rgba(102,104,210,0.3), 0 0 40px rgba(102,104,210,0.1); border-color: rgba(102,104,210,0.6); } 50% { box-shadow: 0 0 0 8px rgba(102,104,210,0.35), 0 0 60px rgba(102,104,210,0.75), 0 0 100px rgba(102,104,210,0.2), inset 0 0 30px rgba(102,104,210,0.05); border-color: #A9AAEE; } }
+        @keyframes pricePulse { 0%, 100% { transform: scale(1); text-shadow: 0 0 10px rgba(192,132,252,0.4), 0 0 20px rgba(192,132,252,0.2); color: #A9AAEE; } 50% { transform: scale(1.12); text-shadow: 0 0 20px rgba(232,121,249,0.9), 0 0 40px rgba(192,132,252,0.6), 0 0 60px rgba(102,104,210,0.3); color: #f0abfc; } }
       `}</style>
 
       {/* Hidden Audio */}
@@ -640,8 +641,8 @@ export default function ShareablePreviewPage() {
                 }}>{flag}</div>
               ))}
             </div>
-            <p style={{fontSize: '12px', color: 'rgba(255,255,255,0.5)', margin: 0}}>
-              <span style={{color: '#4ade80', fontWeight: '700'}}>{socialProofCount} personas</span> compraron canciones esta semana
+            <p style={{fontSize: '12px', color: 'rgba(255,255,255,0.7)', margin: 0}}>
+              <span style={{color: '#89DAD4', fontWeight: '700'}}>{socialProofCount} personas</span> compraron canciones esta semana
             </p>
           </div>
         )}
@@ -656,9 +657,9 @@ export default function ShareablePreviewPage() {
           </h1>
           <p style={{color: 'rgba(255,255,255,0.7)', fontSize: '15px', margin: 0}}>
             {songs.length} {songs.length === 1 ? 'versión' : 'versiones'}
-            {' • '}<span style={{color: '#f74da6', fontWeight: '600'}}>{genreName}</span>
+            {' • '}<span style={{color: '#E7699F', fontWeight: '600'}}>{genreName}</span>
           </p>
-          <p style={{color: 'rgba(255,255,255,0.45)', fontSize: '12px', marginTop: '8px', display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'center'}}>
+          <p style={{color: 'rgba(255,255,255,0.68)', fontSize: '12px', marginTop: '8px', display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'center'}}>
             🔊 Sube el volumen y toca el botón para escuchar
           </p>
         </div>
@@ -684,7 +685,7 @@ export default function ShareablePreviewPage() {
               alignItems: 'center',
               gap: '4px'
             }}>
-              {item.icon} <span style={{color: '#f74da6', fontWeight: '600'}}>{item.text}</span> {item.sub}
+              {item.icon} <span style={{color: '#E7699F', fontWeight: '600'}}>{item.text}</span> {item.sub}
             </span>
           ))}
         </div>
@@ -695,8 +696,8 @@ export default function ShareablePreviewPage() {
           padding: '20px 22px',
           margin: '0 auto 20px',
           maxWidth: '760px',
-          background: 'linear-gradient(135deg, #EC4899 0%, #DB2777 100%)',
-          border: '2px solid #BE185D',
+          background: 'linear-gradient(135deg, #E7699F 0%, #B62463 100%)',
+          border: '2px solid #96204F',
           borderRadius: '14px',
           fontSize: '16px',
           lineHeight: '1.55',
@@ -754,7 +755,7 @@ export default function ShareablePreviewPage() {
                     ? `linear-gradient(135deg, ${vibe.color}30, ${vibe.color}15)`
                     : 'linear-gradient(145deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06))',
                   border: isSelected
-                    ? `3px solid #f74da6`
+                    ? `3px solid #E7699F`
                     : `2px solid ${vibe.color}35`,
                   borderRadius: '20px',
                   padding: songs.length === 2 ? 'clamp(12px, 3vw, 24px)' : '24px',
@@ -763,7 +764,7 @@ export default function ShareablePreviewPage() {
                   opacity: isOtherSelected ? 0.55 : 1,
                   transform: isSelected ? 'scale(1.02)' : 'scale(1)',
                   boxShadow: isSelected
-                    ? '0 0 35px rgba(242,13,128,0.4), 0 8px 32px rgba(0,0,0,0.4)'
+                    ? '0 0 35px rgba(228,121,90,0.4), 0 8px 32px rgba(0,0,0,0.4)'
                     : '0 4px 24px rgba(0,0,0,0.3)',
                   position: 'relative',
                   backdropFilter: 'blur(10px)'
@@ -774,12 +775,12 @@ export default function ShareablePreviewPage() {
                   <div style={{
                     position: 'absolute', top: '15px', right: '15px',
                     width: '28px', height: '28px', borderRadius: '50%',
-                    border: isSelected ? '3px solid #f20d80' : '3px solid rgba(255,255,255,0.3)',
-                    background: isSelected ? '#f20d80' : 'transparent',
+                    border: isSelected ? '3px solid #E4795A' : '3px solid rgba(255,255,255,0.3)',
+                    background: isSelected ? '#E4795A' : 'transparent',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     transition: 'all 0.2s', zIndex: 2
                   }}>
-                    {isSelected && <span style={{color: '#181114', fontSize: '16px', fontWeight: 'bold'}}>✓</span>}
+                    {isSelected && <span style={{color: '#1B1C48', fontSize: '16px', fontWeight: 'bold'}}>✓</span>}
                   </div>
                 )}
 
@@ -809,7 +810,7 @@ export default function ShareablePreviewPage() {
                   overflow: 'hidden',
                   position: 'relative',
                   animation: isPlaying ? 'glow 2s ease-in-out infinite' : 'none',
-                  background: `linear-gradient(135deg, ${vibe.color}40, rgba(225,29,116,0.25))`,
+                  background: `linear-gradient(135deg, ${vibe.color}40, rgba(201,96,63,0.25))`,
                   boxShadow: `0 8px 30px ${vibe.color}25`,
                   border: `2px solid ${vibe.color}50`
                 }}>
@@ -859,7 +860,7 @@ export default function ShareablePreviewPage() {
                     }}>
                       {[0.6, 0.5, 0.7, 0.8, 0.4].map((dur, i) => (
                         <div key={i} style={{
-                          width: '4px', background: '#f20d80', borderRadius: '2px',
+                          width: '4px', background: '#E4795A', borderRadius: '2px',
                           animation: `eq${(i % 3) + 1} ${dur}s ease-in-out infinite`
                         }} />
                       ))}
@@ -867,11 +868,12 @@ export default function ShareablePreviewPage() {
                   )}
                 </div>
 
-                {/* Song info */}
+                {/* Song info — use THIS song's recipient (a single link can hold
+                    songs for different people); falls back to the page default. */}
                 <h3 style={{fontSize: songs.length === 2 ? 'clamp(13px, 3.5vw, 18px)' : '18px', marginBottom: '4px', fontWeight: 'bold'}}>
-                  Para {recipientName}
+                  Para {song.recipient_name || recipientName}
                 </h3>
-                <p style={{color: '#f74da6', fontSize: '13px', marginBottom: '12px', fontWeight: '500'}}>
+                <p style={{color: '#E7699F', fontSize: '13px', marginBottom: '12px', fontWeight: '500'}}>
                   {(song.genre_name || song.genre || '').replace(/_/g, ' ')}
                   {song.occasion ? ` • ${song.occasion.replace(/_/g, ' ')}` : ''}
                 </p>
@@ -921,14 +923,14 @@ export default function ShareablePreviewPage() {
                   style={{
                     width: '100%', padding: songs.length === 2 ? 'clamp(10px, 2.5vw, 16px)' : '16px',
                     background: isPlaying
-                      ? 'linear-gradient(90deg, #f74da6, #f20d80)'
+                      ? 'linear-gradient(90deg, #E7699F, #E4795A)'
                       : vibe.gradient,
-                    color: isPlaying ? '#181114' : 'white',
+                    color: isPlaying ? '#1B1C48' : 'white',
                     border: 'none', borderRadius: '12px',
                     cursor: 'pointer', fontWeight: 'bold', fontSize: songs.length === 2 ? 'clamp(11px, 3vw, 15px)' : '15px',
                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
                     transition: 'all 0.3s',
-                    boxShadow: isPlaying ? '0 4px 20px rgba(242,13,128,0.5)' : `0 4px 18px ${vibe.color}40`,
+                    boxShadow: isPlaying ? '0 4px 20px rgba(228,121,90,0.5)' : `0 4px 18px ${vibe.color}40`,
                     animation: !isPlaying && !previewEnded[song.id] ? 'btnPulse 2s ease-in-out infinite' : 'none',
                     '--pulse-color': `${vibe.color}50`
                   }}
@@ -943,13 +945,13 @@ export default function ShareablePreviewPage() {
                 >
                   <div style={{
                     height: '100%',
-                    background: isPlaying ? 'linear-gradient(90deg, #f20d80, #f74da6)' : vibe.color,
+                    background: isPlaying ? 'linear-gradient(90deg, #E4795A, #E7699F)' : vibe.color,
                     borderRadius: '3px',
                     width: `${((currentTimes[song.id] || 0) / PREVIEW_DURATION) * 100}%`,
                     transition: 'width 0.1s'
                   }} />
                 </div>
-                <p style={{fontSize: '12px', color: 'rgba(255,255,255,0.5)', marginTop: '6px', textAlign: 'right'}}>
+                <p style={{fontSize: '12px', color: 'rgba(255,255,255,0.7)', marginTop: '6px', textAlign: 'right'}}>
                   {formatTime(currentTimes[song.id] || 0)} / {formatTime(PREVIEW_DURATION)}
                 </p>
 
@@ -960,11 +962,11 @@ export default function ShareablePreviewPage() {
                   textAlign: 'center'
                 }}>
                   <div style={{ textAlign: 'center', marginBottom: '4px' }}>
-                    <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.4)', margin: 0 }}>
+                    <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.65)', margin: 0 }}>
                       Pago único · Para siempre
                     </p>
                   </div>
-                  <span style={{fontSize: '32px', fontWeight: '800', color: isSelected ? '#f74da6' : 'white'}}>
+                  <span style={{fontSize: '32px', fontWeight: '800', color: isSelected ? '#E7699F' : 'white'}}>
                     ${SINGLE_PRICE}
                   </span>
                 </div>
@@ -981,15 +983,15 @@ export default function ShareablePreviewPage() {
               display: 'flex', alignItems: 'center', margin: '30px 0', gap: '20px',
               animation: isVisible ? 'fadeInUp 0.8s ease-out 0.5s both' : 'none'
             }}>
-              <div style={{flex: 1, height: '2px', background: 'linear-gradient(90deg, transparent, rgba(242,13,128,0.5))'}} />
+              <div style={{flex: 1, height: '2px', background: 'linear-gradient(90deg, transparent, rgba(228,121,90,0.5))'}} />
               <span style={{
-                color: '#f74da6', fontSize: '16px', fontWeight: 'bold',
-                padding: '8px 20px', background: 'rgba(242,13,128,0.15)',
-                borderRadius: '20px', border: '1px solid rgba(242,13,128,0.4)'
+                color: '#E7699F', fontSize: '16px', fontWeight: 'bold',
+                padding: '8px 20px', background: 'rgba(228,121,90,0.15)',
+                borderRadius: '20px', border: '1px solid rgba(228,121,90,0.4)'
               }}>
                 {isPickAnyTwoMode ? 'O LLÉVATE TODAS' : 'O MEJOR AÚN'}
               </span>
-              <div style={{flex: 1, height: '2px', background: 'linear-gradient(90deg, rgba(242,13,128,0.5), transparent)'}} />
+              <div style={{flex: 1, height: '2px', background: 'linear-gradient(90deg, rgba(228,121,90,0.5), transparent)'}} />
             </div>
 
             {/* Bundle card */}
@@ -997,9 +999,9 @@ export default function ShareablePreviewPage() {
               onClick={handleSelectBoth}
               style={{
                 background: isBundleSelected
-                  ? 'linear-gradient(135deg, rgba(34,197,94,0.2), rgba(242,13,128,0.15))'
+                  ? 'linear-gradient(135deg, rgba(67,194,186,0.2), rgba(228,121,90,0.15))'
                   : 'linear-gradient(135deg, rgba(255,255,255,0.07), rgba(255,255,255,0.03))',
-                border: isBundleSelected ? '3px solid #22c55e' : '3px solid rgba(34,197,94,0.6)',
+                border: isBundleSelected ? '3px solid #43C2BA' : '3px solid rgba(67,194,186,0.6)',
                 borderRadius: '20px', padding: '30px 25px',
                 cursor: 'pointer', marginBottom: '30px',
                 position: 'relative', transition: 'border-color 0.3s, background 0.3s, transform 0.3s',
@@ -1012,10 +1014,10 @@ export default function ShareablePreviewPage() {
               <div style={{
                 position: 'absolute', top: '-14px', left: '50%',
                 transform: 'translateX(-50%)',
-                background: 'linear-gradient(90deg, #22c55e, #16a34a)',
+                background: 'linear-gradient(90deg, #43C2BA, #1F8C86)',
                 color: 'white', padding: '8px 24px', borderRadius: '20px',
                 fontSize: '13px', fontWeight: 'bold',
-                boxShadow: '0 4px 15px rgba(34,197,94,0.4)',
+                boxShadow: '0 4px 15px rgba(67,194,186,0.4)',
                 animation: 'ribbonFloat 3s ease-in-out infinite',
                 whiteSpace: 'nowrap'
               }}>
@@ -1026,8 +1028,8 @@ export default function ShareablePreviewPage() {
               <div style={{
                 position: 'absolute', top: '20px', right: '20px',
                 width: '28px', height: '28px', borderRadius: '50%',
-                border: isBundleSelected ? '3px solid #22c55e' : '3px solid rgba(255,255,255,0.3)',
-                background: isBundleSelected ? '#22c55e' : 'transparent',
+                border: isBundleSelected ? '3px solid #43C2BA' : '3px solid rgba(255,255,255,0.3)',
+                background: isBundleSelected ? '#43C2BA' : 'transparent',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 transition: 'all 0.2s'
               }}>
@@ -1044,11 +1046,11 @@ export default function ShareablePreviewPage() {
                   {songs.slice(0, DEFAULT_BUNDLE_SIZE).map((song, i) => (
                     <div key={song.id} style={{
                       width: '110px', height: '110px', borderRadius: '14px',
-                      overflow: 'hidden', border: '3px solid #181114',
+                      overflow: 'hidden', border: '3px solid #1B1C48',
                       marginLeft: i > 0 ? '-20px' : 0,
                       position: 'relative', zIndex: songs.length - i,
-                      background: `linear-gradient(135deg, ${VERSION_VIBES[i]?.color || '#3b82f6'}30, rgba(225,29,116,0.2))`,
-                      boxShadow: `0 6px 20px ${VERSION_VIBES[i]?.color || '#3b82f6'}30`,
+                      background: `linear-gradient(135deg, ${VERSION_VIBES[i]?.color || '#8E90E8'}30, rgba(201,96,63,0.2))`,
+                      boxShadow: `0 6px 20px ${VERSION_VIBES[i]?.color || '#8E90E8'}30`,
                       transition: 'transform 0.3s',
                     }}>
                       {(() => {
@@ -1097,11 +1099,11 @@ export default function ShareablePreviewPage() {
                   <div style={{textAlign: 'right'}}>
                     {/* "$59.98 crossed out" deal framing — shown for every bundle,
                         since the base bundle is always 2 songs. */}
-                    <p style={{color: 'rgba(255,255,255,0.45)', textDecoration: 'line-through', fontSize: '16px', margin: '0 0 5px 0'}}>
+                    <p style={{color: 'rgba(255,255,255,0.68)', textDecoration: 'line-through', fontSize: '16px', margin: '0 0 5px 0'}}>
                       ${(SINGLE_PRICE * 2).toFixed(2)}
                     </p>
                     <p style={{
-                      color: isBundleSelected ? '#22c55e' : '#f74da6',
+                      color: isBundleSelected ? '#43C2BA' : '#E7699F',
                       fontSize: '36px', fontWeight: 'bold', margin: 0, lineHeight: 1
                     }}>
                       ${advertisedBundlePrice.toFixed(2)}
@@ -1116,8 +1118,8 @@ export default function ShareablePreviewPage() {
         {/* ===== SELECTION SUMMARY ===== */}
         {selectedIds.size > 0 && (
           <div style={{
-            background: 'rgba(242,13,128,0.15)',
-            border: '2px solid #f74da6', borderRadius: '12px',
+            background: 'rgba(228,121,90,0.15)',
+            border: '2px solid #E7699F', borderRadius: '12px',
             padding: '15px 20px', marginBottom: '20px',
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             animation: 'fadeInUp 0.4s ease-out'
@@ -1125,7 +1127,7 @@ export default function ShareablePreviewPage() {
             <div style={{display: 'flex', alignItems: 'center', gap: '10px'}}>
               <span style={{fontSize: '24px'}}>✓</span>
               <div>
-                <p style={{margin: 0, fontWeight: 'bold', color: '#f74da6'}}>Seleccionado:</p>
+                <p style={{margin: 0, fontWeight: 'bold', color: '#E7699F'}}>Seleccionado:</p>
                 <p style={{margin: 0, fontSize: '14px'}}>
                   {(() => {
                     if (selectedCount === 1) {
@@ -1146,7 +1148,7 @@ export default function ShareablePreviewPage() {
             </div>
             <div style={{textAlign: 'right'}}>
               {couponApplied && rawPrice !== discountedPrice && (
-                <p style={{margin: 0, fontSize: '14px', textDecoration: 'line-through', color: 'rgba(255,255,255,0.4)'}}>
+                <p style={{margin: 0, fontSize: '14px', textDecoration: 'line-through', color: 'rgba(255,255,255,0.65)'}}>
                   ${(rawPrice + heroVideoTotal + heroAnimadoTotal + (lyricVideoAddon ? LYRIC_VIDEO_ADDON_PRICE : 0) + (karaokeVideoAddon ? KARAOKE_VIDEO_ADDON_PRICE : 0) + extrasTotal).toFixed(2)}
                 </p>
               )}
@@ -1154,7 +1156,7 @@ export default function ShareablePreviewPage() {
                 ${currentPrice.toFixed(2)}
               </p>
               {couponApplied && !couponBlockedByBundle && (
-                <p style={{margin: 0, fontSize: '11px', color: '#4ade80'}}>
+                <p style={{margin: 0, fontSize: '11px', color: '#89DAD4'}}>
                   {couponApplied.code} aplicado
                 </p>
               )}
@@ -1173,7 +1175,7 @@ export default function ShareablePreviewPage() {
             textAlign: 'center', marginBottom: '20px',
             animation: isVisible ? 'fadeInUp 0.8s ease-out 0.45s both' : 'none'
           }}>
-            <p style={{fontSize: '12px', color: 'rgba(255,255,255,0.4)', margin: '0 0 6px 0'}}>
+            <p style={{fontSize: '12px', color: 'rgba(255,255,255,0.65)', margin: '0 0 6px 0'}}>
               🔒 Previews de 35 segundos. Compra para descargar la canción completa (~3 min).
             </p>
             <p style={{fontSize: '12px', color: '#fca5a5', margin: 0, fontWeight: '600'}}>
@@ -1191,7 +1193,7 @@ export default function ShareablePreviewPage() {
                 <span style={{ fontSize: '18px', fontWeight: 800, color: 'rgba(255,255,255,0.92)' }}>Hazlo aún más especial</span>
                 <span style={{ flex: 1, height: '1px', background: 'rgba(255,255,255,0.1)' }} />
               </div>
-              <p style={{ margin: '6px 0 0', fontSize: '12px', color: 'rgba(255,255,255,0.45)' }}>Opcional — elige lo que quieras, o solo la canción.</p>
+              <p style={{ margin: '6px 0 0', fontSize: '12px', color: 'rgba(255,255,255,0.68)' }}>Opcional — elige lo que quieras, o solo la canción.</p>
             </div>
             {/* ── Standalone LANDSCAPE hero upsell card ──
                 Sits ABOVE the add-on grid so the lead offer owns the big spot.
@@ -1256,7 +1258,7 @@ export default function ShareablePreviewPage() {
                 position: 'relative', overflow: 'hidden',
                 aspectRatio: '16/9',
                 borderRadius: '18px 18px 0 0',
-                background: '#0a0015',
+                background: '#150E2E',
               }}>
                 {heroIsAnimado ? (
                   /* Real produced Animado teaser. It's a 9:16 master, so it's
@@ -1304,7 +1306,7 @@ export default function ShareablePreviewPage() {
                     background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)',
                     padding: '4px 10px', borderRadius: 20, fontSize: 11, color: '#fff', fontWeight: 800,
                   }}>
-                    <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e', display: 'inline-block' }} />
+                    <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#43C2BA', display: 'inline-block' }} />
                     Muestra real
                   </div>
                 )}
@@ -1329,9 +1331,9 @@ export default function ShareablePreviewPage() {
                   }}>
                     <div style={{
                       width: '60px', height: '60px', borderRadius: '50%',
-                      background: 'rgba(124,58,237,0.9)', backdropFilter: 'blur(12px)',
+                      background: 'rgba(74,76,168,0.9)', backdropFilter: 'blur(12px)',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      boxShadow: '0 0 0 8px rgba(124,58,237,0.2), 0 8px 32px rgba(124,58,237,0.6)',
+                      boxShadow: '0 0 0 8px rgba(74,76,168,0.2), 0 8px 32px rgba(74,76,168,0.6)',
                       animation: 'vhPulse 2.5s ease-in-out infinite',
                     }}>
                       <span style={{ fontSize: '22px', marginLeft: '4px', color: 'white' }}>▶</span>
@@ -1378,8 +1380,8 @@ export default function ShareablePreviewPage() {
                 {/* Progress bar — paced to the slideshow loop. Omitted on Animado
                     so it can't drift out of sync with the real video's length. */}
                 {!heroIsAnimado && (
-                  <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '3px', background: 'rgba(124,58,237,0.2)', zIndex: 4 }}>
-                    <div style={{ height: '100%', background: 'linear-gradient(90deg, #7c3aed, #a78bfa)', animation: 'vhProgress 28s linear infinite' }} />
+                  <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '3px', background: 'rgba(74,76,168,0.2)', zIndex: 4 }}>
+                    <div style={{ height: '100%', background: 'linear-gradient(90deg, #4A4CA8, #A9AAEE)', animation: 'vhProgress 28s linear infinite' }} />
                   </div>
                 )}
               </div>
@@ -1392,7 +1394,7 @@ export default function ShareablePreviewPage() {
                     <h3 style={{ fontSize: '19px', fontWeight: '900', margin: '0 0 3px', color: HERO.TITLE_COLOR, lineHeight: 1.2 }}>
                       {HERO.title}
                     </h3>
-                    <p style={{ margin: 0, fontSize: '12px', color: 'rgba(255,255,255,0.45)', lineHeight: 1.4 }}>
+                    <p style={{ margin: 0, fontSize: '12px', color: 'rgba(255,255,255,0.68)', lineHeight: 1.4 }}>
                       {HERO.sub}
                     </p>
                   </div>
@@ -1401,15 +1403,15 @@ export default function ShareablePreviewPage() {
                     style={{
                       flexShrink: 0, marginLeft: '12px',
                       padding: '9px 18px', borderRadius: '50px',
-                      border: HERO.added ? '2px solid #22c55e' : `2px solid ${HERO.A}`,
+                      border: HERO.added ? '2px solid #43C2BA' : `2px solid ${HERO.A}`,
                       background: HERO.added
-                        ? 'linear-gradient(135deg, #16a34a, #22c55e)'
+                        ? 'linear-gradient(135deg, #1F8C86, #43C2BA)'
                         : `linear-gradient(135deg, ${HERO.ADEEP}, ${HERO.A})`,
                       color: 'white', fontSize: '13px', fontWeight: '800', cursor: 'pointer',
                       display: 'flex', alignItems: 'center', gap: '6px',
                       transition: 'all 0.25s',
                       boxShadow: HERO.added
-                        ? '0 0 14px rgba(34,197,94,0.5), 0 4px 12px rgba(0,0,0,0.3)'
+                        ? '0 0 14px rgba(67,194,186,0.5), 0 4px 12px rgba(0,0,0,0.3)'
                         : `0 0 14px rgba(${HERO.RGB},0.5), 0 4px 12px rgba(0,0,0,0.3)`,
                       whiteSpace: 'nowrap',
                     }}
@@ -1423,7 +1425,7 @@ export default function ShareablePreviewPage() {
                     thing customers assume it is. */}
                 {HERO.note && (
                   <div style={{
-                    marginBottom: 14, fontSize: 12, color: '#fde68a',
+                    marginBottom: 14, fontSize: 12, color: '#F4D08A',
                     background: `rgba(${HERO.RGB},0.08)`,
                     border: `1px solid rgba(${HERO.RGB},0.25)`,
                     borderRadius: 10, padding: '9px 12px', lineHeight: 1.45,
@@ -1444,7 +1446,7 @@ export default function ShareablePreviewPage() {
                       <span style={{ fontSize: '20px', flexShrink: 0, lineHeight: 1 }}>{icon}</span>
                       <div>
                         <p style={{ margin: 0, fontSize: '13px', fontWeight: '700', color: HERO.TITLE_COLOR, lineHeight: 1.2 }}>{label}</p>
-                        <p style={{ margin: '2px 0 0', fontSize: '11px', color: 'rgba(255,255,255,0.45)', lineHeight: 1.4 }}>{sub}</p>
+                        <p style={{ margin: '2px 0 0', fontSize: '11px', color: 'rgba(255,255,255,0.68)', lineHeight: 1.4 }}>{sub}</p>
                       </div>
                     </div>
                   ))}
@@ -1473,11 +1475,11 @@ export default function ShareablePreviewPage() {
                 }}>
                   <div style={{ textAlign: 'center', width: '100%' }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginBottom: '4px' }}>
-                      <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.3)', textDecoration: 'line-through' }}>${HERO.anchor.toFixed(2)}</span>
+                      <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.58)', textDecoration: 'line-through' }}>${HERO.anchor.toFixed(2)}</span>
                       <span style={{
-                        fontSize: '11px', fontWeight: '800', color: '#fbbf24',
-                        background: 'rgba(251,191,36,0.15)', padding: '2px 8px',
-                        borderRadius: '6px', border: '1px solid rgba(251,191,36,0.3)',
+                        fontSize: '11px', fontWeight: '800', color: '#E8B44A',
+                        background: 'rgba(232,180,74,0.15)', padding: '2px 8px',
+                        borderRadius: '6px', border: '1px solid rgba(232,180,74,0.3)',
                         letterSpacing: '0.5px'
                       }}>SOLO</span>
                     </div>
@@ -1488,12 +1490,12 @@ export default function ShareablePreviewPage() {
                       }}>${HERO.price}</span>
                       <div>
                         <span style={{
-                          display: 'block', fontSize: '13px', fontWeight: '800', color: '#22c55e',
-                          background: 'rgba(34,197,94,0.15)', padding: '4px 12px',
-                          borderRadius: '20px', border: '1px solid rgba(34,197,94,0.25)',
+                          display: 'block', fontSize: '13px', fontWeight: '800', color: '#43C2BA',
+                          background: 'rgba(67,194,186,0.15)', padding: '4px 12px',
+                          borderRadius: '20px', border: '1px solid rgba(67,194,186,0.25)',
                           marginBottom: '4px', whiteSpace: 'nowrap',
                         }}>Ahorra {HERO.savePct}%</span>
-                        <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.35)' }}>precio de lanzamiento</span>
+                        <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.6)' }}>precio de lanzamiento</span>
                       </div>
                     </div>
                     {/* 3-way selector only for the exact 2-song bundle (the
@@ -1504,7 +1506,7 @@ export default function ShareablePreviewPage() {
                         {[
                           { count: 0, label: HERO.dualNone, sub: 'Solo las canciones en MP3', price: null, color: HERO.count === 0 ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.06)', border: HERO.count === 0 ? '2px solid rgba(255,255,255,0.35)' : '2px solid rgba(255,255,255,0.1)', textColor: HERO.count === 0 ? 'rgba(255,255,255,0.8)' : 'rgba(255,255,255,0.5)' },
                           { count: 1, label: HERO.dualOne, sub: HERO.dualOneSub, price: `$${HERO.price}`, color: HERO.count === 1 ? `linear-gradient(135deg, ${HERO.ADEEP}, ${HERO.A})` : `rgba(${HERO.RGB},0.12)`, border: HERO.count === 1 ? `2px solid ${HERO.A}` : `2px solid rgba(${HERO.RGB},0.4)`, textColor: 'white' },
-                          { count: 2, label: HERO.dualBoth, sub: HERO.dualBothSub, price: `$${HERO.priceBoth}`, color: HERO.count === 2 ? 'linear-gradient(135deg, #16a34a, #22c55e)' : 'rgba(34,197,94,0.12)', border: HERO.count === 2 ? '2px solid #22c55e' : '2px solid rgba(34,197,94,0.4)', textColor: 'white' },
+                          { count: 2, label: HERO.dualBoth, sub: HERO.dualBothSub, price: `$${HERO.priceBoth}`, color: HERO.count === 2 ? 'linear-gradient(135deg, #1F8C86, #43C2BA)' : 'rgba(67,194,186,0.12)', border: HERO.count === 2 ? '2px solid #43C2BA' : '2px solid rgba(67,194,186,0.4)', textColor: 'white' },
                         ].map(({ count, label, sub, price, color, border, textColor }) => (
                           <button
                             key={count}
@@ -1524,11 +1526,11 @@ export default function ShareablePreviewPage() {
                                 background: HERO.count === count ? 'white' : 'transparent',
                                 display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
                               }}>
-                                {HERO.count === count && <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: count === 0 ? '#666' : count === 2 ? '#16a34a' : HERO.ADEEP }} />}
+                                {HERO.count === count && <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: count === 0 ? '#666' : count === 2 ? '#1F8C86' : HERO.ADEEP }} />}
                               </span>
                               <div>
                                 <div>{label}</div>
-                                {sub && <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)', fontWeight: '400', marginTop: '1px' }}>{sub}</div>}
+                                {sub && <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.7)', fontWeight: '400', marginTop: '1px' }}>{sub}</div>}
                               </div>
                             </div>
                             {price && <span style={{ fontWeight: '800', fontSize: '15px', flexShrink: 0 }}>{price}</span>}
@@ -1540,15 +1542,15 @@ export default function ShareablePreviewPage() {
                         onClick={(e) => { e.stopPropagation(); HERO.setCount(c => c > 0 ? 0 : 1); }}
                         style={{
                           width: '100%', padding: '16px', borderRadius: '14px',
-                          border: HERO.added ? '2px solid #22c55e' : `2px solid ${HERO.A}`,
+                          border: HERO.added ? '2px solid #43C2BA' : `2px solid ${HERO.A}`,
                           background: HERO.added
-                            ? 'linear-gradient(135deg, #16a34a, #22c55e)'
+                            ? 'linear-gradient(135deg, #1F8C86, #43C2BA)'
                             : `linear-gradient(135deg, ${HERO.ADEEP}, ${HERO.A})`,
                           color: 'white', fontSize: '18px', fontWeight: '900', cursor: 'pointer',
                           display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
                           transition: 'all 0.25s',
                           boxShadow: HERO.added
-                            ? '0 0 24px rgba(34,197,94,0.55), 0 6px 16px rgba(0,0,0,0.4)'
+                            ? '0 0 24px rgba(67,194,186,0.55), 0 6px 16px rgba(0,0,0,0.4)'
                             : `0 0 24px rgba(${HERO.RGB},0.55), 0 6px 16px rgba(0,0,0,0.4)`,
                           letterSpacing: '0.3px',
                         }}
@@ -1556,7 +1558,7 @@ export default function ShareablePreviewPage() {
                         {HERO.added ? HERO.ctaAdded : HERO.ctaAdd}
                       </button>
                     )}
-                    <p style={{ margin: '6px 0 0', fontSize: '11px', color: 'rgba(255,255,255,0.35)', textAlign: 'center' }}>
+                    <p style={{ margin: '6px 0 0', fontSize: '11px', color: 'rgba(255,255,255,0.6)', textAlign: 'center' }}>
                       Se agrega a tu pedido
                     </p>
                   </div>
@@ -1566,7 +1568,7 @@ export default function ShareablePreviewPage() {
                 <p style={{
                   textAlign: 'center', margin: '12px 0 0',
                   fontSize: '12px', transition: 'all 0.3s',
-                  color: HERO.added ? '#86efac' : 'rgba(255,255,255,0.35)',
+                  color: HERO.added ? '#A8E5E0' : 'rgba(255,255,255,0.35)',
                   fontWeight: HERO.added ? '600' : '400',
                 }}>
                   {HERO.added ? HERO.nudgeAdded : 'Toca "Agregar" para incluirlo en tu pedido'}
@@ -1600,14 +1602,14 @@ export default function ShareablePreviewPage() {
               @keyframes kbSlide6 { 0%{opacity:0} 71.43%{opacity:0} 71.44%{transform:scale(1.05);opacity:1} 82%{transform:scale(1.15) translate(2%,1%);opacity:1} 85.71%{opacity:0} 100%{opacity:0} }
               @keyframes kbSlide7 { 0%{opacity:0} 85.71%{opacity:0} 85.72%{transform:scale(1);opacity:1} 96%{transform:scale(1.12) translate(-1%,2%);opacity:1} 100%{opacity:0} }
               @keyframes videoProgress { 0%{width:0%} 100%{width:100%} }
-              @keyframes softPulse { 0%,100%{box-shadow:0 0 0 0 rgba(139,92,246,0.3)} 50%{box-shadow:0 0 0 8px rgba(139,92,246,0)} }
+              @keyframes softPulse { 0%,100%{box-shadow:0 0 0 0 rgba(102,104,210,0.3)} 50%{box-shadow:0 0 0 8px rgba(102,104,210,0)} }
             `}</style>
 
             <div style={{ textAlign: 'center', margin: '8px 0 12px' }}>
               <span style={{
-                fontSize: '13px', color: '#c4b5fd', fontWeight: '600',
-                background: 'rgba(139,92,246,0.1)', padding: '6px 16px',
-                borderRadius: '20px', border: '1px solid rgba(139,92,246,0.15)',
+                fontSize: '13px', color: '#BCBDF2', fontWeight: '600',
+                background: 'rgba(102,104,210,0.1)', padding: '6px 16px',
+                borderRadius: '20px', border: '1px solid rgba(102,104,210,0.15)',
               }}>
                 🎬 87% de clientes agregan el video
               </span>
@@ -1619,13 +1621,13 @@ export default function ShareablePreviewPage() {
                 background: videoAddon
                   ? 'linear-gradient(160deg, rgba(109,40,217,0.25), rgba(79,70,229,0.15))'
                   : 'linear-gradient(160deg, rgba(109,40,217,0.08), rgba(0,0,0,0))',
-                border: videoAddon ? '3px solid #a855f7' : '3px solid rgba(139,92,246,0.65)',
+                border: videoAddon ? '3px solid #8E90E8' : '3px solid rgba(102,104,210,0.65)',
                 borderRadius: '20px', padding: '0',
                 cursor: 'pointer', marginBottom: '24px',
                 transition: 'border-color 0.3s, background 0.3s, transform 0.3s',
                 overflow: 'hidden', position: 'relative',
                 animation: 'videoBorderGlow 1.6s ease-in-out infinite',
-                boxShadow: videoAddon ? '0 0 0 4px rgba(139,92,246,0.2), 0 0 28px rgba(139,92,246,0.3)' : '0 0 0 4px rgba(139,92,246,0.1), 0 0 20px rgba(139,92,246,0.15)',
+                boxShadow: videoAddon ? '0 0 0 4px rgba(102,104,210,0.2), 0 0 28px rgba(102,104,210,0.3)' : '0 0 0 4px rgba(102,104,210,0.1), 0 0 20px rgba(102,104,210,0.15)',
                 transform: videoAddon ? 'scale(1.01)' : 'scale(1)',
               }}
             >
@@ -1633,12 +1635,12 @@ export default function ShareablePreviewPage() {
               <div style={{
                 position: 'absolute', top: '16px', right: '16px', zIndex: 3,
                 width: '32px', height: '32px', borderRadius: '50%',
-                border: videoAddon ? '3px solid #22c55e' : '3px solid rgba(255,255,255,0.3)',
-                background: videoAddon ? '#22c55e' : 'rgba(0,0,0,0.4)',
+                border: videoAddon ? '3px solid #43C2BA' : '3px solid rgba(255,255,255,0.3)',
+                background: videoAddon ? '#43C2BA' : 'rgba(0,0,0,0.4)',
                 backdropFilter: 'blur(4px)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 transition: 'all 0.2s',
-                boxShadow: videoAddon ? '0 4px 15px rgba(34,197,94,0.4)' : 'none',
+                boxShadow: videoAddon ? '0 4px 15px rgba(67,194,186,0.4)' : 'none',
               }}>
                 {videoAddon && <span style={{color: 'white', fontSize: '18px', fontWeight: 'bold'}}>✓</span>}
               </div>
@@ -1647,14 +1649,14 @@ export default function ShareablePreviewPage() {
               <div style={{
                 display: 'flex', justifyContent: 'center', alignItems: 'center',
                 padding: '24px 20px 16px',
-                background: 'linear-gradient(180deg, rgba(124,58,237,0.08), rgba(0,0,0,0))',
+                background: 'linear-gradient(180deg, rgba(74,76,168,0.08), rgba(0,0,0,0))',
                 borderRadius: '18px 18px 0 0',
               }}>
                 <div style={{
                   position: 'relative', width: '180px', height: '320px',
                   borderRadius: '28px', overflow: 'hidden',
                   border: '4px solid rgba(255,255,255,0.15)',
-                  boxShadow: '0 20px 60px rgba(0,0,0,0.5), 0 0 40px rgba(124,58,237,0.15)',
+                  boxShadow: '0 20px 60px rgba(0,0,0,0.5), 0 0 40px rgba(74,76,168,0.15)',
                   background: '#000',
                 }}>
                   <div style={{
@@ -1671,7 +1673,7 @@ export default function ShareablePreviewPage() {
                     '/images/reactions/a61b55d5e427407b83039124c60ce64b_1767304563903.jpg',
                     '/images/reactions/39b7035b4c88495392e645d0123e1bcd_1767302646323.jpg',
                   ].map((src, i) => (
-                    <img key={i} src={src} alt="" style={{
+                    <img key={i} src={src} alt="" loading={i === 0 ? 'eager' : 'lazy'} decoding="async" style={{
                       position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover',
                       objectPosition: 'center 30%',
                       animation: `kbSlide${i + 1} 35s ease-in-out infinite`,
@@ -1710,11 +1712,11 @@ export default function ShareablePreviewPage() {
                     </div>
                   </div>
                   <div style={{ position: 'absolute', bottom: '10px', left: '10px', right: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span style={{ fontSize: '8px', color: 'rgba(255,255,255,0.5)', fontFamily: 'monospace' }}>0:00</span>
+                    <span style={{ fontSize: '8px', color: 'rgba(255,255,255,0.7)', fontFamily: 'monospace' }}>0:00</span>
                     <div style={{ flex: 1, height: '2px', borderRadius: '1px', background: 'rgba(255,255,255,0.2)', overflow: 'hidden' }}>
                       <div style={{ width: '35%', height: '100%', background: 'white', animation: 'videoProgress 20s linear infinite' }} />
                     </div>
-                    <span style={{ fontSize: '8px', color: 'rgba(255,255,255,0.5)', fontFamily: 'monospace' }}>3:24</span>
+                    <span style={{ fontSize: '8px', color: 'rgba(255,255,255,0.7)', fontFamily: 'monospace' }}>3:24</span>
                   </div>
                 </div>
               </div>
@@ -1724,10 +1726,10 @@ export default function ShareablePreviewPage() {
                 {/* Title row with Agregar button */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px', gap: '12px' }}>
                   <div>
-                    <h3 style={{fontSize: '17px', fontWeight: '800', margin: '0 0 2px', color: '#e9d5ff'}}>
+                    <h3 style={{fontSize: '17px', fontWeight: '800', margin: '0 0 2px', color: '#DCDCF8'}}>
                       🎬 Video Musical para {recipientName}
                     </h3>
-                    <p style={{color: 'rgba(255,255,255,0.45)', fontSize: '12px', margin: 0}}>
+                    <p style={{color: 'rgba(255,255,255,0.68)', fontSize: '12px', margin: 0}}>
                       Convierte la canción en un regalo que se ve y se siente
                     </p>
                   </div>
@@ -1735,10 +1737,10 @@ export default function ShareablePreviewPage() {
                     onClick={(e) => { e.stopPropagation(); setVideoAddonCount(c => c > 0 ? 0 : 1); }}
                     style={{
                       flexShrink: 0, padding: '9px 18px', borderRadius: '50px',
-                      border: videoAddon ? '2px solid #22c55e' : '2px solid #a855f7',
-                      background: videoAddon ? 'linear-gradient(135deg, #16a34a, #22c55e)' : 'linear-gradient(135deg, #7c3aed, #a855f7)',
+                      border: videoAddon ? '2px solid #43C2BA' : '2px solid #8E90E8',
+                      background: videoAddon ? 'linear-gradient(135deg, #1F8C86, #43C2BA)' : 'linear-gradient(135deg, #4A4CA8, #8E90E8)',
                       color: 'white', fontSize: '13px', fontWeight: '800', cursor: 'pointer',
-                      boxShadow: videoAddon ? '0 0 16px rgba(34,197,94,0.5)' : '0 0 16px rgba(139,92,246,0.5)',
+                      boxShadow: videoAddon ? '0 0 16px rgba(67,194,186,0.5)' : '0 0 16px rgba(102,104,210,0.5)',
                       transition: 'all 0.2s',
                     }}
                   >
@@ -1755,13 +1757,13 @@ export default function ShareablePreviewPage() {
                   ].map(({ icon, label, sub }, i) => (
                     <div key={i} style={{
                       display: 'flex', alignItems: 'center', gap: '12px',
-                      background: 'rgba(139,92,246,0.07)', borderRadius: '12px', padding: '10px 14px',
-                      border: '1px solid rgba(139,92,246,0.12)',
+                      background: 'rgba(102,104,210,0.07)', borderRadius: '12px', padding: '10px 14px',
+                      border: '1px solid rgba(102,104,210,0.12)',
                     }}>
                       <span style={{ fontSize: '20px' }}>{icon}</span>
                       <div>
-                        <p style={{ margin: 0, fontSize: '13px', fontWeight: '700', color: '#e9d5ff', lineHeight: 1.2 }}>{label}</p>
-                        <p style={{ margin: '2px 0 0', fontSize: '11px', color: 'rgba(255,255,255,0.45)', lineHeight: 1.4 }}>{sub}</p>
+                        <p style={{ margin: 0, fontSize: '13px', fontWeight: '700', color: '#DCDCF8', lineHeight: 1.2 }}>{label}</p>
+                        <p style={{ margin: '2px 0 0', fontSize: '11px', color: 'rgba(255,255,255,0.68)', lineHeight: 1.4 }}>{sub}</p>
                       </div>
                     </div>
                   ))}
@@ -1771,19 +1773,19 @@ export default function ShareablePreviewPage() {
                 <div style={{
                   display: 'flex', flexDirection: 'column', alignItems: 'center',
                   background: videoAddon
-                    ? 'linear-gradient(90deg, rgba(124,58,237,0.25), rgba(168,85,247,0.15))'
-                    : 'rgba(139,92,246,0.08)',
+                    ? 'linear-gradient(90deg, rgba(74,76,168,0.25), rgba(142,144,232,0.15))'
+                    : 'rgba(102,104,210,0.08)',
                   borderRadius: '12px', padding: '16px',
-                  border: videoAddon ? '1px solid rgba(168,85,247,0.4)' : '1px solid rgba(139,92,246,0.2)',
+                  border: videoAddon ? '1px solid rgba(142,144,232,0.4)' : '1px solid rgba(102,104,210,0.2)',
                   transition: 'all 0.3s',
                 }}>
                   <div style={{ textAlign: 'center', width: '100%' }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginBottom: '4px' }}>
-                      <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.3)', textDecoration: 'line-through' }}>$29.99</span>
+                      <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.58)', textDecoration: 'line-through' }}>$29.99</span>
                       <span style={{
-                        fontSize: '11px', fontWeight: '800', color: '#fbbf24',
-                        background: 'rgba(251,191,36,0.15)', padding: '2px 8px',
-                        borderRadius: '6px', border: '1px solid rgba(251,191,36,0.3)',
+                        fontSize: '11px', fontWeight: '800', color: '#E8B44A',
+                        background: 'rgba(232,180,74,0.15)', padding: '2px 8px',
+                        borderRadius: '6px', border: '1px solid rgba(232,180,74,0.3)',
                         letterSpacing: '0.5px'
                       }}>SOLO</span>
                     </div>
@@ -1794,12 +1796,12 @@ export default function ShareablePreviewPage() {
                       }}>$9.99</span>
                       <div>
                         <span style={{
-                          display: 'block', fontSize: '13px', fontWeight: '800', color: '#22c55e',
-                          background: 'rgba(34,197,94,0.15)', padding: '4px 12px',
-                          borderRadius: '20px', border: '1px solid rgba(34,197,94,0.25)',
+                          display: 'block', fontSize: '13px', fontWeight: '800', color: '#43C2BA',
+                          background: 'rgba(67,194,186,0.15)', padding: '4px 12px',
+                          borderRadius: '20px', border: '1px solid rgba(67,194,186,0.25)',
                           marginBottom: '4px', whiteSpace: 'nowrap',
                         }}>Ahorra 67%</span>
-                        <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.35)' }}>precio de lanzamiento</span>
+                        <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.6)' }}>precio de lanzamiento</span>
                       </div>
                     </div>
                     {selectedCount >= 2 ? (
@@ -1807,8 +1809,8 @@ export default function ShareablePreviewPage() {
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%' }}>
                         {[
                           { count: 0, label: '❌ Sin video', sub: 'Solo la canción en MP3', price: null, color: videoAddonCount === 0 ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.06)', border: videoAddonCount === 0 ? '2px solid rgba(255,255,255,0.35)' : '2px solid rgba(255,255,255,0.1)', textColor: videoAddonCount === 0 ? 'rgba(255,255,255,0.8)' : 'rgba(255,255,255,0.5)' },
-                          { count: 1, label: '🎬 Video con fotos para 1 canción', sub: 'Slideshow cinematográfico con tus fotos — tú eliges cuál canción', price: '$9.99', color: videoAddonCount === 1 ? 'linear-gradient(135deg, #7c3aed, #a855f7)' : 'rgba(139,92,246,0.12)', border: videoAddonCount === 1 ? '2px solid #a855f7' : '2px solid rgba(139,92,246,0.4)', textColor: 'white' },
-                          { count: 2, label: '🎬🎬 Un video por cada canción', sub: 'Slideshow con fotos para cada una de las 2 canciones — $9 c/u', price: '$17.99', color: videoAddonCount === 2 ? 'linear-gradient(135deg, #16a34a, #22c55e)' : 'rgba(34,197,94,0.12)', border: videoAddonCount === 2 ? '2px solid #22c55e' : '2px solid rgba(34,197,94,0.4)', textColor: 'white' },
+                          { count: 1, label: '🎬 Video con fotos para 1 canción', sub: 'Slideshow cinematográfico con tus fotos — tú eliges cuál canción', price: '$9.99', color: videoAddonCount === 1 ? 'linear-gradient(135deg, #4A4CA8, #8E90E8)' : 'rgba(102,104,210,0.12)', border: videoAddonCount === 1 ? '2px solid #8E90E8' : '2px solid rgba(102,104,210,0.4)', textColor: 'white' },
+                          { count: 2, label: '🎬🎬 Un video por cada canción', sub: 'Slideshow con fotos para cada una de las 2 canciones — $9 c/u', price: '$17.99', color: videoAddonCount === 2 ? 'linear-gradient(135deg, #1F8C86, #43C2BA)' : 'rgba(67,194,186,0.12)', border: videoAddonCount === 2 ? '2px solid #43C2BA' : '2px solid rgba(67,194,186,0.4)', textColor: 'white' },
                         ].map(({ count, label, sub, price, color, border, textColor }) => (
                           <button
                             key={count}
@@ -1828,11 +1830,11 @@ export default function ShareablePreviewPage() {
                                 background: videoAddonCount === count ? 'white' : 'transparent',
                                 display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
                               }}>
-                                {videoAddonCount === count && <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: count === 0 ? '#666' : count === 2 ? '#16a34a' : '#7c3aed' }} />}
+                                {videoAddonCount === count && <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: count === 0 ? '#666' : count === 2 ? '#1F8C86' : '#4A4CA8' }} />}
                               </span>
                               <div>
                                 <div>{label}</div>
-                                {sub && <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)', fontWeight: '400', marginTop: '1px' }}>{sub}</div>}
+                                {sub && <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.7)', fontWeight: '400', marginTop: '1px' }}>{sub}</div>}
                               </div>
                             </div>
                             {price && <span style={{ fontWeight: '800', fontSize: '15px', flexShrink: 0 }}>{price}</span>}
@@ -1845,18 +1847,18 @@ export default function ShareablePreviewPage() {
                         onClick={(e) => { e.stopPropagation(); setVideoAddonCount(c => c > 0 ? 0 : 1); }}
                         style={{
                           width: '100%', padding: '16px', borderRadius: '14px',
-                          border: videoAddon ? '2px solid #22c55e' : '2px solid #a855f7',
-                          background: videoAddon ? 'linear-gradient(135deg, #16a34a, #22c55e)' : 'linear-gradient(135deg, #7c3aed, #a855f7)',
+                          border: videoAddon ? '2px solid #43C2BA' : '2px solid #8E90E8',
+                          background: videoAddon ? 'linear-gradient(135deg, #1F8C86, #43C2BA)' : 'linear-gradient(135deg, #4A4CA8, #8E90E8)',
                           color: 'white', fontSize: '17px', fontWeight: '900', cursor: 'pointer',
                           display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-                          boxShadow: videoAddon ? '0 0 24px rgba(34,197,94,0.55), 0 6px 16px rgba(0,0,0,0.4)' : '0 0 24px rgba(139,92,246,0.55), 0 6px 16px rgba(0,0,0,0.4)',
+                          boxShadow: videoAddon ? '0 0 24px rgba(67,194,186,0.55), 0 6px 16px rgba(0,0,0,0.4)' : '0 0 24px rgba(102,104,210,0.55), 0 6px 16px rgba(0,0,0,0.4)',
                           transition: 'all 0.25s', letterSpacing: '0.3px',
                         }}
                       >
                         {videoAddon ? '✓ Video Agregado' : '🎬 Agregar Video — $9.99'}
                       </button>
                     )}
-                    <p style={{ textAlign: 'center', fontSize: '11px', color: 'rgba(255,255,255,0.35)', margin: '8px 0 0' }}>
+                    <p style={{ textAlign: 'center', fontSize: '11px', color: 'rgba(255,255,255,0.6)', margin: '8px 0 0' }}>
                       Se agrega a tu pedido
                     </p>
                   </div>
@@ -1875,7 +1877,7 @@ export default function ShareablePreviewPage() {
               <div style={{ fontSize: '16px', fontWeight: 900, color: 'white', marginBottom: '2px' }}>
                 🎵 Videos musicales de tu canción
               </div>
-              <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)', marginBottom: '14px' }}>
+              <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.7)', marginBottom: '14px' }}>
                 La letra aparece en pantalla iluminándose al ritmo de la música — listos para compartir por WhatsApp
               </div>
 
@@ -1898,35 +1900,35 @@ export default function ShareablePreviewPage() {
                   onClick={toggle}
                   style={{
                     width: '100%', padding: '13px 14px', borderRadius: '13px', marginBottom: '8px',
-                    border: selected ? '2px solid #22c55e' : '2px solid rgba(212,175,55,0.4)',
-                    background: selected ? 'linear-gradient(135deg, rgba(22,163,74,0.35), rgba(34,197,94,0.18))' : 'rgba(255,255,255,0.04)',
+                    border: selected ? '2px solid #43C2BA' : '2px solid rgba(212,175,55,0.4)',
+                    background: selected ? 'linear-gradient(135deg, rgba(31,140,134,0.35), rgba(67,194,186,0.18))' : 'rgba(255,255,255,0.04)',
                     color: 'white', cursor: 'pointer', textAlign: 'left',
                     display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px',
                     transition: 'all 0.2s',
-                    boxShadow: selected ? '0 0 18px rgba(34,197,94,0.25)' : 'none',
+                    boxShadow: selected ? '0 0 18px rgba(67,194,186,0.25)' : 'none',
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
                     <span style={{
                       width: '22px', height: '22px', borderRadius: '7px', flexShrink: 0,
-                      border: selected ? '2px solid #22c55e' : '2px solid rgba(255,255,255,0.35)',
-                      background: selected ? '#22c55e' : 'rgba(0,0,0,0.35)',
+                      border: selected ? '2px solid #43C2BA' : '2px solid rgba(255,255,255,0.35)',
+                      background: selected ? '#43C2BA' : 'rgba(0,0,0,0.35)',
                       display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                     }}>
                       {selected && <span style={{ color: 'white', fontSize: '14px', fontWeight: 'bold' }}>✓</span>}
                     </span>
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontSize: '14px', fontWeight: 800 }}>{emoji} {title}</div>
-                      <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)', fontWeight: 400, marginTop: '2px' }}>{sub}</div>
+                      <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.7)', fontWeight: 400, marginTop: '2px' }}>{sub}</div>
                     </div>
                   </div>
-                  <span style={{ fontWeight: 900, fontSize: '15px', flexShrink: 0, color: selected ? '#4ade80' : '#d4af37' }}>
+                  <span style={{ fontWeight: 900, fontSize: '15px', flexShrink: 0, color: selected ? '#89DAD4' : '#d4af37' }}>
                     ${price.toFixed(2)}
                   </span>
                 </button>
               ))}
 
-              <p style={{ textAlign: 'center', fontSize: '11px', color: 'rgba(255,255,255,0.35)', margin: '6px 0 0' }}>
+              <p style={{ textAlign: 'center', fontSize: '11px', color: 'rgba(255,255,255,0.6)', margin: '6px 0 0' }}>
                 Hechos con la letra exacta de tu canción — entrega en minutos después de tu compra
               </p>
             </div>
@@ -1941,19 +1943,19 @@ export default function ShareablePreviewPage() {
           {allPaid ? (
             <div style={{textAlign: 'center'}}>
               <div style={{
-                background: 'rgba(34,197,94,0.15)', borderRadius: '14px',
-                padding: '16px', marginBottom: '12px', border: '1px solid rgba(34,197,94,0.3)'
+                background: 'rgba(67,194,186,0.15)', borderRadius: '14px',
+                padding: '16px', marginBottom: '12px', border: '1px solid rgba(67,194,186,0.3)'
               }}>
-                <p style={{fontSize: '15px', color: '#4ade80', margin: 0, fontWeight: '600'}}>
+                <p style={{fontSize: '15px', color: '#89DAD4', margin: 0, fontWeight: '600'}}>
                   ✅ {songs.length > 1 ? '¡Estas canciones ya fueron compradas!' : '¡Esta canción ya fue comprada!'}
                 </p>
               </div>
               <button onClick={() => { window.location.href = `/success?song_ids=${songs.map(s => s.id).join(',')}`; }} style={{
                 width: '100%', padding: '20px',
-                background: 'linear-gradient(90deg, #22c55e, #16a34a)',
+                background: 'linear-gradient(90deg, #43C2BA, #1F8C86)',
                 color: 'white', fontWeight: 'bold', fontSize: '18px',
                 border: 'none', borderRadius: '14px', cursor: 'pointer',
-                boxShadow: '0 6px 25px rgba(34,197,94,0.4)',
+                boxShadow: '0 6px 25px rgba(67,194,186,0.4)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px'
               }}>
                 🎧 Ir a Descargar
@@ -2018,7 +2020,7 @@ export default function ShareablePreviewPage() {
                       }}
                       style={{
                         padding: '12px 24px', borderRadius: '10px', border: 'none',
-                        background: 'linear-gradient(90deg, #e11d74, #c026d3)', color: '#fff', fontSize: '14px',
+                        background: 'linear-gradient(90deg, #C9603F, #B62463)', color: '#fff', fontSize: '14px',
                         fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap'
                       }}
                     >
@@ -2027,26 +2029,26 @@ export default function ShareablePreviewPage() {
                   </div>
                 </div>
               ) : (
-                <div style={{ marginBottom: '14px', background: 'rgba(74,222,128,0.08)', borderRadius: '14px', padding: '14px', border: '1px solid rgba(74,222,128,0.2)' }}>
+                <div style={{ marginBottom: '14px', background: 'rgba(137,218,212,0.08)', borderRadius: '14px', padding: '14px', border: '1px solid rgba(137,218,212,0.2)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
                       {couponBlockedByBundle ? (
                         <>
                           <p style={{ fontSize: '14px', fontWeight: 700, color: 'rgba(255,255,255,0.7)', margin: '0 0 2px' }}>Código {couponApplied.code} no aplica</p>
-                          <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.5)', margin: 0 }}>
+                          <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.7)', margin: 0 }}>
                             Los paquetes de 3+ canciones ya incluyen descuento ($9.99 por canción extra)
                           </p>
                         </>
                       ) : (
                         <>
-                          <p style={{ fontSize: '14px', fontWeight: 700, color: '#4ade80', margin: '0 0 2px' }}>✅ Código {couponApplied.code} aplicado</p>
-                          <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.5)', margin: 0 }}>
+                          <p style={{ fontSize: '14px', fontWeight: 700, color: '#89DAD4', margin: '0 0 2px' }}>✅ Código {couponApplied.code} aplicado</p>
+                          <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.7)', margin: 0 }}>
                             {couponApplied.free ? 'Canción gratis' : `${couponApplied.discount}% de descuento — Nuevo precio: $${discountedPrice.toFixed(2)}`}
                           </p>
                         </>
                       )}
                     </div>
-                    <button onClick={() => { setCouponApplied(null); setCouponCode(''); }} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.3)', cursor: 'pointer', fontSize: '18px', fontFamily: 'inherit' }}>✕</button>
+                    <button onClick={() => { setCouponApplied(null); setCouponCode(''); }} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.58)', cursor: 'pointer', fontSize: '18px', fontFamily: 'inherit' }}>✕</button>
                   </div>
                 </div>
               ))}
@@ -2068,13 +2070,13 @@ export default function ShareablePreviewPage() {
                   width: '100%', padding: '20px',
                   background: checkoutLoading || selectedIds.size === 0
                     ? 'rgba(255,255,255,0.1)'
-                    : 'linear-gradient(90deg, #f74da6, #f20d80)',
-                  color: checkoutLoading || selectedIds.size === 0 ? 'rgba(255,255,255,0.4)' : '#181114',
+                    : 'linear-gradient(90deg, #E7699F, #E4795A)',
+                  color: checkoutLoading || selectedIds.size === 0 ? 'rgba(255,255,255,0.4)' : '#1B1C48',
                   fontWeight: 'bold', fontSize: '18px',
                   border: 'none', borderRadius: '14px',
                   cursor: checkoutLoading || selectedIds.size === 0 ? 'default' : 'pointer',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
-                  boxShadow: selectedIds.size > 0 && !checkoutLoading ? '0 6px 25px rgba(242,13,128,0.4)' : 'none',
+                  boxShadow: selectedIds.size > 0 && !checkoutLoading ? '0 6px 25px rgba(228,121,90,0.4)' : 'none',
                   animation: !checkoutLoading && selectedIds.size > 0 && Object.values(playCounts).some(c => c > 0) ? 'pulse 2s ease-in-out infinite' : 'none',
                   transition: 'all 0.3s',
                   opacity: (showEmailForm && !emailInput) ? 0.5 : 1
@@ -2098,7 +2100,7 @@ export default function ShareablePreviewPage() {
 
               {/* Trust under button */}
               <div style={{textAlign: 'center', marginTop: '12px'}}>
-                <p style={{fontSize: '13px', color: 'rgba(255,255,255,0.45)', margin: 0}}>
+                <p style={{fontSize: '13px', color: 'rgba(255,255,255,0.68)', margin: 0}}>
                   💳 Pago seguro con Stripe • Descarga inmediata
                 </p>
               </div>
@@ -2114,7 +2116,7 @@ export default function ShareablePreviewPage() {
             border: '1px solid rgba(255,255,255,0.08)',
             animation: isVisible ? 'fadeInUp 0.8s ease-out 0.6s both' : 'none'
           }}>
-            <p style={{fontSize: '12px', color: 'rgba(255,255,255,0.35)', margin: '0 0 12px 0', textAlign: 'center', fontWeight: '600', letterSpacing: '1px'}}>
+            <p style={{fontSize: '12px', color: 'rgba(255,255,255,0.6)', margin: '0 0 12px 0', textAlign: 'center', fontWeight: '600', letterSpacing: '1px'}}>
               ⭐⭐⭐⭐⭐ LO QUE DICEN NUESTROS CLIENTES
             </p>
             {[
@@ -2129,7 +2131,7 @@ export default function ShareablePreviewPage() {
                 <p style={{fontSize: '13px', color: 'rgba(255,255,255,0.6)', margin: '0 0 6px 0', fontStyle: 'italic', lineHeight: '1.5'}}>
                   "{review.text}"
                 </p>
-                <p style={{fontSize: '12px', color: 'rgba(255,255,255,0.35)', margin: 0, fontWeight: '600'}}>
+                <p style={{fontSize: '12px', color: 'rgba(255,255,255,0.6)', margin: 0, fontWeight: '600'}}>
                   — {review.name} {review.flag}
                 </p>
               </div>
@@ -2139,9 +2141,9 @@ export default function ShareablePreviewPage() {
 
         {/* ===== WHAT'S INCLUDED ===== */}
         <div style={{
-          background: 'linear-gradient(135deg, rgba(242,13,128,0.12), rgba(225,29,116,0.08))',
+          background: 'linear-gradient(135deg, rgba(228,121,90,0.12), rgba(201,96,63,0.08))',
           borderRadius: '20px', padding: '24px',
-          border: '1px solid rgba(242,13,128,0.2)',
+          border: '1px solid rgba(228,121,90,0.2)',
           marginBottom: '24px',
           animation: isVisible ? 'fadeInUp 0.8s ease-out 0.65s both' : 'none'
         }}>
@@ -2199,7 +2201,7 @@ export default function ShareablePreviewPage() {
           </a>
         </div>
 
-        <p style={{textAlign: 'center', marginTop: '30px', color: 'rgba(255,255,255,0.25)', fontSize: '12px'}}>
+        <p style={{textAlign: 'center', marginTop: '30px', color: 'rgba(255,255,255,0.55)', fontSize: '12px'}}>
           RegalosQueCantan © {new Date().getFullYear()}
         </p>
       </div>
@@ -2209,7 +2211,7 @@ export default function ShareablePreviewPage() {
 
 const styles = {
   fullScreen: {
-    background: 'linear-gradient(160deg, #110d0f, #181114, #151015)',
+    background: 'linear-gradient(160deg, #110d0f, #1B1C48, #151015)',
     color: 'white', minHeight: '100vh',
     display: 'flex', alignItems: 'center', justifyContent: 'center'
   },
@@ -2220,7 +2222,7 @@ const styles = {
     border: '1px solid rgba(255,255,255,0.1)'
   },
   retryBtn: {
-    padding: '14px 28px', background: '#22c55e', color: 'white',
+    padding: '14px 28px', background: '#43C2BA', color: 'white',
     border: 'none', borderRadius: '50px', fontWeight: '600',
     fontSize: '16px', cursor: 'pointer'
   }

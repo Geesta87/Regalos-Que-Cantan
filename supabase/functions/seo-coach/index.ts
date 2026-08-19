@@ -81,7 +81,7 @@ const PROPOSE_TOOL = {
 // ---------------------------------------------------------------------------
 // The coach persona. Brain + live snapshot + campaign appended at call time.
 // ---------------------------------------------------------------------------
-const COACH_SYSTEM = `You are a world-class SEO coach for "Regalos Que Cantan", a US-Hispanic e-commerce brand selling personalized Spanish songs (~$25-40 order) at regalosquecantan.com. You advise the NON-TECHNICAL owner directly.
+const COACH_SYSTEM = `You are Nova, the SEO Coach — a world-class SEO coach for "Regalos Que Cantan", a US-Hispanic e-commerce brand selling personalized Spanish songs (~$25-40 order) at regalosquecantan.com. Your name is Nova; if the owner addresses you by name or asks who you are, that's you. You advise the NON-TECHNICAL owner directly.
 
 THE OWNER KNOWS NOTHING ABOUT SEO AND DOES NOT WANT TO BECOME AN EXPERT — you do all the thinking and all the legwork; their only job is tapping Approve on cards they can understand. Speak like you would to a smart friend who has never heard the word "SEO": no jargon without an instant plain-word translation (say "the title Google shows for your page", not "title tag"; "showing up when people search X", not "ranking for X"). When you propose a task, its rationale must make the decision trivial with zero expertise: what changes, why it should bring more free customers, and that it's safe to try.
 
@@ -260,7 +260,9 @@ serve(async (req: Request) => {
 
     // --- CAMPAIGN: approve / reject a task ---
     if (action === 'approve_task' || action === 'reject_task') {
-      const id = body.id;
+      // Accept both spellings: SeoCoachTab sends `id`, the Action Inbox
+      // (built in a parallel session) sends `task_id`.
+      const id = body.id || body.task_id;
       if (!id) return json({ success: false, error: 'missing task id' }, 400);
       const { data: task } = await admin.from('seo_plan_tasks').select('*').eq('id', id).single();
       if (!task) return json({ success: false, error: 'task not found' }, 404);
@@ -283,7 +285,7 @@ serve(async (req: Request) => {
           });
           const out = await r.json().catch(() => ({}));
           youtubePosted = !!out.success;
-          youtubeError = out.success ? '' : String(out.error || 'posting failed');
+          youtubeError = out.success ? '' : String(out.error || `posting failed (HTTP ${r.status})`);
           if (youtubePosted) {
             await admin.from('seo_plan_tasks').update({
               status: 'implemented', implemented_at: new Date().toISOString(),
@@ -291,6 +293,15 @@ serve(async (req: Request) => {
             }).eq('id', id);
           }
         } catch (e: any) { youtubeError = String(e?.message || e).slice(0, 200); }
+        if (!youtubePosted) {
+          // Posting failed: record WHY and put the card back to 'proposed' so
+          // the Approve button stays available for a retry instead of the
+          // failure vanishing into an approved-but-never-posted limbo.
+          await admin.from('seo_plan_tasks').update({
+            status: 'proposed',
+            evidence: { ...(task.evidence || {}), youtube_error: { at: new Date().toISOString(), error: youtubeError.slice(0, 400) } },
+          }).eq('id', id);
+        }
       }
       if (task.task_type === 'title_meta' && task.target_path && (draft.title || draft.meta_description)) {
         const { error: ovErr } = await admin.from('seo_content_overrides').upsert({
@@ -377,16 +388,17 @@ serve(async (req: Request) => {
     }, null, 2)}`;
 
     // Seasonal push context (same source the creative generators use).
-    let promoNotes = '';
+    let promoNotes = '', promoAt: string | null = null;
     try {
-      const { data: cfg } = await admin.from('creative_studio_config').select('promo_notes').eq('id', 1).single();
+      const { data: cfg } = await admin.from('creative_studio_config').select('promo_notes, promo_updated_at').eq('id', 1).single();
       promoNotes = cfg?.promo_notes || '';
+      promoAt = cfg?.promo_updated_at || null;
     } catch (_e) { /* optional */ }
 
     const system = `${COACH_SYSTEM}
 
 WHAT THIS BUSINESS SELLS (so your advice fits the real product, not generic e-commerce):
-${brandContext(promoNotes)}
+${brandContext(promoNotes, promoAt)}
 
 ${contextBlock}
 

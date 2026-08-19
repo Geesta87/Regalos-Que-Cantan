@@ -2,18 +2,11 @@ import React, { useContext, useState, useEffect, useRef } from 'react';
 import { AppContext } from '../App';
 import { trackStep } from '../services/tracking';
 
-const relationships = [
-  { id: 'pareja', name: 'Pareja / Esposo(a)', icon: 'favorite' },
-  { id: 'madre', name: 'Madre', icon: 'face_4' },
-  { id: 'padre', name: 'Padre', icon: 'face' },
-  { id: 'hijo', name: 'Hijo / Hija', icon: 'child_care' },
-  { id: 'hermano', name: 'Hermano / Hermana', icon: 'group' },
-  { id: 'abuelo', name: 'Abuelo / Abuela', icon: 'elderly' },
-  { id: 'amigo', name: 'Amigo / Amiga', icon: 'diversity_3' },
-  { id: 'jefe', name: 'Jefe / Colega', icon: 'work' },
-  { id: 'yo_mismo', name: 'Para Mí', icon: 'person' },
-  { id: 'otro', name: 'Otra relación', icon: 'more_horiz' }
-];
+// Canonical list — shared with the admin "Make Song for Customer" brief so the
+// two can never drift apart. Ids/names/icons are unchanged from when this array
+// lived here. See src/config/songOptions.js.
+import { RELATIONSHIPS as relationships } from '../config/songOptions';
+import { CenzoMark, CenzoGuide } from '../components/Cenzo';
 
 export default function NamesStep() {
   const { formData, updateFormData, navigateTo } = useContext(AppContext);
@@ -105,14 +98,14 @@ export default function NamesStep() {
   const isValid = (isForSelf || recipientName.trim().length >= 2) && senderName.trim().length >= 2 && relationship && isOtroValid;
 
   return (
-    <div className="bg-forest text-white antialiased min-h-screen flex flex-col">
+    <div className="night-sky text-white antialiased min-h-screen flex flex-col">
       {/* Header */}
       <header className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-8 md:px-24 py-8">
         <div 
           className="flex items-center gap-2 group cursor-pointer"
           onClick={() => navigateTo('landing')}
         >
-          <h2 className="font-display text-white text-2xl font-medium tracking-tight">
+          <CenzoMark size={44} /><h2 className="hidden sm:block font-display text-white text-2xl font-medium tracking-tight">
             RegalosQueCantan
           </h2>
         </div>
@@ -152,6 +145,7 @@ export default function NamesStep() {
         <div className="relative z-20 container mx-auto px-6 max-w-xl pt-32 pb-24">
           {/* Title */}
           <div className="text-center mb-10">
+            <CenzoGuide size={132} className="mx-auto mb-2 md:mb-3" />
             <h1 className="font-display text-white text-5xl md:text-6xl font-black mb-4 leading-tight">
               {isForSelf ? (
                 <>Personaliza <br/><span className="italic text-gold">tu canción</span></>
@@ -187,7 +181,7 @@ export default function NamesStep() {
                   }}
                   className={`w-full bg-white/[0.07] border-2 ${errors.recipientName ? 'border-red-400' : 'border-white/25'} focus:border-gold focus:ring-0 rounded-xl text-white text-lg py-4 px-4 transition-all`}
                 />
-                <p className="text-white/40 text-xs mt-1.5">Por ejemplo: María Elena</p>
+                <p className="text-white/55 text-xs mt-1.5">Por ejemplo: María Elena</p>
                 {errors.recipientName && (
                   <p className="text-red-400 text-sm mt-1">Escribe su nombre para continuar</p>
                 )}
@@ -210,7 +204,7 @@ export default function NamesStep() {
                 }}
                 className={`w-full bg-white/[0.07] border-2 ${errors.senderName ? 'border-red-400' : 'border-white/25'} focus:border-gold focus:ring-0 rounded-xl text-white text-lg py-4 px-4 transition-all`}
               />
-              <p className="text-white/40 text-xs mt-1.5">Por ejemplo: Roberto</p>
+              <p className="text-white/55 text-xs mt-1.5">Por ejemplo: Roberto</p>
               {errors.senderName && (
                 <p className="text-red-400 text-sm mt-1">Escribe tu nombre para continuar</p>
               )}
@@ -260,7 +254,7 @@ export default function NamesStep() {
                   rounded-full h-16 text-lg font-bold shadow-2xl transition-all hover:scale-[1.02] active:scale-95
                   ${isValid
                     ? 'bg-bougainvillea text-white'
-                    : 'bg-white/10 text-white/40 hover:scale-100'}
+                    : 'bg-white/10 text-white/55 hover:scale-100'}
                 `}
               >
                 <span className="relative z-10 flex items-center gap-2">
@@ -273,7 +267,7 @@ export default function NamesStep() {
               </button>
               <button
                 onClick={handleBack}
-                className="text-white/40 hover:text-white transition-colors flex items-center gap-2 text-sm uppercase tracking-widest font-medium"
+                className="text-white/55 hover:text-white transition-colors flex items-center gap-2 text-sm uppercase tracking-widest font-medium"
               >
                 <span className="material-symbols-outlined text-sm">arrow_back</span>
                 Atrás
@@ -290,8 +284,8 @@ export default function NamesStep() {
       {/* Footer */}
       <footer className="bg-background-dark py-8 px-8 border-t border-white/5">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
-          <div className="font-display text-white/30 text-lg">RegalosQueCantan</div>
-          <p className="text-white/20 text-[10px] uppercase tracking-widest font-bold">© 2026 Inspiración y Tradición.</p>
+          <CenzoMark size={38} /><div className="font-display text-white/55 text-lg">RegalosQueCantan</div>
+          <p className="text-white/50 text-[10px] uppercase tracking-widest font-bold">© 2026 Inspiración y Tradición.</p>
         </div>
       </footer>
 
@@ -326,13 +320,13 @@ export default function NamesStep() {
                 value={customRelationship}
                 onChange={(e) => setCustomRelationship(e.target.value.slice(0, 50))}
                 placeholder="Ej: Mi madrina, Mi suegra, Mi compadre..."
-                className="w-full bg-white/5 border border-gold/20 rounded-xl p-4 text-white focus:ring-1 focus:ring-gold focus:border-gold outline-none transition-all text-sm placeholder:text-white/30"
+                className="w-full bg-white/5 border border-gold/20 rounded-xl p-4 text-white focus:ring-1 focus:ring-gold focus:border-gold outline-none transition-all text-sm placeholder:text-white/55"
               />
               <div className="flex justify-between mt-2">
-                <span className={`text-xs ${customRelationship.length < 3 ? 'text-red-400' : 'text-gold/60'}`}>
+                <span className={`text-xs ${customRelationship.length < 3 ? 'text-red-400' : 'text-gold/85'}`}>
                   Mínimo 3 caracteres
                 </span>
-                <span className="text-xs text-white/40">{customRelationship.length} / 50</span>
+                <span className="text-xs text-white/55">{customRelationship.length} / 50</span>
               </div>
             </div>
 
@@ -343,7 +337,7 @@ export default function NamesStep() {
                 w-full py-4 rounded-full font-bold transition-all flex items-center justify-center gap-2
                 ${customRelationship.length >= 3
                   ? 'bg-bougainvillea text-white hover:scale-[1.02]'
-                  : 'bg-white/10 text-white/30 cursor-not-allowed'}
+                  : 'bg-white/10 text-white/55 cursor-not-allowed'}
               `}
             >
               Confirmar

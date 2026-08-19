@@ -3,6 +3,7 @@ import { AppContext } from '../App';
 import Header from '../components/Header';
 import { trackStep } from '../services/tracking';
 import SocialProofToast from '../components/SocialProofToast';
+import { CenzoMark, CenzoSignature } from '../components/Cenzo';
 
 // ============================================
 // SAMPLE SONGS - Your actual customer samples
@@ -151,7 +152,7 @@ function StarRating({ rating }) {
   return (
     <div className="flex gap-0.5">
       {[...Array(5)].map((_, i) => (
-        <span key={i} className={`text-lg ${i < rating ? 'text-gold' : 'text-white/20'}`}>★</span>
+        <span key={i} className={`text-lg ${i < rating ? 'text-gold' : 'text-white/50'}`}>★</span>
       ))}
     </div>
   );
@@ -238,7 +239,7 @@ export default function LandingPageV2() {
   };
 
   return (
-    <div className="min-h-screen bg-background-dark flex flex-col">
+    <div className="night-sky min-h-screen flex flex-col">
       {/* Hidden Audio Element */}
       <audio ref={audioRef} preload="metadata" />
 
@@ -257,7 +258,7 @@ export default function LandingPageV2() {
             className="cursor-pointer"
             onClick={() => navigateTo('landing')}
           >
-            <h2 className="font-display text-white text-xl md:text-2xl font-medium tracking-tight">
+            <CenzoMark size={44} /><h2 className="font-display text-white text-xl md:text-2xl font-medium tracking-tight">
               RegalosQueCantan
             </h2>
           </div>
@@ -270,7 +271,7 @@ export default function LandingPageV2() {
               title="English version — Gifts That Sing"
             >
               <span aria-hidden="true">🇺🇸</span>
-              <span>English</span>
+              <span className="hidden sm:inline">English</span>
             </a>
             <button
               onClick={() => navigateTo('recoverSong')}
@@ -340,12 +341,12 @@ export default function LandingPageV2() {
           </button>
 
           {/* INSTANT DELIVERY BADGE */}
-          <div className="mt-4 inline-flex items-center gap-2 bg-green-500/15 border border-green-500/30 rounded-full px-4 py-1.5 text-xs text-green-400 font-bold">
+          <div className="mt-4 inline-flex items-center gap-2 bg-turquesa/15 border border-turquesa/30 rounded-full px-4 py-1.5 text-xs text-turquesa font-bold">
             ⚡ Lista en ~3 minutos · Entrega instantánea
           </div>
           
           <p className="mt-3 text-white/60 text-sm">
-            ✓ Preview gratis antes de pagar • ✓ Desde <span className="line-through text-white/40">$59.99</span> <span className="text-gold font-bold">$29.99</span>
+            ✓ Preview gratis antes de pagar • ✓ Desde <span className="line-through text-white/55">$59.99</span> <span className="text-gold font-bold">$29.99</span>
           </p>
         </div>
       </section>
@@ -377,7 +378,7 @@ export default function LandingPageV2() {
             ))}
           </div>
           
-          <p className="text-center text-white/40 text-sm mt-6">
+          <p className="text-center text-white/55 text-sm mt-6">
             * Nombres cambiados por privacidad. Canciones reales de clientes.
           </p>
         </div>
@@ -492,30 +493,30 @@ export default function LandingPageV2() {
             </div>
 
             <div className="mb-6">
-              <span className="text-white/40 line-through text-lg">Precio normal $59.99</span>
+              <span className="text-white/55 line-through text-lg">Precio normal $59.99</span>
               <div className="text-white text-5xl font-black">$29.99</div>
               <span className="text-gold text-sm font-semibold">Pago único • Acceso de por vida</span>
             </div>
 
             <div className="space-y-3 text-left mb-8">
               <div className="flex items-center gap-3 text-white/80">
-                <span className="material-symbols-outlined text-green-400">check_circle</span>
+                <span className="material-symbols-outlined text-turquesa">check_circle</span>
                 <span>Canción completa (~2 minutos)</span>
               </div>
               <div className="flex items-center gap-3 text-white/80">
-                <span className="material-symbols-outlined text-green-400">check_circle</span>
+                <span className="material-symbols-outlined text-turquesa">check_circle</span>
                 <span>2 versiones únicas para elegir</span>
               </div>
               <div className="flex items-center gap-3 text-white/80">
-                <span className="material-symbols-outlined text-green-400">check_circle</span>
+                <span className="material-symbols-outlined text-turquesa">check_circle</span>
                 <span>Descarga MP3 de alta calidad</span>
               </div>
               <div className="flex items-center gap-3 text-white/80">
-                <span className="material-symbols-outlined text-green-400">check_circle</span>
+                <span className="material-symbols-outlined text-turquesa">check_circle</span>
                 <span>Letra 100% personalizada</span>
               </div>
               <div className="flex items-center gap-3 text-white/80">
-                <span className="material-symbols-outlined text-green-400">check_circle</span>
+                <span className="material-symbols-outlined text-turquesa">check_circle</span>
                 <span>Carátula de álbum única</span>
               </div>
             </div>
@@ -603,13 +604,14 @@ export default function LandingPageV2() {
       {/* ==================== FOOTER ==================== */}
       <footer className="py-8 px-6 bg-background-dark border-t border-white/5">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
-          <div className="font-display text-white/30 text-lg">RegalosQueCantan</div>
+          <CenzoMark size={38} /><div className="font-display text-white/55 text-lg">RegalosQueCantan</div>
           <div className="flex gap-6">
-            <a className="text-white/30 hover:text-gold transition-colors text-sm" href="#">Privacidad</a>
-            <a className="text-white/30 hover:text-gold transition-colors text-sm" href="#">Términos</a>
-            <a className="text-white/30 hover:text-gold transition-colors text-sm" href="#">Contacto</a>
+            <a className="text-white/55 hover:text-gold transition-colors text-sm" href="#">Privacidad</a>
+            <a className="text-white/55 hover:text-gold transition-colors text-sm" href="#">Términos</a>
+            <a className="text-white/55 hover:text-gold transition-colors text-sm" href="#">Contacto</a>
           </div>
-          <p className="text-white/20 text-sm">© 2026 RegalosQueCantan</p>
+          <CenzoSignature className="justify-center mb-3" />
+          <p className="text-white/50 text-sm">© 2026 RegalosQueCantan</p>
         </div>
       </footer>
     </div>

@@ -109,16 +109,34 @@ export default function NeedsApprovalTab({ accessToken, showToast, gate = 'liken
         <section className="space-y-4">
           {/* redo in progress — shows so a regenerating likeness never just vanishes */}
           {regenLikeness.map((o) => (
-            <div key={o.id} className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 flex items-center gap-3">
-              <div className="animate-spin h-5 w-5 border-2 border-amber-400 border-t-transparent rounded-full flex-shrink-0" />
-              <div className="flex-1">
-                <p className="text-sm font-semibold text-amber-200">{o.recipient} — regenerating likeness…</p>
-                <p className="text-xs text-amber-300/70">New options usually ready in under a minute · they appear here by themselves.</p>
+            // o.error means the generation FAILED — without this the card span a
+            // spinner forever and the order was invisible (2026-08-16).
+            o.error ? (
+              <div key={o.id} className="rounded-xl border border-rose-500/40 bg-rose-500/10 px-4 py-3 flex items-start gap-3">
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-rose-200">{o.recipient} — likeness failed</p>
+                  <p className="text-xs text-rose-300/80 mt-0.5 break-words">{o.error}</p>
+                  <button onClick={() => act(o.id, 'redo_likeness')} disabled={busy}
+                    className="mt-2 px-3 py-1.5 text-xs font-semibold rounded-lg bg-rose-600 hover:bg-rose-700 text-white transition disabled:opacity-50">
+                    {busy === `${o.id}:redo_likeness` ? '…' : '↻ Retry likeness'}
+                  </button>
+                </div>
+                <button onClick={() => remove(o)} disabled={busy}
+                  className="flex-shrink-0 h-7 w-7 rounded-md text-rose-300/60 hover:text-rose-400 hover:bg-rose-500/10 text-base leading-none transition disabled:opacity-50"
+                  title="Remove — moves to the Deleted tab (restorable)">✕</button>
               </div>
-              <button onClick={() => remove(o)} disabled={busy}
-                className="flex-shrink-0 h-7 w-7 rounded-md text-amber-300/60 hover:text-rose-400 hover:bg-rose-500/10 text-base leading-none transition disabled:opacity-50"
-                title="Remove — moves to the Deleted tab (restorable)">✕</button>
-            </div>
+            ) : (
+              <div key={o.id} className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 flex items-center gap-3">
+                <div className="animate-spin h-5 w-5 border-2 border-amber-400 border-t-transparent rounded-full flex-shrink-0" />
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-amber-200">{o.recipient} — regenerating likeness…</p>
+                  <p className="text-xs text-amber-300/70">New options usually ready in under a minute · they appear here by themselves.</p>
+                </div>
+                <button onClick={() => remove(o)} disabled={busy}
+                  className="flex-shrink-0 h-7 w-7 rounded-md text-amber-300/60 hover:text-rose-400 hover:bg-rose-500/10 text-base leading-none transition disabled:opacity-50"
+                  title="Remove — moves to the Deleted tab (restorable)">✕</button>
+              </div>
+            )
           ))}
           {likeness.length === 0 && regenLikeness.length === 0 ? <Empty text="No likenesses pending." /> : likeness.length === 0 ? null : (
             <div className="space-y-4">

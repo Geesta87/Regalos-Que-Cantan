@@ -22,6 +22,7 @@ import AdminDashboard from './pages/AdminDashboard';
 import ShareablePreviewPage from './pages/ShareablePreviewPage';
 import SongPage from './pages/SongPage';
 import KaraokePage from './pages/KaraokePage';
+import CuentoPage from './pages/CuentoPage';
 import RecoverSongPage from './pages/RecoverSongPage';
 import ReviewPage from './pages/ReviewPage';
 import WhatsAppButton from './components/WhatsAppButton';
@@ -151,6 +152,12 @@ function getInitialPage() {
   // proxied by vercel.json before this app loads, so only the bare id lands here.
   if (path.startsWith('/karaoke/')) {
     return 'karaokePage';
+  }
+
+  // Handle /cuento/:token — public Cuento Ilustrado reader (token parsed inside
+  // CuentoPage from the pathname).
+  if (path.startsWith('/cuento/') && path !== '/cuento/') {
+    return 'cuento';
   }
 
   // Handle /preview/:id links (from emails) → redirect to listen page
@@ -418,7 +425,7 @@ export default function App() {
   return (
     <HelmetProvider>
       <AppContext.Provider value={contextValue}>
-        <div className="min-h-screen bg-background-light dark:bg-background-dark transition-colors duration-300">
+        <div className="night-sky min-h-screen transition-colors duration-300">
           {/* Landing pages */}
           {currentPage === 'landing' && <LandingPage />}
           {currentPage === 'landing_v2' && <LandingPageV2 />}
@@ -443,6 +450,7 @@ export default function App() {
           {currentPage === 'success' && <SuccessPage />}
           {currentPage === 'listen' && <ShareablePreviewPage />}
           {currentPage === 'songPage' && <SongPage />}
+          {currentPage === 'cuento' && <CuentoPage />}
           {currentPage === 'karaokePage' && <KaraokePage />}
           {currentPage === 'recoverSong' && <RecoverSongPage />}
           {currentPage === 'calificar' && <ReviewPage />}

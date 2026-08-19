@@ -2,6 +2,7 @@ import React, { useContext, useState } from 'react';
 import { AppContext } from '../App';
 import Header from '../components/Header';
 import ProgressBar from '../components/ProgressBar';
+import { CenzoGuide } from '../components/Cenzo';
 
 // Sub-genre definitions with Suno-friendly prompts
 const subGenresByGenre = {
@@ -257,7 +258,7 @@ export default function SubGenreStep() {
   };
 
   return (
-    <div className="min-h-screen bg-background-light dark:bg-background-dark transition-colors">
+    <div className="night-sky min-h-screen transition-colors">
       <Header />
       
       <main className="max-w-2xl mx-auto px-6 py-12">
@@ -268,10 +269,11 @@ export default function SubGenreStep() {
 
         {/* Title */}
         <div className="text-center mb-10">
-          <h1 className="text-3xl md:text-4xl font-black text-[#171612] dark:text-white mb-3">
+          <CenzoGuide size={132} className="mx-auto mb-2 md:mb-3" />
+          <h1 className="text-3xl md:text-4xl font-black text-white mb-3">
             {genreData.title}
           </h1>
-          <p className="text-gray-500 dark:text-gray-400">
+          <p className="text-ink-2">
             Cada estilo tiene su propio sonido único
           </p>
         </div>
@@ -285,24 +287,24 @@ export default function SubGenreStep() {
               className={`p-5 rounded-2xl border-2 transition-all duration-300 text-left ${
                 selectedSubGenre === option.id
                   ? 'border-primary bg-primary/10 shadow-lg scale-[1.02]'
-                  : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c3136] hover:border-primary/50 hover:shadow-md'
+                  : 'border-white/15 bg-forest hover:border-primary/50 hover:shadow-md'
               }`}
             >
               <div className="flex items-start gap-4">
                 <div className={`w-14 h-14 rounded-xl flex items-center justify-center text-2xl ${
                   selectedSubGenre === option.id 
                     ? 'bg-primary/20' 
-                    : 'bg-gray-100 dark:bg-gray-700'
+                    : 'bg-white/10'
                 }`}>
                   {option.emoji}
                 </div>
                 <div className="flex-1">
                   <h3 className={`text-lg font-bold mb-1 ${
-                    selectedSubGenre === option.id ? 'text-primary' : 'text-[#171612] dark:text-white'
+                    selectedSubGenre === option.id ? 'text-primary' : 'text-white'
                   }`}>
                     {option.name}
                   </h3>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                  <p className="text-sm text-ink-2">
                     {option.description}
                   </p>
                 </div>
@@ -317,12 +319,12 @@ export default function SubGenreStep() {
         </div>
 
         {/* Artist Inspiration Field */}
-        <div className="bg-white dark:bg-[#2c3136] rounded-2xl border border-gray-200 dark:border-gray-700 p-6 mb-8">
+        <div className="bg-forest rounded-2xl border border-white/15 p-6 mb-8">
           <label className="block mb-3">
-            <span className="text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+            <span className="text-sm font-semibold text-ink-2 flex items-center gap-2">
               <span className="text-lg">🎵</span>
               ¿Algún artista que te inspire?
-              <span className="text-gray-400 font-normal">(opcional)</span>
+              <span className="text-ink-2 font-normal">(opcional)</span>
             </span>
           </label>
           <div className="relative">
@@ -330,14 +332,14 @@ export default function SubGenreStep() {
               type="text"
               value={artistInput}
               onChange={(e) => setArtistInput(e.target.value)}
-              className="w-full p-4 pr-12 rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-[#171612] dark:text-white text-lg focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all placeholder:text-gray-400"
+              className="w-full p-4 pr-12 rounded-xl border border-white/15 bg-white/5 text-white text-lg focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all placeholder:text-ink-2"
               placeholder="Ej: Peso Pluma, Bad Bunny, Vicente Fernández..."
             />
-            <span className="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 text-gray-400">
+            <span className="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 text-ink-2">
               music_note
             </span>
           </div>
-          <p className="mt-3 text-xs text-gray-500 dark:text-gray-400 flex items-start gap-2">
+          <p className="mt-3 text-xs text-ink-2 flex items-start gap-2">
             <span className="material-symbols-outlined text-primary text-sm mt-0.5">lightbulb</span>
             <span>Usaremos su estilo musical para inspirar tu canción. Puedes escribir uno o varios artistas.</span>
           </p>
@@ -347,7 +349,7 @@ export default function SubGenreStep() {
         <div className="flex gap-4">
           <button
             onClick={() => navigateTo('genre')}
-            className="flex-1 py-4 rounded-xl font-semibold border-2 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors flex items-center justify-center gap-2"
+            className="flex-1 py-4 rounded-xl font-semibold border-2 border-white/15 text-ink-2 hover:bg-white/5 transition-colors flex items-center justify-center gap-2"
           >
             <span className="material-symbols-outlined">arrow_back</span>
             Atrás
@@ -358,7 +360,7 @@ export default function SubGenreStep() {
             className={`flex-[2] py-4 rounded-xl font-semibold text-white transition-all flex items-center justify-center gap-2 ${
               selectedSubGenre
                 ? 'bg-primary hover:bg-primary-dark shadow-lg shadow-primary/30 hover:shadow-xl hover:scale-[1.02]'
-                : 'bg-gray-300 dark:bg-gray-700 cursor-not-allowed'
+                : 'bg-white/20 cursor-not-allowed'
             }`}
           >
             Continuar

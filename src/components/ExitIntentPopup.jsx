@@ -221,7 +221,7 @@ export default function ExitIntentPopup({ onApplyCoupon, onClose, couponApplied,
                 width: `${8 + Math.random() * 8}px`,
                 height: `${8 + Math.random() * 8}px`,
                 borderRadius: Math.random() > 0.5 ? '50%' : '2px',
-                background: ['#f74da6', '#4ade80', '#fbbf24', '#60a5fa', '#c084fc', '#f43f5e', '#22d3ee'][i % 7],
+                background: ['#E7699F', '#89DAD4', '#E8B44A', '#A9AAEE', '#A9AAEE', '#f43f5e', '#22d3ee'][i % 7],
                 animation: `confettiFall ${1.2 + Math.random() * 1.5}s ease-out ${Math.random() * 0.5}s forwards`,
               }}
             />
@@ -265,8 +265,8 @@ export default function ExitIntentPopup({ onApplyCoupon, onClose, couponApplied,
             maxWidth: '420px',
             background: 'linear-gradient(180deg, #1a1025 0%, #0f0a18 100%)',
             borderRadius: '20px',
-            border: '1px solid rgba(225,29,116,0.3)',
-            boxShadow: '0 25px 60px rgba(0,0,0,0.6), 0 0 40px rgba(225,29,116,0.15)',
+            border: '1px solid rgba(201,96,63,0.3)',
+            boxShadow: '0 25px 60px rgba(0,0,0,0.6), 0 0 40px rgba(201,96,63,0.15)',
             overflow: 'hidden',
             transform: animateIn ? 'translateY(0) scale(1)' : 'translateY(40px) scale(0.95)',
             opacity: animateIn ? 1 : 0,
@@ -295,7 +295,7 @@ export default function ExitIntentPopup({ onApplyCoupon, onClose, couponApplied,
                 ¡Descuento Aplicado!
               </h2>
               <p style={{
-                color: '#4ade80',
+                color: '#89DAD4',
                 fontSize: '32px',
                 fontWeight: '900',
                 margin: '0 0 8px',
@@ -313,7 +313,7 @@ export default function ExitIntentPopup({ onApplyCoupon, onClose, couponApplied,
           ) : (<>
           {/* Urgency bar */}
           <div style={{
-            background: 'linear-gradient(90deg, #e11d74, #c026d3)',
+            background: 'linear-gradient(90deg, #C9603F, #B62463)',
             padding: '8px 16px',
             textAlign: 'center',
             fontSize: '13px',
@@ -369,7 +369,7 @@ export default function ExitIntentPopup({ onApplyCoupon, onClose, couponApplied,
             }}>
               &#161;Espera! Tu canci&oacute;n tiene un{' '}
               <span style={{
-                background: 'linear-gradient(90deg, #e11d74, #c026d3)',
+                background: 'linear-gradient(90deg, #C9603F, #B62463)',
                 WebkitBackgroundClip: 'text',
                 WebkitTextFillColor: 'transparent',
                 backgroundClip: 'text',
@@ -391,8 +391,8 @@ export default function ExitIntentPopup({ onApplyCoupon, onClose, couponApplied,
 
             {/* Discount card */}
             <div style={{
-              background: 'linear-gradient(135deg, rgba(225,29,116,0.15), rgba(192,38,211,0.15))',
-              border: '1px solid rgba(225,29,116,0.3)',
+              background: 'linear-gradient(135deg, rgba(201,96,63,0.15), rgba(192,38,211,0.15))',
+              border: '1px solid rgba(201,96,63,0.3)',
               borderRadius: '16px',
               padding: '20px',
               textAlign: 'center',
@@ -405,7 +405,7 @@ export default function ExitIntentPopup({ onApplyCoupon, onClose, couponApplied,
                 position: 'absolute',
                 top: '10px',
                 right: '10px',
-                background: 'linear-gradient(90deg, #e11d74, #c026d3)',
+                background: 'linear-gradient(90deg, #C9603F, #B62463)',
                 color: 'white',
                 fontSize: '10px',
                 fontWeight: 'bold',
@@ -420,7 +420,7 @@ export default function ExitIntentPopup({ onApplyCoupon, onClose, couponApplied,
               <div style={{
                 fontSize: '48px',
                 fontWeight: '900',
-                background: 'linear-gradient(90deg, #e11d74, #c026d3, #e11d74)',
+                background: 'linear-gradient(90deg, #C9603F, #B62463, #C9603F)',
                 backgroundSize: '200% auto',
                 WebkitBackgroundClip: 'text',
                 WebkitTextFillColor: 'transparent',
@@ -435,14 +435,14 @@ export default function ExitIntentPopup({ onApplyCoupon, onClose, couponApplied,
               {/* Price comparison */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', marginTop: '8px' }}>
                 <span style={{
-                  color: 'rgba(255,255,255,0.4)',
+                  color: 'rgba(255,255,255,0.65)',
                   fontSize: '20px',
                   textDecoration: 'line-through',
                 }}>
                   ${originalPrice.toFixed(2)}
                 </span>
                 <span style={{
-                  color: '#4ade80',
+                  color: '#89DAD4',
                   fontSize: '28px',
                   fontWeight: 'bold',
                 }}>
@@ -453,14 +453,14 @@ export default function ExitIntentPopup({ onApplyCoupon, onClose, couponApplied,
 
             {/* Coupon code display */}
             <div style={{
-              border: '2px dashed rgba(225,29,116,0.5)',
+              border: '2px dashed rgba(201,96,63,0.5)',
               borderRadius: '12px',
               padding: '12px',
               textAlign: 'center',
               marginBottom: '16px',
-              background: 'rgba(225,29,116,0.05)',
+              background: 'rgba(201,96,63,0.05)',
             }}>
-              <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: '12px', display: 'block', marginBottom: '4px' }}>
+              <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: '12px', display: 'block', marginBottom: '4px' }}>
                 Tu c&oacute;digo de descuento:
               </span>
               <span style={{
@@ -481,19 +481,19 @@ export default function ExitIntentPopup({ onApplyCoupon, onClose, couponApplied,
               style={{
                 width: '100%',
                 padding: '16px',
-                background: 'linear-gradient(90deg, #e11d74, #c026d3)',
+                background: 'linear-gradient(90deg, #C9603F, #B62463)',
                 color: 'white',
                 border: 'none',
                 borderRadius: '14px',
                 fontSize: '18px',
                 fontWeight: 'bold',
                 cursor: isApplying ? 'wait' : 'pointer',
-                boxShadow: '0 4px 25px rgba(225,29,116,0.5)',
+                boxShadow: '0 4px 25px rgba(201,96,63,0.5)',
                 transition: 'transform 0.2s, box-shadow 0.2s',
                 animation: isApplying ? 'none' : 'exitPulse 2s ease-in-out infinite',
               }}
-              onMouseEnter={(e) => { if (!isApplying) { e.currentTarget.style.transform = 'scale(1.02)'; e.currentTarget.style.boxShadow = '0 6px 30px rgba(225,29,116,0.6)'; }}}
-              onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = '0 4px 25px rgba(225,29,116,0.5)'; }}
+              onMouseEnter={(e) => { if (!isApplying) { e.currentTarget.style.transform = 'scale(1.02)'; e.currentTarget.style.boxShadow = '0 6px 30px rgba(201,96,63,0.6)'; }}}
+              onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = '0 4px 25px rgba(201,96,63,0.5)'; }}
             >
               {isApplying ? (
                 <span>Aplicando...</span>
@@ -510,7 +510,7 @@ export default function ExitIntentPopup({ onApplyCoupon, onClose, couponApplied,
                 width: '100%',
                 background: 'none',
                 border: 'none',
-                color: 'rgba(255,255,255,0.4)',
+                color: 'rgba(255,255,255,0.65)',
                 fontSize: '13px',
                 marginTop: '12px',
                 cursor: 'pointer',
@@ -531,9 +531,9 @@ export default function ExitIntentPopup({ onApplyCoupon, onClose, couponApplied,
                 gap: '8px',
                 marginBottom: '8px',
               }}>
-                <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: '12px' }}>Oferta expira en:</span>
+                <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: '12px' }}>Oferta expira en:</span>
                 <span style={{
-                  color: timeLeft < 60 ? '#ef4444' : '#fbbf24',
+                  color: timeLeft < 60 ? '#ef4444' : '#E8B44A',
                   fontSize: '16px',
                   fontWeight: 'bold',
                   fontFamily: 'monospace',
@@ -552,7 +552,7 @@ export default function ExitIntentPopup({ onApplyCoupon, onClose, couponApplied,
                 <div style={{
                   width: `${countdownProgress * 100}%`,
                   height: '100%',
-                  background: 'linear-gradient(90deg, #e11d74, #c026d3)',
+                  background: 'linear-gradient(90deg, #C9603F, #B62463)',
                   borderRadius: '2px',
                   transition: 'width 1s linear',
                 }} />
@@ -569,7 +569,7 @@ export default function ExitIntentPopup({ onApplyCoupon, onClose, couponApplied,
             }}>
               {/* Avatar circles */}
               <div style={{ display: 'flex' }}>
-                {['#e11d74', '#c026d3', '#8b5cf6', '#3b82f6'].map((color, i) => (
+                {['#C9603F', '#B62463', '#6668D2', '#8E90E8'].map((color, i) => (
                   <div
                     key={i}
                     style={{
@@ -589,7 +589,7 @@ export default function ExitIntentPopup({ onApplyCoupon, onClose, couponApplied,
                   </div>
                 ))}
               </div>
-              <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: '12px' }}>
+              <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: '12px' }}>
                 23 personas compraron hoy
               </span>
             </div>
