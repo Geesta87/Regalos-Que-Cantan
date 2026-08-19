@@ -104,7 +104,7 @@ serve(async (req) => {
     if (!roleRow) return json({ success: false, error: 'No admin access' }, 403);
     const role = roleRow.role as 'admin' | 'assistant';
 
-    let body: { action?: string; knowledge?: string; id?: string; enabled?: boolean; proposal_id?: string; instruction?: string } = {};
+    let body: { action?: string; knowledge?: string; id?: string; enabled?: boolean; proposal_id?: string; instruction?: string; messages?: { role: string; content: string }[] } = {};
     if (req.method === 'POST') { try { body = await req.json(); } catch { body = {}; } }
     const action = body.action || 'get';
 
@@ -314,8 +314,19 @@ serve(async (req) => {
     // 'save' action, so a human always approves before the live bot changes.
     if (action === 'ai-edit') {
       if (!ANTHROPIC_API_KEY) return json({ success: false, error: 'ANTHROPIC_API_KEY not set' }, 500);
-      const instruction = (body.instruction || '').trim();
-      if (!instruction) return json({ success: false, error: 'instruction required' }, 400);
+      // Conversation protocol: the frontend sends the whole exchange so far —
+      // user turns are the owner's plain-language requests, assistant turns are
+      // the model's own raw JSON replies (verbatim, so it can revise its last
+      // proposal). A bare `instruction` is accepted as a one-message shorthand.
+      const convo = (Array.isArray(body.messages) ? body.messages : [])
+        .filter((m) => (m?.role === 'user' || m?.role === 'assistant') && typeof m?.content === 'string' && m.content.trim())
+        .slice(-12);
+      if (convo.length === 0 && (body.instruction || '').trim()) {
+        convo.push({ role: 'user', content: body.instruction!.trim() });
+      }
+      if (convo.length === 0 || convo[0].role !== 'user' || convo[convo.length - 1].role !== 'user') {
+        return json({ success: false, error: 'messages must start and end with a user turn' }, 400);
+      }
 
       // Base = what the owner currently sees in the editor (may include unsaved
       // edits). Falls back to the saved doc, then the built-in default.
@@ -339,12 +350,22 @@ Hard rules:
 - NEVER invent facts, prices, links, times, or policies. If the instruction needs a fact the admin did not provide (e.g. "add the new price" without saying the price), do not guess — ask.
 - A tone/approach instruction (e.g. "warmer", "more direct", "less pushy") should be applied by editing the relevant tone rules and any example phrasings that embody the old tone.
 - Each edit's "old" must be copied VERBATIM from the document (exact characters, spacing, and line breaks) and must be long enough to appear exactly ONCE in the document. "new" is its full replacement. To add text, include a neighboring line in "old" and repeat it in "new" alongside the added text.
+- This may be an ongoing conversation: the admin can react to your proposal ("shorter", "keep the emoji", "don't touch the closing line") or ask questions. When they ask for adjustments, respond with a NEW COMPLETE set of edits that replaces your previous proposal entirely, with every "old" quoted from the ORIGINAL document (never from your own proposed text). If they are asking a question rather than requesting a change, answer briefly via "clarification".
 
 Respond with ONLY a JSON object, no markdown fences, in one of these two shapes:
-{"clarification": "<one short question in English asking for the missing detail>"}
+{"clarification": "<one short question or answer, in English>"}
 or
 {"summary": "<1-3 sentences in English describing what you changed and where>",
  "edits": [{"section": "<short label of where>", "old": "<verbatim unique excerpt from the document>", "new": "<its replacement>"}]}`;
+
+      // The (large) document rides only in the first user turn; follow-ups are
+      // just the owner's words plus the model's own prior JSON replies.
+      const anthropicMessages = convo.map((m, i) => ({
+        role: m.role,
+        content: i === 0
+          ? `CURRENT DOCUMENT:\n<<<DOC\n${base}\nDOC>>>\n\nADMIN INSTRUCTION: ${m.content}`
+          : m.content,
+      }));
 
       const res = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
@@ -353,10 +374,7 @@ or
           model: AI_EDIT_MODEL,
           max_tokens: 8000,
           system,
-          messages: [{
-            role: 'user',
-            content: `CURRENT DOCUMENT:\n<<<DOC\n${base}\nDOC>>>\n\nADMIN INSTRUCTION: ${instruction}`,
-          }],
+          messages: anthropicMessages,
         }),
       });
       if (!res.ok) {
@@ -377,12 +395,12 @@ or
       }
 
       if (parsed.clarification) {
-        return json({ success: true, clarification: String(parsed.clarification) });
+        return json({ success: true, clarification: String(parsed.clarification), assistant_raw: raw });
       }
 
       const edits = Array.isArray(parsed.edits) ? parsed.edits : [];
       if (edits.length === 0) {
-        return json({ success: true, clarification: 'The AI could not find anything to change for that request. Try describing it differently or pointing at the wording it should look for.' });
+        return json({ success: true, clarification: 'The AI could not find anything to change for that request. Try describing it differently or pointing at the wording it should look for.', assistant_raw: raw });
       }
 
       // Apply the edits server-side, all-or-nothing. An "old" that is missing
@@ -403,7 +421,7 @@ or
         changes.push({ section: String(e?.section || ''), before: oldText, after: newText });
       }
       if (changes.length === 0) {
-        return json({ success: true, clarification: 'That did not change anything — the document may already say this. Try describing the change differently.' });
+        return json({ success: true, clarification: 'That did not change anything — the document may already say this. Try describing the change differently.', assistant_raw: raw });
       }
       // Sanity guards: an "edit" that shrinks the doc drastically or drops the
       // managed learned-facts section means the model mangled it — refuse.
@@ -418,6 +436,7 @@ or
         summary: String(parsed.summary || 'Edited the document.'),
         changes,
         document: doc,
+        assistant_raw: raw,
       });
     }
 

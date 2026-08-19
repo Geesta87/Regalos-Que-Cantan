@@ -26,12 +26,15 @@ export default function BotTrainingTab({ accessToken }) {
   const [proposals, setProposals] = useState([]);
   const [insights, setInsights] = useState(null);
 
-  // AI editor: type a plain-language change request; preview the exact diff
-  // before anything touches the editor (and Save still gates the live bot).
-  const [aiInstruction, setAiInstruction] = useState('');
+  // AI editor: a CONVERSATION about the training text. The owner asks for a
+  // change, the AI proposes it, the owner replies ("shorter", "keep the emoji")
+  // until the proposal is right, then accepts. Only the AI writes the text;
+  // the owner's controls are the chat, per-change Skip, and Accept/Save.
+  // Each chat entry: { role, content (raw protocol text), display (what to show) }.
+  const [aiInput, setAiInput] = useState('');
+  const [aiChat, setAiChat] = useState([]);
   const [aiBusy, setAiBusy] = useState(false);
-  const [aiPreview, setAiPreview] = useState(null); // { summary, changes, document }
-  const [aiClarification, setAiClarification] = useState(null);
+  const [aiPreview, setAiPreview] = useState(null); // { changes: [{section,before,after,skipped}] }
 
   const dirty = knowledge !== savedKnowledge;
 
@@ -127,50 +130,64 @@ export default function BotTrainingTab({ accessToken }) {
     }
   };
 
-  const handleAiEdit = async () => {
-    const instruction = aiInstruction.trim();
-    if (!instruction || aiBusy) return;
+  const handleAiSend = async () => {
+    const text = aiInput.trim();
+    if (!text || aiBusy) return;
+    const nextChat = [...aiChat, { role: 'user', content: text, display: text }];
+    setAiChat(nextChat);
+    setAiInput('');
     setAiBusy(true);
-    setAiPreview(null);
-    setAiClarification(null);
     try {
-      const data = await call({ action: 'ai-edit', instruction, knowledge });
-      if (data.clarification) setAiClarification(data.clarification);
-      else setAiPreview({ summary: data.summary, changes: data.changes || [], document: data.document });
+      const data = await call({
+        action: 'ai-edit',
+        knowledge,
+        messages: nextChat.map(({ role, content }) => ({ role, content })),
+      });
+      const raw = data.assistant_raw || JSON.stringify(data);
+      if (data.clarification) {
+        // A question/answer turn — keep any existing proposal on screen.
+        setAiChat([...nextChat, { role: 'assistant', content: raw, display: data.clarification }]);
+      } else {
+        setAiChat([...nextChat, { role: 'assistant', content: raw, display: data.summary || 'Here is the proposal.' }]);
+        setAiPreview({ changes: (data.changes || []).map((c) => ({ ...c })) });
+      }
     } catch (e) {
+      // Roll the failed turn back so the conversation stays user↔AI alternating
+      // and the owner can just press send again.
+      setAiChat(aiChat);
+      setAiInput(text);
       flash(`⚠ ${e.message}`);
     } finally {
       setAiBusy(false);
     }
   };
 
-  // The owner can reword the green ("after") text and skip individual changes,
-  // so applying rebuilds the document here from the kept changes instead of
-  // using the server's pre-built document.
-  const handleAiApply = () => {
+  // Accept rebuilds the document from the kept changes, verifying each red
+  // anchor still matches exactly once so a stale proposal can never mis-apply.
+  const handleAiAccept = () => {
     if (!aiPreview) return;
     const kept = (aiPreview.changes || []).filter((c) => !c.skipped);
-    if (kept.length === 0) { flash('⚠ All changes are skipped — nothing to apply'); return; }
+    if (kept.length === 0) { flash('⚠ All changes are skipped — nothing to accept'); return; }
     let doc = knowledge;
     for (const c of kept) {
       const occurrences = doc.split(c.before).length - 1;
       if (occurrences !== 1) {
-        flash('⚠ The document changed since this preview — press Preview change again');
+        flash('⚠ The document changed since this proposal — start a new conversation');
         return;
       }
       doc = doc.replace(c.before, c.after);
     }
     setKnowledge(doc);
     setAiPreview(null);
-    setAiInstruction('');
-    flash('✏️ Change applied to the editor — review it and press Save to make it live');
+    setAiChat([]);
+    setAiInput('');
+    flash('✏️ Proposal applied to the editor — review it and press Save to make it live');
   };
 
-  const setChangeAfter = (idx, value) => {
-    setAiPreview((p) => ({
-      ...p,
-      changes: p.changes.map((c, i) => (i === idx ? { ...c, after: value } : c)),
-    }));
+  const handleAiReset = () => {
+    setAiChat([]);
+    setAiPreview(null);
+    setAiInput('');
   };
 
   const toggleChangeSkipped = (idx) => {
@@ -337,83 +354,97 @@ export default function BotTrainingTab({ accessToken }) {
               Prices, delivery times, tone, and rules (what to always say / never say). Write it like instructions to a new employee.
             </p>
 
-            {/* AI editor — describe the change, preview the diff, then apply */}
+            {/* AI editor — a conversation: ask, review the proposal, refine, accept */}
             <div className="bg-indigo-500/5 border border-indigo-500/20 rounded-xl p-3 mb-3">
-              <div className="text-xs font-semibold text-indigo-200 mb-1.5">✨ Ask AI to edit this for you</div>
+              <div className="flex items-center gap-2 mb-1.5">
+                <div className="text-xs font-semibold text-indigo-200 flex-1">✨ Chat with AI to edit this</div>
+                {(aiChat.length > 0 || aiPreview) && (
+                  <button onClick={handleAiReset} className="text-[11px] px-2 py-1 rounded bg-white/5 text-gray-400 hover:bg-white/10 transition">
+                    ✕ New conversation
+                  </button>
+                )}
+              </div>
               <p className="text-[11px] text-gray-500 mb-2">
-                Describe the change in plain words (English or Spanish) — e.g. “make the tone warmer when someone complains” or “cambia el tiempo de entrega a 5 minutos”. You'll see exactly what changed before anything is saved.
+                Ask for a change in plain words (English or Spanish) — e.g. “make the tone warmer when someone complains”. The AI proposes the exact edit; reply to refine it (“shorter”, “keep the emoji”) until it's right, then accept. Nothing is saved until you press Save.
               </p>
+
+              {/* Conversation */}
+              {aiChat.length > 0 && (
+                <div className="space-y-1.5 max-h-56 overflow-y-auto mb-2.5">
+                  {aiChat.map((m, i) => (
+                    <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                      <div className={`max-w-[85%] px-3 py-1.5 rounded-xl text-[12px] whitespace-pre-wrap break-words ${
+                        m.role === 'user'
+                          ? 'bg-indigo-500/20 text-indigo-100 rounded-br-sm'
+                          : 'bg-white/5 text-gray-200 rounded-bl-sm'
+                      }`}>
+                        {m.display}
+                      </div>
+                    </div>
+                  ))}
+                  {aiBusy && (
+                    <div className="flex justify-start">
+                      <div className="px-3 py-1.5 rounded-xl rounded-bl-sm bg-white/5 text-gray-500 text-[12px]">Thinking…</div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Current proposal */}
+              {aiPreview && aiPreview.changes.length > 0 && (
+                <div className="mb-2.5">
+                  <div className="text-[11px] text-gray-500 mb-1.5">
+                    Red = current text · Green = the AI's proposed replacement. <span className="text-gray-400">Not right? Just tell the AI below. Don't want one of the changes? Skip it.</span>
+                  </div>
+                  <div className="space-y-2 max-h-72 overflow-y-auto mb-2.5">
+                    {aiPreview.changes.map((c, i) => (
+                      <div key={i} className={`bg-black/25 border border-white/10 rounded-lg p-2.5 ${c.skipped ? 'opacity-40' : ''}`}>
+                        <div className="flex items-center gap-2 mb-1.5">
+                          <div className="text-[10px] uppercase tracking-wide text-gray-500 flex-1 truncate">{c.section || `Change ${i + 1}`}</div>
+                          <button
+                            onClick={() => toggleChangeSkipped(i)}
+                            className={`text-[11px] px-2 py-0.5 rounded transition ${c.skipped ? 'bg-white/10 text-gray-300' : 'bg-white/5 text-gray-500 hover:text-red-300'}`}
+                          >
+                            {c.skipped ? '↩ Include' : 'Skip'}
+                          </button>
+                        </div>
+                        {c.before && (
+                          <div className="text-[12px] text-red-300/90 bg-red-500/5 border border-red-500/15 rounded px-2 py-1.5 mb-1 whitespace-pre-wrap break-words">− {c.before}</div>
+                        )}
+                        {!c.skipped && (
+                          <div className="text-[12px] text-green-300/90 bg-green-500/5 border border-green-500/15 rounded px-2 py-1.5 whitespace-pre-wrap break-words">+ {c.after}</div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button onClick={handleAiAccept} className="px-3.5 py-2 rounded-lg text-xs font-semibold bg-green-500 text-white hover:bg-green-400 transition">
+                      ✓ Accept proposal
+                    </button>
+                    <span className="text-[11px] text-gray-500">Accepting only updates the text below — press Save after to make it live.</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Message input */}
               <div className="flex items-center gap-2">
                 <input
                   type="text"
-                  value={aiInstruction}
-                  onChange={(e) => setAiInstruction(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') handleAiEdit(); }}
-                  placeholder="What would you like to change?"
+                  value={aiInput}
+                  onChange={(e) => setAiInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleAiSend(); }}
+                  placeholder={aiPreview ? 'Reply to refine the proposal…' : aiChat.length > 0 ? 'Reply…' : 'What would you like to change?'}
                   disabled={aiBusy}
                   className="flex-1 px-3 py-2 bg-black/30 border border-white/10 rounded-lg text-gray-100 text-[13px] focus:outline-none focus:border-indigo-400/50 disabled:opacity-50"
                 />
                 <button
-                  onClick={handleAiEdit}
-                  disabled={aiBusy || !aiInstruction.trim()}
+                  onClick={handleAiSend}
+                  disabled={aiBusy || !aiInput.trim()}
                   className="px-3.5 py-2 rounded-lg text-xs font-semibold bg-indigo-500 text-white hover:bg-indigo-400 transition disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
                 >
-                  {aiBusy ? 'Working…' : 'Preview change'}
+                  {aiBusy ? 'Working…' : 'Send'}
                 </button>
               </div>
-
-              {aiClarification && (
-                <div className="mt-2.5 px-3 py-2 rounded-lg bg-amber-400/10 border border-amber-400/20 text-[12px] text-amber-200">
-                  🤔 {aiClarification}
-                </div>
-              )}
-
-              {aiPreview && (
-                <div className="mt-3">
-                  <div className="text-[12px] text-gray-200 mb-2">{aiPreview.summary}</div>
-                  {aiPreview.changes.length > 0 && (
-                    <>
-                      <div className="text-[11px] text-gray-500 mb-1.5">Red = current text · Green = proposed replacement. <span className="text-gray-400">You can rewrite the green text before applying, or Skip a change you don't want.</span></div>
-                      <div className="space-y-2 max-h-72 overflow-y-auto mb-2.5">
-                        {aiPreview.changes.map((c, i) => (
-                          <div key={i} className={`bg-black/25 border border-white/10 rounded-lg p-2.5 ${c.skipped ? 'opacity-40' : ''}`}>
-                            <div className="flex items-center gap-2 mb-1.5">
-                              <div className="text-[10px] uppercase tracking-wide text-gray-500 flex-1 truncate">{c.section || `Change ${i + 1}`}</div>
-                              <button
-                                onClick={() => toggleChangeSkipped(i)}
-                                className={`text-[11px] px-2 py-0.5 rounded transition ${c.skipped ? 'bg-white/10 text-gray-300' : 'bg-white/5 text-gray-500 hover:text-red-300'}`}
-                              >
-                                {c.skipped ? '↩ Include' : 'Skip'}
-                              </button>
-                            </div>
-                            {c.before && (
-                              <div className="text-[12px] text-red-300/90 bg-red-500/5 border border-red-500/15 rounded px-2 py-1.5 mb-1 whitespace-pre-wrap break-words">− {c.before}</div>
-                            )}
-                            {!c.skipped && (
-                              <textarea
-                                value={c.after}
-                                onChange={(e) => setChangeAfter(i, e.target.value)}
-                                spellCheck={false}
-                                rows={Math.min(8, Math.max(2, c.after.split('\n').length))}
-                                className="w-full resize-y text-[12px] text-green-300/90 bg-green-500/5 border border-green-500/15 rounded px-2 py-1.5 leading-relaxed focus:outline-none focus:border-green-400/40"
-                              />
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </>
-                  )}
-                  <div className="flex items-center gap-2">
-                    <button onClick={handleAiApply} className="px-3.5 py-2 rounded-lg text-xs font-semibold bg-green-500 text-white hover:bg-green-400 transition">
-                      ✓ Apply to editor
-                    </button>
-                    <button onClick={() => setAiPreview(null)} className="px-3 py-2 rounded-lg text-xs font-medium bg-white/5 text-gray-300 hover:bg-white/10 transition">
-                      Discard
-                    </button>
-                    <span className="text-[11px] text-gray-500">Applying only updates the text below — press Save after to make it live.</span>
-                  </div>
-                </div>
-              )}
             </div>
 
             <textarea
