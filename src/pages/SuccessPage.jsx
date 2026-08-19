@@ -11,6 +11,14 @@ const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://yzbvajungshqc
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl6YnZhanVuZ3NocWNwdXNmaWlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg5NDM3MjAsImV4cCI6MjA4NDUxOTcyMH0.9cu9re38_Np3Q6xEcjGdEwctSiPAaaqo8W2c3HEx6k4';
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+// Google Ads conversion tracking. The base gtag lives in index.html; this is the
+// Purchase conversion it reports to. The label comes from the conversion action
+// in Google Ads (Goals → Conversions → Purchase → "Install the tag yourself").
+// Until it is filled in, the conversion is skipped rather than fired wrong — a
+// send_to with a bad label records nothing and is invisible in Ads reporting.
+const GOOGLE_ADS_ID = 'AW-18397848550';
+const GOOGLE_ADS_CONVERSION_LABEL = '';
+
 // Inlined video API helpers
 async function createVideoCheckout(songId, email) {
   const res = await fetch(`${SUPABASE_URL}/functions/v1/create-video-checkout`, {
@@ -612,6 +620,27 @@ export default function SuccessPage() {
         currency: 'USD'
       }, { event_id: sessionId }); // dedup with the server-side Events API CompletePayment
       console.log('[TikTok Pixel] CompletePayment fired:', purchaseValue, 'USD for session:', sessionId);
+    }
+
+    // Fire the Google Ads Purchase conversion (YouTube / Demand Gen optimizes
+    // on this). Unlike Meta/TikTok there is NO server-side twin, so this is the
+    // only signal Google gets — hence the real Stripe amount (amount_paid holds
+    // the FULL session total on every row of a bundle) rather than the 29.99/
+    // 39.99 approximation above, and enhanced conversions so ad-blocked and
+    // iOS sales still match. gtag SHA-256-hashes user_data in-browser before
+    // it leaves the device. transaction_id = the Stripe session id, which is
+    // what makes a refresh or a re-open of this page impossible to double-count.
+    if (GOOGLE_ADS_CONVERSION_LABEL && typeof window.gtag === 'function') {
+      const paidValue = Number(songs[0]?.amount_paid) || purchaseValue;
+      const buyerEmail = songs.find(s => s.email)?.email || '';
+      if (buyerEmail) window.gtag('set', 'user_data', { email: buyerEmail });
+      window.gtag('event', 'conversion', {
+        send_to: `${GOOGLE_ADS_ID}/${GOOGLE_ADS_CONVERSION_LABEL}`,
+        value: paidValue,
+        currency: 'USD',
+        transaction_id: sessionId
+      });
+      console.log('[Google Ads] Purchase conversion fired:', paidValue, 'USD for session:', sessionId);
     }
   }, [songs]);
 
