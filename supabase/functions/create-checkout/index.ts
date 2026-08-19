@@ -705,12 +705,9 @@ serve(async (req) => {
       // checkout's price, line items, or customer-facing flow.
       customer_creation: 'always',
       payment_intent_data: { setup_future_usage: 'off_session' },
-      // Chargeback defense (2026-08-19): full billing address gives us a real
-      // AVS street check on keyed cards instead of postal-code-only, and the
-      // address itself becomes dispute evidence. Wallets (Link/Google Pay)
-      // pass their stored address through without extra typing.
-      billing_address_collection: 'required',
-      // Only when our own funnel captured no WhatsApp number (see lookup above).
+      // Chargeback defense (2026-08-19): collect a phone at Stripe Checkout,
+      // but only when our own funnel captured no WhatsApp number (owner
+      // decision: no full-billing-address requirement — keep checkout light).
       ...(needPhoneAtCheckout ? { phone_number_collection: { enabled: true } } : {}),
       // 'es-419' = Latin American Spanish. Uses periods for decimals
       // ($29.99 instead of $29,99) which is what the Latino US/Mexico
