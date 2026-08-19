@@ -2992,6 +2992,7 @@ export default function AdminDashboard() {
   const [retryingId, setRetryingId] = useState(null);
   const [retryResult, setRetryResult] = useState(null); // { ok, message }
   const [markingPaidId, setMarkingPaidId] = useState(null); // song being marked paid (Zelle)
+  const [grantingSongsId, setGrantingSongsId] = useState(null); // song whose email is being granted extra creations
   // Feature: inline audio preview in orders table
   const [previewingId, setPreviewingId] = useState(null);
   const [previewPlaying, setPreviewPlaying] = useState(false);
@@ -3569,6 +3570,41 @@ export default function AdminDashboard() {
       showToast('❌ Error: ' + e.message);
     } finally {
       setMarkingPaidId(null);
+    }
+  };
+
+  // Grant a rate-limited customer a few extra unpaid song creations (48h).
+  // Inserts an unpaid_limit_grants row via admin-songs; generate-song raises
+  // its soft caps for that email while the grant is active. Admin-only.
+  const grantMoreSongs = async (song) => {
+    if (!accessToken || !song?.email) return;
+    const answer = window.prompt(
+      `Allow ${song.email} to create more songs?\n\nHow many extra CREATIONS (each creation = 2 song versions)? Valid for 48 hours.`,
+      '3'
+    );
+    if (answer === null) return;
+    const creations = Math.round(Number(answer));
+    if (!creations || creations < 1 || creations > 10) {
+      showToast('❌ Enter a number between 1 and 10.');
+      return;
+    }
+    setGrantingSongsId(song.id);
+    try {
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-songs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}`, 'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY },
+        body: JSON.stringify({ action: 'grant-extra-songs', email: song.email, extraCreations: creations }),
+      });
+      const result = await res.json();
+      if (result.success) {
+        showToast(`✅ ${song.email} can create ${result.extraCreations} more song(s) for the next ${result.hours}h.`);
+      } else {
+        showToast('❌ ' + (result.error || 'Could not grant extra songs.'));
+      }
+    } catch (e) {
+      showToast('❌ Error: ' + e.message);
+    } finally {
+      setGrantingSongsId(null);
     }
   };
 
@@ -8683,6 +8719,16 @@ export default function AdminDashboard() {
                         title="Mark as paid (e.g. Zelle) so it counts as a regular paid song and survives storage cleanup"
                       >
                         {markingPaidId === selectedSong.id ? 'Marking…' : '💵 Mark as Paid (Zelle)'}
+                      </button>
+                    )}
+                    {userRole === 'admin' && selectedSong.email && (
+                      <button
+                        onClick={() => grantMoreSongs(selectedSong)}
+                        disabled={grantingSongsId === selectedSong.id}
+                        className="px-3 py-2 rounded-full font-medium text-sm bg-sky-500/15 text-sky-300 border border-sky-500/30 hover:bg-sky-500/25 transition disabled:opacity-50"
+                        title="Customer hit the unpaid-song limit? Allow this email a few extra creations for 48h (raises the rate caps, doesn't unblock hard-blocked abusers)"
+                      >
+                        {grantingSongsId === selectedSong.id ? 'Granting…' : '🎁 Allow more songs'}
                       </button>
                     )}
                   </div>

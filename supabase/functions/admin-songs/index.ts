@@ -446,6 +446,10 @@ serve(async (req) => {
       toneIds?: string[];
       brief?: Record<string, unknown>;
       force?: boolean;
+      // grant-extra-songs
+      email?: string;
+      extraCreations?: number;
+      hours?: number;
     } = {};
     if (req.method === 'POST') {
       try {
@@ -498,6 +502,55 @@ serve(async (req) => {
       const { error } = await admin.from('songs').update(update).eq('id', body.songId);
       if (error) return json({ success: false, error: error.message }, 500);
       return json({ success: true, songId: body.songId, paid: true, markedPaidAt: now, source, amountPaid: amount });
+    }
+
+    // ─── action: grant-extra-songs ─────────────────────────────────────────
+    // Temporarily raise the unpaid-song rate caps for ONE customer email so a
+    // legit customer who tripped them can create a few more songs themselves.
+    // Inserts a row in unpaid_limit_grants; generate-song adds extra_songs to
+    // each soft cap while the row is unexpired. Admin-only — it spends music
+    // credits with no payment attached, same trust level as mark-paid.
+    if (action === 'grant-extra-songs') {
+      if (isAssistant) return json({ success: false, error: 'Only admins can grant extra songs' }, 403);
+      const email = (body.email || '').toLowerCase().trim();
+      if (!email || !email.includes('@')) return json({ success: false, error: 'A valid customer email is required' }, 400);
+
+      // 1 creation = 2 song rows (two versions), so store rows = creations*2.
+      const creations = Math.min(10, Math.max(1, Math.round(Number(body.extraCreations) || 3)));
+      const hours = Math.min(168, Math.max(1, Math.round(Number(body.hours) || 48)));
+      const expiresAt = new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();
+
+      // A grant can't help a hard-blocked customer — generate-song checks the
+      // blocklists first. Surface that to the admin instead of silently
+      // issuing a grant that will never take effect.
+      const { data: hardBlock } = await admin
+        .from('blocked_emails')
+        .select('email, reason')
+        .eq('email', email)
+        .maybeSingle();
+      if (hardBlock) {
+        return json({
+          success: false,
+          code: 'EMAIL_HARD_BLOCKED',
+          error: `${email} is on the hard blocklist (reason: ${hardBlock.reason || 'not recorded'}). A grant won't unblock them — remove them from blocked_emails first if you're sure they're legit.`,
+        }, 409);
+      }
+
+      const { data: grant, error } = await admin
+        .from('unpaid_limit_grants')
+        .insert({
+          email,
+          extra_songs: creations * 2,
+          expires_at: expiresAt,
+          reason: `admin grant: ${creations} extra creation(s) for ${hours}h`,
+          granted_by: (userData.user.email || userId).slice(0, 120),
+        })
+        .select('id, email, extra_songs, expires_at')
+        .single();
+      if (error) return json({ success: false, error: error.message }, 500);
+
+      console.log(`[grant-extra-songs] by=${userData.user.email} email=${email} creations=${creations} hours=${hours}`);
+      return json({ success: true, grant, extraCreations: creations, hours });
     }
 
     // ─── action: extract-brief ───────────────────────────────────────────

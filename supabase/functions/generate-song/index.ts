@@ -2700,6 +2700,30 @@ serve(async (req) => {
       }
     }
 
+    // Per-customer grant: an admin can allow one email a few extra unpaid
+    // songs (admin dashboard → order modal → "Allow more songs", stored in
+    // unpaid_limit_grants). An unexpired grant raises ALL THREE soft caps
+    // below by extra_songs for requests carrying that email. Deliberately
+    // checked AFTER the hard blocklists — a grant never unblocks confirmed
+    // fraud, it only loosens the soft caps for a vouched-for customer.
+    let grantExtra = 0;
+    if (!overrideActive && email && typeof email === 'string' && email.trim()) {
+      const { data: grantRow, error: grantErr } = await supabase
+        .from('unpaid_limit_grants')
+        .select('extra_songs, expires_at')
+        .eq('email', email.toLowerCase().trim())
+        .gt('expires_at', new Date().toISOString())
+        .order('expires_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (grantErr) {
+        console.warn(`unpaid_limit_grants lookup failed for ${email}: ${grantErr.message} — treating as no grant`);
+      } else if (grantRow) {
+        grantExtra = Math.max(0, Number(grantRow.extra_songs) || 0);
+        console.log(`GRANT_ACTIVE: email=${email} extra=${grantExtra} expires=${grantRow.expires_at}`);
+      }
+    }
+
     // Helper to short-circuit with a 429. Same Spanish error string for
     // every cap so abusers can't tell which limit they tripped.
     const blockedResponse = (reason: string, count: number, cap: number) => {
@@ -2726,8 +2750,8 @@ serve(async (req) => {
 
       if (countError) {
         console.warn(`per-email quota check failed for ${email}: ${countError.message} — allowing through`);
-      } else if ((unpaidCount ?? 0) >= UNPAID_LIMIT_PER_EMAIL_24H) {
-        return blockedResponse('per-email', unpaidCount ?? 0, UNPAID_LIMIT_PER_EMAIL_24H);
+      } else if ((unpaidCount ?? 0) >= UNPAID_LIMIT_PER_EMAIL_24H + grantExtra) {
+        return blockedResponse('per-email', unpaidCount ?? 0, UNPAID_LIMIT_PER_EMAIL_24H + grantExtra);
       }
     }
 
@@ -2745,8 +2769,8 @@ serve(async (req) => {
 
       if (ipCountError) {
         console.warn(`per-ip quota check failed for ${clientIp}: ${ipCountError.message} — allowing through`);
-      } else if ((ipUnpaidCount ?? 0) >= UNPAID_LIMIT_PER_IP_24H) {
-        return blockedResponse('per-ip', ipUnpaidCount ?? 0, UNPAID_LIMIT_PER_IP_24H);
+      } else if ((ipUnpaidCount ?? 0) >= UNPAID_LIMIT_PER_IP_24H + grantExtra) {
+        return blockedResponse('per-ip', ipUnpaidCount ?? 0, UNPAID_LIMIT_PER_IP_24H + grantExtra);
       }
     }
 
@@ -2771,8 +2795,8 @@ serve(async (req) => {
 
       if (pairCountError) {
         console.warn(`per-pair quota check failed: ${pairCountError.message} — allowing through`);
-      } else if ((pairCount ?? 0) >= UNPAID_LIMIT_PER_PAIR_24H) {
-        return blockedResponse('per-pair', pairCount ?? 0, UNPAID_LIMIT_PER_PAIR_24H);
+      } else if ((pairCount ?? 0) >= UNPAID_LIMIT_PER_PAIR_24H + grantExtra) {
+        return blockedResponse('per-pair', pairCount ?? 0, UNPAID_LIMIT_PER_PAIR_24H + grantExtra);
       }
     }
 
