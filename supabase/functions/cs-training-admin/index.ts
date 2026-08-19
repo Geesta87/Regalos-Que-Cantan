@@ -326,28 +326,32 @@ serve(async (req) => {
         base = (settings?.knowledge_doc || '').trim() || CS_KNOWLEDGE;
       }
 
-      const system = `You edit the knowledge/training document of a customer-service AI for Regalos Que Cantan (personalized-song gifts for the US Latino community). The admin will give you an instruction in English or Spanish; apply it to the document.
+      // The model returns ONLY small find/replace edits — never the whole
+      // document. The first version asked for the full revised doc back; on the
+      // owner's real 19k-char doc that took >150s of generation and the gateway
+      // killed the request with a 504. Applying tiny edits server-side keeps
+      // the AI output to a few hundred tokens regardless of document size.
+      const system = `You edit the knowledge/training document of a customer-service AI for Regalos Que Cantan (personalized-song gifts for the US Latino community). The admin will give you an instruction in English or Spanish; produce the minimal edits that apply it.
 
 Hard rules:
-- Change ONLY what the instruction requires. Every other line must remain byte-for-byte identical — do not reformat, reorder, translate, or "improve" untouched text.
+- Edit ONLY what the instruction requires; leave everything else untouched.
 - The document's customer-facing content is SPANISH; keep it Spanish. Match the document's existing style.
-- If the document contains the markers "${LEARNED_START}" and "${LEARNED_END}", preserve both markers exactly.
 - NEVER invent facts, prices, links, times, or policies. If the instruction needs a fact the admin did not provide (e.g. "add the new price" without saying the price), do not guess — ask.
 - A tone/approach instruction (e.g. "warmer", "more direct", "less pushy") should be applied by editing the relevant tone rules and any example phrasings that embody the old tone.
+- Each edit's "old" must be copied VERBATIM from the document (exact characters, spacing, and line breaks) and must be long enough to appear exactly ONCE in the document. "new" is its full replacement. To add text, include a neighboring line in "old" and repeat it in "new" alongside the added text.
 
 Respond with ONLY a JSON object, no markdown fences, in one of these two shapes:
 {"clarification": "<one short question in English asking for the missing detail>"}
 or
 {"summary": "<1-3 sentences in English describing what you changed and where>",
- "changes": [{"section": "<short label of where>", "before": "<the exact text you replaced (excerpt)>", "after": "<the exact new text (excerpt)>"}],
- "document": "<the COMPLETE revised document>"}`;
+ "edits": [{"section": "<short label of where>", "old": "<verbatim unique excerpt from the document>", "new": "<its replacement>"}]}`;
 
       const res = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: { 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
         body: JSON.stringify({
           model: AI_EDIT_MODEL,
-          max_tokens: 16000,
+          max_tokens: 8000,
           system,
           messages: [{
             role: 'user',
@@ -363,7 +367,7 @@ or
       const ai = await res.json();
       const raw = (ai?.content?.[0]?.text || '').trim();
 
-      let parsed: { clarification?: string; summary?: string; changes?: { section?: string; before?: string; after?: string }[]; document?: string };
+      let parsed: { clarification?: string; summary?: string; edits?: { section?: string; old?: string; new?: string }[] };
       try {
         // Tolerate accidental ```json fences around the object.
         parsed = JSON.parse(raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, ''));
@@ -376,7 +380,31 @@ or
         return json({ success: true, clarification: String(parsed.clarification) });
       }
 
-      const doc = (parsed.document || '').trim();
+      const edits = Array.isArray(parsed.edits) ? parsed.edits : [];
+      if (edits.length === 0) {
+        return json({ success: true, clarification: 'The AI could not find anything to change for that request. Try describing it differently or pointing at the wording it should look for.' });
+      }
+
+      // Apply the edits server-side, all-or-nothing. An "old" that is missing
+      // or ambiguous means the model misquoted the doc — refuse rather than
+      // guess where the change belongs.
+      let doc = base;
+      const changes: { section: string; before: string; after: string }[] = [];
+      for (const e of edits.slice(0, 20)) {
+        const oldText = String(e?.old || '');
+        const newText = String(e?.new ?? '');
+        if (!oldText || oldText === newText) continue;
+        const occurrences = doc.split(oldText).length - 1;
+        if (occurrences !== 1) {
+          console.error('cs-training-admin ai-edit: edit anchor', occurrences === 0 ? 'not found' : 'ambiguous', oldText.slice(0, 120));
+          return json({ success: false, error: 'The AI mis-located part of the document — nothing was changed. Please try again (rephrasing usually helps).' }, 422);
+        }
+        doc = doc.replace(oldText, newText);
+        changes.push({ section: String(e?.section || ''), before: oldText, after: newText });
+      }
+      if (changes.length === 0) {
+        return json({ success: true, clarification: 'That did not change anything — the document may already say this. Try describing the change differently.' });
+      }
       // Sanity guards: an "edit" that shrinks the doc drastically or drops the
       // managed learned-facts section means the model mangled it — refuse.
       if (!doc || doc.length < base.length * 0.5) {
@@ -385,16 +413,10 @@ or
       if (base.includes(LEARNED_START) && (!doc.includes(LEARNED_START) || !doc.includes(LEARNED_END))) {
         return json({ success: false, error: 'The AI edit broke the auto-learned section — nothing was changed. Try again.' }, 422);
       }
-      if (doc === base) {
-        return json({ success: true, clarification: 'That did not change anything — the document may already say this. Try describing the change differently.' });
-      }
-
       return json({
         success: true,
         summary: String(parsed.summary || 'Edited the document.'),
-        changes: Array.isArray(parsed.changes) ? parsed.changes.slice(0, 20).map((c) => ({
-          section: String(c?.section || ''), before: String(c?.before || ''), after: String(c?.after || ''),
-        })) : [],
+        changes,
         document: doc,
       });
     }
