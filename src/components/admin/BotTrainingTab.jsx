@@ -26,6 +26,13 @@ export default function BotTrainingTab({ accessToken }) {
   const [proposals, setProposals] = useState([]);
   const [insights, setInsights] = useState(null);
 
+  // AI editor: type a plain-language change request; preview the exact diff
+  // before anything touches the editor (and Save still gates the live bot).
+  const [aiInstruction, setAiInstruction] = useState('');
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiPreview, setAiPreview] = useState(null); // { summary, changes, document }
+  const [aiClarification, setAiClarification] = useState(null);
+
   const dirty = knowledge !== savedKnowledge;
 
   const call = useCallback(async (payload) => {
@@ -118,6 +125,31 @@ export default function BotTrainingTab({ accessToken }) {
       setEnabled(!next); // rollback
       flash(`⚠ ${e.message}`);
     }
+  };
+
+  const handleAiEdit = async () => {
+    const instruction = aiInstruction.trim();
+    if (!instruction || aiBusy) return;
+    setAiBusy(true);
+    setAiPreview(null);
+    setAiClarification(null);
+    try {
+      const data = await call({ action: 'ai-edit', instruction, knowledge });
+      if (data.clarification) setAiClarification(data.clarification);
+      else setAiPreview({ summary: data.summary, changes: data.changes || [], document: data.document });
+    } catch (e) {
+      flash(`⚠ ${e.message}`);
+    } finally {
+      setAiBusy(false);
+    }
+  };
+
+  const handleAiApply = () => {
+    if (!aiPreview?.document) return;
+    setKnowledge(aiPreview.document);
+    setAiPreview(null);
+    setAiInstruction('');
+    flash('✏️ Change applied to the editor — review it and press Save to make it live');
   };
 
   const handleDeleteExample = async (id) => {
@@ -276,6 +308,69 @@ export default function BotTrainingTab({ accessToken }) {
             <p className="text-xs text-gray-500 mb-2">
               Prices, delivery times, tone, and rules (what to always say / never say). Write it like instructions to a new employee.
             </p>
+
+            {/* AI editor — describe the change, preview the diff, then apply */}
+            <div className="bg-indigo-500/5 border border-indigo-500/20 rounded-xl p-3 mb-3">
+              <div className="text-xs font-semibold text-indigo-200 mb-1.5">✨ Ask AI to edit this for you</div>
+              <p className="text-[11px] text-gray-500 mb-2">
+                Describe the change in plain words (English or Spanish) — e.g. “make the tone warmer when someone complains” or “cambia el tiempo de entrega a 5 minutos”. You'll see exactly what changed before anything is saved.
+              </p>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={aiInstruction}
+                  onChange={(e) => setAiInstruction(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleAiEdit(); }}
+                  placeholder="What would you like to change?"
+                  disabled={aiBusy}
+                  className="flex-1 px-3 py-2 bg-black/30 border border-white/10 rounded-lg text-gray-100 text-[13px] focus:outline-none focus:border-indigo-400/50 disabled:opacity-50"
+                />
+                <button
+                  onClick={handleAiEdit}
+                  disabled={aiBusy || !aiInstruction.trim()}
+                  className="px-3.5 py-2 rounded-lg text-xs font-semibold bg-indigo-500 text-white hover:bg-indigo-400 transition disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+                >
+                  {aiBusy ? 'Working…' : 'Preview change'}
+                </button>
+              </div>
+
+              {aiClarification && (
+                <div className="mt-2.5 px-3 py-2 rounded-lg bg-amber-400/10 border border-amber-400/20 text-[12px] text-amber-200">
+                  🤔 {aiClarification}
+                </div>
+              )}
+
+              {aiPreview && (
+                <div className="mt-3">
+                  <div className="text-[12px] text-gray-200 mb-2">{aiPreview.summary}</div>
+                  {aiPreview.changes.length > 0 && (
+                    <div className="space-y-2 max-h-72 overflow-y-auto mb-2.5">
+                      {aiPreview.changes.map((c, i) => (
+                        <div key={i} className="bg-black/25 border border-white/10 rounded-lg p-2.5">
+                          {c.section && <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1.5">{c.section}</div>}
+                          {c.before && (
+                            <div className="text-[12px] text-red-300/90 bg-red-500/5 border border-red-500/15 rounded px-2 py-1.5 mb-1 whitespace-pre-wrap break-words">− {c.before}</div>
+                          )}
+                          {c.after && (
+                            <div className="text-[12px] text-green-300/90 bg-green-500/5 border border-green-500/15 rounded px-2 py-1.5 whitespace-pre-wrap break-words">+ {c.after}</div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <button onClick={handleAiApply} className="px-3.5 py-2 rounded-lg text-xs font-semibold bg-green-500 text-white hover:bg-green-400 transition">
+                      ✓ Apply to editor
+                    </button>
+                    <button onClick={() => setAiPreview(null)} className="px-3 py-2 rounded-lg text-xs font-medium bg-white/5 text-gray-300 hover:bg-white/10 transition">
+                      Discard
+                    </button>
+                    <span className="text-[11px] text-gray-500">Applying only updates the text below — press Save after to make it live.</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
             <textarea
               value={knowledge}
               onChange={(e) => setKnowledge(e.target.value)}

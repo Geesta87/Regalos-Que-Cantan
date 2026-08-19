@@ -32,6 +32,8 @@ const corsHeaders = {
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
+const AI_EDIT_MODEL = Deno.env.get('CS_TRAINING_EDIT_MODEL') || 'claude-sonnet-4-6';
 
 // ── Learned-facts section ───────────────────────────────────────────────────
 // Approving a distilled fact used to do `doc + "\n\n# " + title + "\n" + body`.
@@ -102,7 +104,7 @@ serve(async (req) => {
     if (!roleRow) return json({ success: false, error: 'No admin access' }, 403);
     const role = roleRow.role as 'admin' | 'assistant';
 
-    let body: { action?: string; knowledge?: string; id?: string; enabled?: boolean; proposal_id?: string } = {};
+    let body: { action?: string; knowledge?: string; id?: string; enabled?: boolean; proposal_id?: string; instruction?: string } = {};
     if (req.method === 'POST') { try { body = await req.json(); } catch { body = {}; } }
     const action = body.action || 'get';
 
@@ -303,6 +305,99 @@ serve(async (req) => {
 
     // Everything below changes bot behavior → admins only.
     if (role !== 'admin') return json({ success: false, error: 'Only admins can edit training' }, 403);
+
+    // ── ai-edit: natural-language edit of the knowledge doc (PREVIEW ONLY) ──
+    // The owner types "make the tone warmer" / "change delivery time to 5 min";
+    // Claude locates the relevant text in the doc and returns the full revised
+    // document plus a before/after change list. NOTHING is saved here — the
+    // frontend shows the diff and the owner applies + saves through the normal
+    // 'save' action, so a human always approves before the live bot changes.
+    if (action === 'ai-edit') {
+      if (!ANTHROPIC_API_KEY) return json({ success: false, error: 'ANTHROPIC_API_KEY not set' }, 500);
+      const instruction = (body.instruction || '').trim();
+      if (!instruction) return json({ success: false, error: 'instruction required' }, 400);
+
+      // Base = what the owner currently sees in the editor (may include unsaved
+      // edits). Falls back to the saved doc, then the built-in default.
+      let base = (body.knowledge || '').trim();
+      if (!base) {
+        const { data: settings } = await admin
+          .from('cs_agent_settings').select('knowledge_doc').eq('id', 1).maybeSingle();
+        base = (settings?.knowledge_doc || '').trim() || CS_KNOWLEDGE;
+      }
+
+      const system = `You edit the knowledge/training document of a customer-service AI for Regalos Que Cantan (personalized-song gifts for the US Latino community). The admin will give you an instruction in English or Spanish; apply it to the document.
+
+Hard rules:
+- Change ONLY what the instruction requires. Every other line must remain byte-for-byte identical — do not reformat, reorder, translate, or "improve" untouched text.
+- The document's customer-facing content is SPANISH; keep it Spanish. Match the document's existing style.
+- If the document contains the markers "${LEARNED_START}" and "${LEARNED_END}", preserve both markers exactly.
+- NEVER invent facts, prices, links, times, or policies. If the instruction needs a fact the admin did not provide (e.g. "add the new price" without saying the price), do not guess — ask.
+- A tone/approach instruction (e.g. "warmer", "more direct", "less pushy") should be applied by editing the relevant tone rules and any example phrasings that embody the old tone.
+
+Respond with ONLY a JSON object, no markdown fences, in one of these two shapes:
+{"clarification": "<one short question in English asking for the missing detail>"}
+or
+{"summary": "<1-3 sentences in English describing what you changed and where>",
+ "changes": [{"section": "<short label of where>", "before": "<the exact text you replaced (excerpt)>", "after": "<the exact new text (excerpt)>"}],
+ "document": "<the COMPLETE revised document>"}`;
+
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+        body: JSON.stringify({
+          model: AI_EDIT_MODEL,
+          max_tokens: 16000,
+          system,
+          messages: [{
+            role: 'user',
+            content: `CURRENT DOCUMENT:\n<<<DOC\n${base}\nDOC>>>\n\nADMIN INSTRUCTION: ${instruction}`,
+          }],
+        }),
+      });
+      if (!res.ok) {
+        const errTxt = await res.text();
+        console.error('cs-training-admin ai-edit: anthropic error', res.status, errTxt);
+        return json({ success: false, error: `AI request failed (${res.status}) — try again` }, 502);
+      }
+      const ai = await res.json();
+      const raw = (ai?.content?.[0]?.text || '').trim();
+
+      let parsed: { clarification?: string; summary?: string; changes?: { section?: string; before?: string; after?: string }[]; document?: string };
+      try {
+        // Tolerate accidental ```json fences around the object.
+        parsed = JSON.parse(raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, ''));
+      } catch {
+        console.error('cs-training-admin ai-edit: unparseable AI output', raw.slice(0, 500));
+        return json({ success: false, error: 'AI returned an unreadable result — try rephrasing the request' }, 502);
+      }
+
+      if (parsed.clarification) {
+        return json({ success: true, clarification: String(parsed.clarification) });
+      }
+
+      const doc = (parsed.document || '').trim();
+      // Sanity guards: an "edit" that shrinks the doc drastically or drops the
+      // managed learned-facts section means the model mangled it — refuse.
+      if (!doc || doc.length < base.length * 0.5) {
+        return json({ success: false, error: 'The AI edit removed too much of the document — nothing was changed. Try a more specific request.' }, 422);
+      }
+      if (base.includes(LEARNED_START) && (!doc.includes(LEARNED_START) || !doc.includes(LEARNED_END))) {
+        return json({ success: false, error: 'The AI edit broke the auto-learned section — nothing was changed. Try again.' }, 422);
+      }
+      if (doc === base) {
+        return json({ success: true, clarification: 'That did not change anything — the document may already say this. Try describing the change differently.' });
+      }
+
+      return json({
+        success: true,
+        summary: String(parsed.summary || 'Edited the document.'),
+        changes: Array.isArray(parsed.changes) ? parsed.changes.slice(0, 20).map((c) => ({
+          section: String(c?.section || ''), before: String(c?.before || ''), after: String(c?.after || ''),
+        })) : [],
+        document: doc,
+      });
+    }
 
     // ── save knowledge ───────────────────────────────────────────────────
     if (action === 'save') {
