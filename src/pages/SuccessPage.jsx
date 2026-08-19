@@ -17,7 +17,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 // Until it is filled in, the conversion is skipped rather than fired wrong — a
 // send_to with a bad label records nothing and is invisible in Ads reporting.
 const GOOGLE_ADS_ID = 'AW-18397848550';
-const GOOGLE_ADS_CONVERSION_LABEL = '';
+const GOOGLE_ADS_CONVERSION_LABEL = 'zcUoCKOrhuQcEObH48RE';
 
 // Inlined video API helpers
 async function createVideoCheckout(songId, email) {
