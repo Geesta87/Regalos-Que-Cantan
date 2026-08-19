@@ -83,6 +83,15 @@ const fmt = (s) => {
   return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 };
 
+// TEMPORARY HOLD (2026-08-18): these songs were sent to the customer before
+// payment when fixes were applied. The /song page delivers the full paid
+// version, so block it for these ids until the purchase completes — the
+// /listen purchase page for the same ids keeps working. Remove ids to re-enable.
+const DISABLED_SONG_IDS = new Set([
+  '4798093b-bf1b-4a36-9020-51722b027895',
+  '8eb94543-4268-4ae7-a382-fec3ed5f1f39',
+]);
+
 // ═══════════════════════════════════════
 // SONG SELECTOR (combo with 2 songs)
 // Customers were complaining that they "only got 1 song" after buying a
@@ -286,12 +295,14 @@ export default function SongPage({ songId: propSongId }) {
   // Fetch songs + check for completed video
   useEffect(() => {
     if (!songIds.length) { setError(t.noEncontrada); setLoading(false); return; }
+    const allowedIds = songIds.filter(id => !DISABLED_SONG_IDS.has(id));
+    if (!allowedIds.length) { setError(t.noLista); setLoading(false); return; }
     (async () => {
       try {
-        const { data, error: e } = await supabase.from('songs').select('*').in('id', songIds);
+        const { data, error: e } = await supabase.from('songs').select('*').in('id', allowedIds);
         if (e) throw e;
         if (!data || data.length === 0) throw new Error(t.noEncontrada);
-        const ordered = songIds.map(id => data.find(s => s.id === id)).filter(Boolean);
+        const ordered = allowedIds.map(id => data.find(s => s.id === id)).filter(Boolean);
         if (ordered.length === 0) throw new Error(t.noEncontrada);
         if (!ordered[0].audio_url) throw new Error(t.noLista);
         setAllSongs(ordered);
