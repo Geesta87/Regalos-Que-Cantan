@@ -596,8 +596,11 @@ export default function SuccessPage() {
     }
     localStorage.setItem(storageKey, Date.now().toString());
 
-    // Determine purchase value based on number of songs
-    const purchaseValue = songs.length > 1 ? 39.99 : 29.99;
+    // Real Stripe amount so the browser pixel matches the server-side CAPI
+    // Purchase (Meta flags deduped events whose values differ). amount_paid
+    // holds the FULL session total on every row of a bundle. Fall back to the
+    // base-price estimate only if the webhook hasn't stamped it yet.
+    const purchaseValue = Number(songs[0]?.amount_paid) || (songs.length > 1 ? 39.99 : 29.99);
 
     // Fire Meta Pixel Purchase event
     if (typeof window.fbq === 'function') {

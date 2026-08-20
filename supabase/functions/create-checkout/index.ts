@@ -130,6 +130,11 @@ serve(async (req) => {
     // x-forwarded-for to "<client>, <proxy>, ..." — first hop is the user.
     const xfwd = req.headers.get('x-forwarded-for') || '';
     const clientIp = xfwd.split(',')[0]?.trim() || req.headers.get('cf-connecting-ip') || '';
+    // Meta requires IP and user agent to be sent TOGETHER on CAPI events. The
+    // browser calls this function directly, so the request's own User-Agent IS
+    // the buyer's — use it whenever the caller didn't pass clientUserAgent in
+    // the body (only api.js does; ShareablePreviewPage and others don't).
+    const resolvedUserAgent = clientUserAgent || req.headers.get('user-agent') || '';
     // Accept both songIds (array from frontend) and songId (legacy)
     const songIds: string[] = body.songIds || (body.songId ? [body.songId] : []);
     const songId = songIds[0];
@@ -802,7 +807,7 @@ serve(async (req) => {
         ttclid: (ttclid || '').slice(0, 500),
         ttp: (ttp || '').slice(0, 500),
         client_ip: (clientIp || '').slice(0, 100),
-        client_user_agent: (clientUserAgent || '').slice(0, 500)
+        client_user_agent: (resolvedUserAgent || '').slice(0, 500)
       }
     });
 

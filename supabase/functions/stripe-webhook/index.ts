@@ -120,6 +120,8 @@ async function sendMetaCAPIPurchase(args: {
   clientIp: string;
   clientUserAgent: string;
   recipientName?: string | null;
+  buyerPhone?: string | null;
+  buyerName?: string | null;
 }): Promise<void> {
   if (!META_PIXEL_ID || !META_CAPI_ACCESS_TOKEN) {
     console.log('[meta-capi] skipped — META_PIXEL_ID or META_CAPI_ACCESS_TOKEN not set');
@@ -128,9 +130,22 @@ async function sendMetaCAPIPurchase(args: {
   try {
     const userData: Record<string, any> = {};
     if (args.email) userData.em = [await metaHash(args.email)];
+    // Extra match keys (hashed): phone digits-only per Meta's ph format, and
+    // buyer first/last name from Stripe customer_details. All optional —
+    // checkout only sometimes captures phone, but every field raises match
+    // quality when present.
+    const phoneDigits = (args.buyerPhone || '').replace(/\D/g, '');
+    if (phoneDigits) userData.ph = [await metaHash(phoneDigits)];
+    const nameParts = (args.buyerName || '').trim().split(/\s+/).filter(Boolean);
+    if (nameParts.length) {
+      userData.fn = [await metaHash(nameParts[0])];
+      if (nameParts.length > 1) userData.ln = [await metaHash(nameParts[nameParts.length - 1])];
+    }
     if (args.fbc) userData.fbc = args.fbc;
     if (args.fbp) userData.fbp = args.fbp;
-    if (args.clientIp) userData.client_ip_address = args.clientIp;
+    // Meta flags events that carry an IP without a user agent — send the IP
+    // only when the UA is present too (they must travel together).
+    if (args.clientIp && args.clientUserAgent) userData.client_ip_address = args.clientIp;
     if (args.clientUserAgent) userData.client_user_agent = args.clientUserAgent;
 
     const payload: Record<string, any> = {
@@ -1099,7 +1114,9 @@ serve(async (req) => {
           fbp: session.metadata?.fbp || '',
           clientIp: session.metadata?.client_ip || '',
           clientUserAgent: session.metadata?.client_user_agent || '',
-          recipientName: firstSong?.recipient_name || null
+          recipientName: firstSong?.recipient_name || null,
+          buyerPhone: session.customer_details?.phone || null,
+          buyerName: session.customer_details?.name || null
         });
       } catch (capiErr: any) {
         // Defensive: sendMetaCAPIPurchase already swallows everything, but
