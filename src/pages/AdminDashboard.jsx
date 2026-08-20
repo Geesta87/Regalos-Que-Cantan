@@ -1072,6 +1072,29 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
       return j === -1 ? hay.length : j;
     };
     const ordered = [...list].sort((a, b) => posOf(a) - posOf(b));
+    // TRANSCRIPT-INVISIBLE CHANGES (2026-08-20, Daniel d3c552fc). "Esete"→"Este"
+    // is one edit apart: Whisper normalizes the mispronunciation into the real
+    // word AND the fuzzy matcher (lev-1, ≥5 chars) treats them as equal — so the
+    // checklist reported 2/2 after ONE window and the fix shipped with verse 2
+    // still wrong, "fully verified". Detect the class up front: if the AFTER
+    // pattern matches the BEFORE text, a take still singing the old wording
+    // satisfies the check, and counting is meaningless. For these, the ladder
+    // must sing ONE WINDOW PER OCCURRENCE unconditionally and let ears judge —
+    // the same rule names have always had.
+    const unverifiable = new Set(ordered.filter((c) => {
+      if (!c?.before || !c?.after) return false;
+      // SYMMETRIC test: unverifiable only when EACH side's pattern matches the
+      // OTHER side's text. One-directional matching over-fires on name changes
+      // ("señor"→"Jehová": the name gets skipped from the after-pattern, which
+      // then trivially matches the before text — but "señor" vs "jehová" is
+      // perfectly countable in a transcript, so counting must stay in charge).
+      const fake = (t) => String(t).split(/\s+/).map((w, i) => ({ word: w, start: i, end: i + 0.4 }));
+      return !!findCleanLine(fake(c.before), buildTokenGroups(c.after), { maxGapS: 99 })
+          && !!findCleanLine(fake(c.after), buildTokenGroups(c.before), { maxGapS: 99 });
+    }).map((c) => c.after));
+    // Windows actually sung per unverifiable change — the checklist can't track
+    // these, so the ladder counts them itself.
+    const windowsSung = {};
 
     const reportOutcome = (outcome, detail, verified = null, kieTaskId = null) => {
       try { postFn({ action: 'report-outcome', songId, mode: 'section', outcome, detail: String(detail || '').slice(0, 500), verified, kieTaskId }); } catch { /* non-blocking */ }
@@ -1106,9 +1129,14 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
       // What is still wrong? (against the latest accepted take, or nothing yet)
       const wordsSoFar = best?.words || null;
       const state = wordsSoFar ? evalChecklist(wordsSoFar, ordered, combinedLyrics, priorCorrections) : null;
-      if (state?.ok) break; // everything landed
+      // An unverifiable change owes `need` windows regardless of what the
+      // checklist claims — its transcript count is a lie by construction.
+      const owesWindows = (c) => unverifiable.has(c.after)
+        && (windowsSung[c.after] || 0) < Math.max(1, timesInLyrics(combinedLyrics, c.after));
+      if (state?.ok && !ordered.some(owesWindows)) break; // everything landed
       const target = state
-        ? ordered.find((c) => { const it = state.items.find((x) => x.kind === 'change' && x.after === c.after); return it && !it.ok; })
+        ? (ordered.find((c) => { const it = state.items.find((x) => x.kind === 'change' && x.after === c.after); return it && !it.ok && !unverifiable.has(c.after); })
+           || ordered.find(owesWindows))
         : ordered[0];
       if (!target) break;
 
@@ -1132,7 +1160,16 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
       // 9dd5efe4: rounds 1-3 all re-fixed chorus 1 and chorus 2 shipped wrong).
       let spotHint = '';
       const tState = state?.items.find((x) => x.kind === 'change' && x.after === target.after);
-      if (best && tState && tState.have > 0) {
+      if (unverifiable.has(target.after)) {
+        // The transcript cannot tell a fixed spot from an unfixed one here, so
+        // aim by ORDINAL: window k of N, in song order. findPhraseHits on the
+        // current source locates each occurrence by time.
+        const k = (windowsSung[target.after] || 0) + 1;
+        const N = Math.max(1, timesInLyrics(combinedLyrics, target.after));
+        const hits = best ? findPhraseHits(best.words, target.after) : [];
+        const at = hits[k - 1] ? ` (empieza cerca del segundo ${hits[k - 1].startS.toFixed(1)}, ${mmss(hits[k - 1].startS)})` : '';
+        spotHint = ` ATENCIÓN: es un cambio de PRONUNCIACIÓN/ortografía que la transcripción no puede verificar, y la línea aparece ${N} ${N === 1 ? 'vez' : 'veces'}. Re-canta EXACTAMENTE la aparición #${k} de ${N}, en orden de la canción${at}. No toques las demás.`;
+      } else if (best && tState && tState.have > 0) {
         const stillBad = target.before ? findPhraseHits(best.words, target.before) : [];
         const done = findPhraseHits(best.words, target.after);
         const doneAt = done.map((h) => mmss(h.startS)).join(', ');
@@ -1328,6 +1365,13 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
       // A round that landed a NEW spot earns the target a fresh budget — three
       // tries per SPOT, not three tries for a line that has three spots.
       if (roundWinner.partial) perTarget[target.after] = 0;
+      // An unverifiable change: this round SANG one of its occurrences — count
+      // the window ourselves (the checklist can't) and refund the per-target
+      // budget, so N occurrences get N fresh windows, not 3 shared tries.
+      if (unverifiable.has(target.after)) {
+        windowsSung[target.after] = (windowsSung[target.after] || 0) + 1;
+        perTarget[target.after] = 0;
+      }
       best = roundWinner;
       if (Number(sub.window?.startS) > 0) changeMarks.push(Number(sub.window.startS));
       // Chain the NEXT round off this take; its true end caps the source so the
@@ -1337,6 +1381,16 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
     }
 
     const finalState = best ? evalChecklist(best.words, ordered, combinedLyrics, priorCorrections) : null;
+    // The checklist reads trivially "ok" for unverifiable changes — never present
+    // a take as complete while forced windows are still owed (budget ran out).
+    const owed = ordered.filter((c) => unverifiable.has(c.after)
+      && (windowsSung[c.after] || 0) < Math.max(1, timesInLyrics(combinedLyrics, c.after)));
+    if (owed.length && best) {
+      reportOutcome('failed', `ladder incompleto: faltan ${owed.length} ventana(s) de pronunciación tras ${submits} generaciones`, false);
+      const err = new Error(`Se corrigieron algunas apariciones pero faltan ${owed.length} ventana(s) de la línea "${(owed[0].after || '').slice(0, 50)}" (cambio de pronunciación — se canta ventana por ventana). Intenta de nuevo.`);
+      err.takes = lastTakesSeen.slice(-4);
+      throw err;
+    }
     if (!best || !finalState?.ok) {
       reportOutcome('failed', `ladder incompleto: ${lastReason || 'no clean take'} tras ${submits} generaciones`, false);
       const err = new Error(`No se pudieron aplicar todas las correcciones tras ${submits} generaciones (${lastReason || 'sin toma limpia'}). Intenta de nuevo o usa "Rehacer canción completa".`);
