@@ -7370,12 +7370,24 @@ export default function AdminDashboard() {
                                 </a>
                               </div>
                             )}
-                            <button
-                              onClick={() => { setSelectedSong(song); setEditingPhone(false); if (!song._fullLoaded) fetchSongDetails(song.id); }}
-                              className="text-xs text-gray-500 hover:text-white underline ml-auto"
-                            >
-                              View details
-                            </button>
+                            <div className="flex items-center gap-3 ml-auto">
+                              {userRole === 'admin' && song.email && (
+                                <button
+                                  onClick={() => grantMoreSongs(song)}
+                                  disabled={grantingSongsId === song.id}
+                                  className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-sky-500/10 text-sky-300 border border-sky-500/30 hover:bg-sky-500/20 transition disabled:opacity-50"
+                                  title="Customer hit the unpaid-song limit? Allow this email a few extra creations for 48h (raises the rate caps, doesn't unblock hard-blocked abusers)"
+                                >
+                                  {grantingSongsId === song.id ? 'Granting…' : '🎁 Allow more songs'}
+                                </button>
+                              )}
+                              <button
+                                onClick={() => { setSelectedSong(song); setEditingPhone(false); if (!song._fullLoaded) fetchSongDetails(song.id); }}
+                                className="text-xs text-gray-500 hover:text-white underline"
+                              >
+                                View details
+                              </button>
+                            </div>
                           </div>
                         </div>
                       );
@@ -8719,16 +8731,6 @@ export default function AdminDashboard() {
                         title="Mark as paid (e.g. Zelle) so it counts as a regular paid song and survives storage cleanup"
                       >
                         {markingPaidId === selectedSong.id ? 'Marking…' : '💵 Mark as Paid (Zelle)'}
-                      </button>
-                    )}
-                    {userRole === 'admin' && selectedSong.email && (
-                      <button
-                        onClick={() => grantMoreSongs(selectedSong)}
-                        disabled={grantingSongsId === selectedSong.id}
-                        className="px-3 py-2 rounded-full font-medium text-sm bg-sky-500/15 text-sky-300 border border-sky-500/30 hover:bg-sky-500/25 transition disabled:opacity-50"
-                        title="Customer hit the unpaid-song limit? Allow this email a few extra creations for 48h (raises the rate caps, doesn't unblock hard-blocked abusers)"
-                      >
-                        {grantingSongsId === selectedSong.id ? 'Granting…' : '🎁 Allow more songs'}
                       </button>
                     )}
                   </div>
