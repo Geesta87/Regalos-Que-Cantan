@@ -2701,7 +2701,7 @@ serve(async (req) => {
     }
 
     // Per-customer grant: an admin can allow one email a few extra unpaid
-    // songs (admin dashboard → order modal → "Allow more songs", stored in
+    // songs (admin dashboard → Lookup tab → "Allow more songs", stored in
     // unpaid_limit_grants). An unexpired grant raises ALL THREE soft caps
     // below by extra_songs for requests carrying that email. Deliberately
     // checked AFTER the hard blocklists — a grant never unblocks confirmed
