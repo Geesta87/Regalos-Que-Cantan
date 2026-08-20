@@ -877,6 +877,10 @@ export default function ComparisonPage() {
       const hasGift = checkoutExtras.some((e) => e.key === 'gift') || giftState.enabled;
       if (hasGift && err?.message && err.message !== 'Failed to create checkout') {
         setGiftError(err.message);
+      } else if (err?.message && err.message !== 'Failed to create checkout') {
+        // Server-side coupon rejections (pack code one-at-a-time / not enough
+        // uses left) come back in Spanish — show them instead of the generic.
+        alert(err.message);
       } else {
         alert('Error al procesar el pago. Intenta de nuevo.');
       }
@@ -2141,7 +2145,11 @@ export default function ComparisonPage() {
             }}>
               <span style={{ fontSize: '15px' }}>🎁</span>
               <span style={{ color: '#F2A0C2', fontSize: '13px', fontWeight: 700 }}>
-                Código de paquete · te quedan {couponApplied.remaining}{couponApplied.max_uses ? ` de ${couponApplied.max_uses}` : ''} canciones · una a la vez
+                {purchaseBoth
+                  ? (couponApplied.remaining >= 2
+                      ? `Código de paquete · las 2 versiones usan 2 de tus ${couponApplied.remaining} canciones`
+                      : 'Código de paquete · te queda 1 canción — elige una de las dos versiones')
+                  : `Código de paquete · te quedan ${couponApplied.remaining}${couponApplied.max_uses ? ` de ${couponApplied.max_uses}` : ''} canciones`}
               </span>
             </div>
           )}

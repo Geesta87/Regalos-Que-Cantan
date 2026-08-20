@@ -236,6 +236,9 @@ serve(async (req) => {
     }
     const videoAddonCents = videoAddonCountNum === 2 ? 1799 : videoAddonCountNum === 1 ? 999 : 0;
     let appliedCoupon = null;
+    // How many uses a single_song_only (pack) code consumes on this order.
+    // 1 normally; 2 when the cart is both versions of ONE song (see below).
+    let packUsesNeeded = 1;
 
     // Validate and apply coupon if provided
     if (couponCode) {
@@ -252,12 +255,42 @@ serve(async (req) => {
         // Check usage limit
         const isMaxedOut = coupon.max_uses && coupon.times_used >= coupon.max_uses;
 
-        // Single-song codes (e.g. the 3-pack redemption code) may only be
+        // Single-song codes (e.g. the pack redemption code) may only be
         // applied to a 1-song order — otherwise one use of a 100%-off code
         // would free an entire multi-song cart. Hard-block so it can never
         // be exploited; the buyer redeems one song at a time.
+        //
+        // EXCEPTION (owner, 2026-08-19): the "Ambas versiones" cart — the two
+        // takes of ONE generation — may be redeemed in a single checkout by
+        // consuming TWO uses of the code (same total value as redeeming each
+        // version separately, so there is nothing to exploit). Sibling-ship
+        // is proven server-side by a shared mureka_job_id (each generation's
+        // 2 rows share it; session_id is the fallback for legacy rows) — a
+        // crafted cart of two unrelated songs still gets the hard block.
         if (coupon.single_song_only && songCount > 1) {
-          return jsonResp(400, { error: 'coupon_single_song', message: 'Este código es para una canción a la vez. Crea cada canción por separado y aplica el código en cada una.' });
+          let bothVersionsOfOneSong = false;
+          if (songCount === 2) {
+            const { data: versionRows } = await supabase
+              .from('songs')
+              .select('id, mureka_job_id, session_id')
+              .in('id', songIds);
+            if (versionRows && versionRows.length === 2) {
+              const [a, b] = versionRows;
+              bothVersionsOfOneSong =
+                (!!a.mureka_job_id && a.mureka_job_id === b.mureka_job_id) ||
+                (!!a.session_id && a.session_id === b.session_id);
+            }
+          }
+          if (!bothVersionsOfOneSong) {
+            return jsonResp(400, { error: 'coupon_single_song', message: 'Este código es para una canción a la vez. Crea cada canción por separado y aplica el código en cada una.' });
+          }
+          const remainingUses = coupon.max_uses ? Math.max(0, coupon.max_uses - (coupon.times_used || 0)) : Infinity;
+          if (remainingUses === 1) {
+            return jsonResp(400, { error: 'coupon_insufficient_uses', message: 'A tu código le queda 1 canción y las dos versiones usan 2. Elige una de las dos versiones para usar tu código.' });
+          }
+          // remainingUses === 0 falls through unapplied (isMaxedOut already
+          // true), matching the spent-code behavior on a single-song cart.
+          if (remainingUses >= 2) packUsesNeeded = 2;
         }
 
         // Carts of 3+ songs already carry the bundle discount ($9.99 per extra
@@ -407,10 +440,10 @@ serve(async (req) => {
         }
       }
 
-      // Increment coupon usage
+      // Increment coupon usage (2 uses when a pack code freed both versions)
       await supabase
         .from('coupons')
-        .update({ times_used: appliedCoupon.times_used + 1 })
+        .update({ times_used: appliedCoupon.times_used + packUsesNeeded })
         .eq('code', appliedCoupon.code);
 
       // Log a `purchase` event for free orders too (commission is $0 but the count matters)

@@ -372,6 +372,9 @@ function getPackEmailHtml(code: string, rawName: string, songs: number): string 
           <li>Al momento de pagar, escribe tu código <strong>${code}</strong>.</li>
           <li>Esa canción te sale gratis. Repite hasta ${songs} veces — una por persona.</li>
         </ol>
+        <p style="font-size:13px; color:#bdb6ba; line-height:1.6; margin:-10px 0 22px;">
+          💡 Cada canción viene con 2 versiones para elegir. ¿Quieres quedarte con las dos? Elige "Ambas" al pagar — cuentan como 2 canciones de tu paquete.
+        </p>
         <div style="text-align:center;">
           <a href="${createUrl}" style="display:inline-block; background:#f20d80; color:#fff; text-decoration:none; font-weight:bold; font-size:16px; padding:14px 30px; border-radius:10px;">Crear mi primera canción 🎵</a>
         </div>
