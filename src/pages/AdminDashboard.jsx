@@ -510,6 +510,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
     const lastTakesSeen = []; // what Kie sang each round (for the failure diagnostic)
     let origLine = null; // pristine {startS,endS} of the line being changed (line-replace mode)
     let origFullDur = null; // pristine song's full length (whole-take length check)
+    let pristineWords = null; // pristine transcript — raw-word delta source (2026-08-20)
     for (let round = 1; round <= ROUNDS; round++) {
       onMsg?.(`Regenerating the part… (attempt ${round})`);
       const sub = await postFn({ action: 'section-submit', mode: 'section', songId, note: note || undefined, conversation: note ? [] : messages, image: note ? undefined : imagePayload(), approvedLyrics, verifyPhrases });
@@ -540,6 +541,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
           const ptr = await postFn({ action: 'transcribe', audioUrl: originalAudioUrl });
           const pw = parseTimed(ptr.timed);
           if (pw.length) origFullDur = pw[pw.length - 1].end;
+          if (pw.length) pristineWords = pw; // delta source for the raw-word check
           if (lineReplace?.before && lineReplace?.after && !origLine) {
             origLine = findCleanLine(pw, buildTokenGroups(lineReplace.before), { nearS: origCut, maxGapS: 3.5 });
           }
@@ -687,7 +689,28 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
             lastReason = 'la letra marca la corrección en más lugares de los que la toma canta';
             lastTakesSeen.push({ url, text: audible.map((w) => w.word).join(' '), reason: lastReason });
           }
-          if (sang && keptPrior && consistent && lenOk) {
+          // RAW-WORD DELTA (2026-08-20, Luisa): a one-word swap the name-skip
+          // blinds us to (line-initial "Papi"->"Papá") must actually REMOVE old-
+          // word tokens vs the pristine — Suno re-singing the same wrong word is
+          // a failed take, not a verified one. Only when Whisper sees the old
+          // word in the pristine at all.
+          let deltaOk = true;
+          {
+            const ch = Array.isArray(consistency) && consistency.length === 1 ? consistency[0] : null;
+            if (ch?.before && ch?.after && pristineWords) {
+              const wn = (x) => String(x).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '');
+              const A = String(ch.before).split(/s+/).map(wn).filter(Boolean);
+              const B = String(ch.after).split(/s+/).map(wn).filter(Boolean);
+              const di = (A.length === B.length) ? A.map((t, i) => (t !== B[i] ? i : -1)).filter((i) => i >= 0) : [];
+              if (di.length === 1) {
+                const oldW = A[di[0]];
+                const cnt = (ws) => ws.reduce((k, w) => k + (wn(w.word) === oldW ? 1 : 0), 0);
+                const srcCount = cnt(pristineWords);
+                if (srcCount > 0 && cnt(audible) >= srcCount) { deltaOk = false; lastReason = `volvió a cantar la palabra antigua ("${oldW}")`; lastTakesSeen.push({ url, text: audible.map((w) => w.word).join(' '), reason: lastReason }); }
+              }
+            }
+          }
+          if (sang && keptPrior && consistent && lenOk && deltaOk) {
             wholeCands.push({ url, takeId, drift: Math.abs((trimAtS || takeEnd) - origFullDur), trimAtS });
           } else if (wholeOnly && !lenOk && takeEnd > origFullDur * 1.08) {
             lastReason = `la toma ${lenFailWhy || 'salió demasiado larga'}`;
@@ -1095,6 +1118,28 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
     // Windows actually sung per unverifiable change — the checklist can't track
     // these, so the ladder counts them itself.
     const windowsSung = {};
+    // RAW-WORD DELTA CHECK (2026-08-20, Luisa 0b6412b0). "Papá" at the start of
+    // a line looks like a name, so the name-skip removed it from every checking
+    // pattern — round 5 re-sang the window, Suno sang "Papi" AGAIN, and the
+    // round was ACCEPTED instead of retried. But the audit proved Whisper hears
+    // this word perfectly (it wrote "Papi" @1:23 and "Papá" @0:17 in the same
+    // take): the blindness was ours, not Whisper's. When a change swaps exactly
+    // ONE word, the re-sung take must carry FEWER of the old word than the
+    // source it chained from — otherwise the round failed, retry like any
+    // other. Skipped when the source shows zero of the old word (Daniel's
+    // "esete": Whisper normalizes it away, so the delta can't be measured and
+    // ears stay the judge — no worse than before, strictly better when
+    // measurable).
+    const wordNorm = (s) => String(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '');
+    const diffPair = (before, after) => {
+      const A = String(before || '').split(/\s+/).map(wordNorm).filter(Boolean);
+      const B = String(after || '').split(/\s+/).map(wordNorm).filter(Boolean);
+      if (!A.length || A.length !== B.length) return null;
+      const idx = A.map((t, i) => (t !== B[i] ? i : -1)).filter((i) => i >= 0);
+      return idx.length === 1 ? { oldW: A[idx[0]], newW: B[idx[0]] } : null;
+    };
+    const countTok = (words, tok) => words.reduce((n, w) => n + (wordNorm(w.word) === tok ? 1 : 0), 0);
+    let baseWords = null; // pristine transcript words — round 1's delta source
 
     const reportOutcome = (outcome, detail, verified = null, kieTaskId = null) => {
       try { postFn({ action: 'report-outcome', songId, mode: 'section', outcome, detail: String(detail || '').slice(0, 500), verified, kieTaskId }); } catch { /* non-blocking */ }
@@ -1197,11 +1242,12 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
       priorCorrections = Array.isArray(sub.priorCorrections) ? sub.priorCorrections : priorCorrections;
 
       // Round 1 only: the live song's true length, for the whole-take length band.
-      if (!baselineDur) {
+      if (!baselineDur || !baseWords) {
         try {
           const ptr = await postFn({ action: 'transcribe', audioUrl: sub.originalAudioUrl });
           const pw = parseTimed(ptr.timed);
-          if (pw.length) baselineDur = pw[pw.length - 1].end;
+          if (pw.length && !baseWords) baseWords = pw; // delta source for the raw-word check
+          if (pw.length && !baselineDur) baselineDur = pw[pw.length - 1].end;
         } catch { /* fall back below */ }
         if (!baselineDur) baselineDur = Number(sub.window?.endS) > 0 ? Number(sub.window.endS) + 60 : 240;
       }
@@ -1351,10 +1397,28 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
               : (!noRegression ? 'la toma perdió algo que ya estaba bien'
                 : (targetLanded ? 'faltan otras correcciones'
                   : (progressed ? `avance: ${targetItem.have}/${targetItem.need} lugares corregidos (sigue el siguiente)` : 'no cantó lo corregido')))));
-        lastTakesSeen.push({ url: t.audioUrl, text: audibleWords.map((w) => w.word).join(' '), reason });
+        // RAW-WORD DELTA: for a one-word swap the name-skip blinded us to, the
+        // re-sung take must contain FEWER of the OLD word than the source it
+        // chained from — Suno re-singing the same wrong word is a failed round,
+        // not a pass. Only enforceable when Whisper can see the old word in the
+        // source at all (sourceCount > 0).
+        let deltaOk = true;
+        if (unverifiable.has(target.after)) {
+          const pair = diffPair(target.before, target.after);
+          const srcWords = best?.words || baseWords;
+          if (pair && srcWords) {
+            const srcCount = countTok(srcWords, pair.oldW);
+            if (srcCount > 0 && countTok(audibleWords, pair.oldW) >= srcCount) {
+              deltaOk = false;
+            }
+          }
+        }
+        const finalReason = deltaOk ? reason : `volvió a cantar la palabra antigua ("${(diffPair(target.before, target.after) || {}).oldW || ''}") en la ventana re-cantada`;
+        lastTakesSeen.push({ url: t.audioUrl, text: audibleWords.map((w) => w.word).join(' '), reason: finalReason });
         const score = chk.items.filter((x) => x.ok).length
           + chk.items.reduce((n, it) => n + Math.min(it.have, it.need) / Math.max(1, it.need), 0) / 100
           + (lenOk ? 0.5 : 0);
+        if (!deltaOk) { lastReason = finalReason; continue; }
         if ((targetLanded || progressed) && lenOk && priorsOk && noRegression && (!roundWinner || score > roundWinner.score)) {
           roundWinner = { url: t.audioUrl, takeId: t.id || null, fixTaskId: sub.fixTaskId, words: audibleWords, dur: takeEnd, trimAtS, chk, score, partial: !targetLanded };
         }
