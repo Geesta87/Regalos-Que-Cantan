@@ -2702,393 +2702,6 @@ export default function SuccessPage() {
 
           </>)}{/* end player card conditional */}
 
-          {/* ===== DOWNLOAD & SHARE SECTION — for EVERYONE. This is the MP3's one
-                home (Paso 1) . Video buyers used to get their MP3 through a
-                different button inside the video card instead — third door to
-                the same file (audit 2026-08-14). ===== */}
-          {(
-          <div style={{ marginBottom: '24px', animation: 'fadeInUp 0.7s ease-out 0.35s both' }}>
-
-            {/* Step indicator header */}
-            <div style={{
-              textAlign: 'center', marginBottom: '16px',
-              padding: '12px 16px',
-              background: isLight ? `rgba(${ts.accentRgb},0.06)` : `rgba(${ts.accentRgb},0.1)`,
-              borderRadius: '14px',
-              border: `1px solid ${isLight ? `rgba(${ts.accentRgb},0.12)` : `rgba(${ts.accentRgb},0.2)`}`
-            }}>
-              <p style={{ fontSize: '15px', fontWeight: '800', margin: '0 0 4px 0', color: ts.accent }}>
-                {downloadComplete[currentSong?.id] ? '✅ ¡Canción descargada!' : '👇 Paso 1: Descarga tu canción'}
-              </p>
-              <p style={{ fontSize: '12px', color: ts.textSecondary, margin: 0 }}>
-                {downloadComplete[currentSong?.id]
-                  ? 'Revisa tu carpeta de descargas · Ahora envíala por WhatsApp 👇'
-                  : 'Toca el botón para guardar el MP3 en tu teléfono o computadora'}
-              </p>
-            </div>
-
-            {/* Main download button */}
-            <button onClick={() => handleDownload(currentSong)} disabled={downloading}
-              style={{
-                width: '100%', padding: '20px',
-                background: downloadComplete[currentSong?.id]
-                  ? (isLight ? 'linear-gradient(135deg, #43C2BA, #1F8C86)' : 'linear-gradient(135deg, #43C2BA, #1F8C86)')
-                  : ts.accentGrad,
-                color: downloadComplete[currentSong?.id] ? 'white' : ts.btnText,
-                fontWeight: '800', fontSize: '18px',
-                border: 'none', borderRadius: '16px', cursor: downloading ? 'wait' : 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
-                boxShadow: downloadComplete[currentSong?.id]
-                  ? '0 8px 30px rgba(67,194,186,0.35)'
-                  : `0 8px 30px rgba(${ts.accentRgb},0.35)`,
-                opacity: downloading ? 0.7 : 1, transition: 'all 0.3s',
-                marginBottom: '10px',
-                fontFamily: ts.font
-              }}>
-              {downloading ? '⏳ Descargando...' : downloadComplete[currentSong?.id] ? '✅ Descargar de Nuevo' : '⬇️ Descargar MP3'}
-            </button>
-
-            {/* Facebook/Instagram in-app browsers block many downloads — tell
-                those users how to escape to a real browser if the tap fails. */}
-            {isInAppBrowser() && (
-              <p style={{ fontSize: '12px', color: ts.textSecondary, margin: '0 0 10px 0', textAlign: 'center' }}>
-                💡 ¿No se descarga? Toca el menú <strong>⋯</strong> arriba y elige <strong>"Abrir en el navegador"</strong> (Chrome o Safari)
-              </p>
-            )}
-
-            {/* Download All button for multiple songs */}
-            {songs.length > 1 && (
-              <button onClick={handleDownloadAll} disabled={downloading}
-                style={{
-                  width: '100%', padding: '14px',
-                  background: isLight ? 'white' : 'rgba(255,255,255,0.06)',
-                  color: ts.textPrimary, fontWeight: '700', fontSize: '15px',
-                  border: `1.5px solid ${ts.cardBorder}`, borderRadius: '16px',
-                  cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-                  transition: 'all 0.3s', fontFamily: ts.font,
-                  marginBottom: '10px'
-                }}>
-                📦 Descargar Todas ({songs.length})
-              </button>
-            )}
-          </div>
-          )}{/* end audio-download section — instrumental & video add-ons below render for video buyers too */}
-
-          {/* ===== KARAOKE SECTION =====
-                Shows only when the customer bought the karaoke add-on
-                (karaoke_status will be 'pending' → 'ready' → optionally 'failed').
-                Polled by the useEffect above so 'pending' auto-updates. */}
-          <div id="rqc-karaoke">
-            {(() => {
-              // One box per song that has the instrumental add-on. A 2-song order
-              // can have an instrumental for each song (chosen at checkout), so we
-              // render every song with a karaoke_status — not just the first.
-              const karaokeSongs = songs.filter((s) => s?.karaoke_status);
-              if (karaokeSongs.length === 0) return null;
-              const multi = songs.length > 1;
-
-              return karaokeSongs.map((ks) => {
-                const status = ks.karaoke_status;
-                const url = ks.karaoke_url;
-                const songIdx = songs.findIndex((s) => s.id === ks.id);
-                const label = multi ? ` (Canción ${songIdx + 1})` : '';
-                const fileTag = multi ? `cancion-${songIdx + 1}-` : '';
-
-                if (status === 'ready' && url) {
-                  return (
-                    <div key={ks.id} style={{
-                      marginTop: '12px', marginBottom: '10px',
-                      padding: '16px',
-                      background: isLight ? 'rgba(201,138,27,0.06)' : 'rgba(201,138,27,0.10)',
-                      border: `1.5px solid ${isLight ? 'rgba(201,138,27,0.25)' : 'rgba(201,138,27,0.4)'}`,
-                      borderRadius: '16px',
-                    }}>
-                      <p style={{
-                        margin: '0 0 8px', fontSize: '14px', fontWeight: 800,
-                        color: isLight ? '#7A5410' : '#E8B44A',
-                        display: 'flex', alignItems: 'center', gap: '6px',
-                      }}>
-                        🎤 Tu pista instrumental está lista{label}
-                      </p>
-                      <p style={{
-                        margin: '0 0 12px', fontSize: '12px',
-                        color: ts.textSecondary, lineHeight: 1.4,
-                      }}>
-                        La canción sin la voz — para cantarla tú en familia, fiestas o redes.
-                      </p>
-                      <button
-                         onClick={() => downloadWithFeedback(`kar-${ks.id}`, url, `pista-instrumental-${fileTag}para-${ks.recipient_name || 'ti'}.mp3`)}
-                         disabled={dlState[`kar-${ks.id}`] === 'busy'}
-                         style={{
-                           display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-                           width: '100%', padding: '14px',
-                           background: dlState[`kar-${ks.id}`] === 'done'
-                             ? 'linear-gradient(135deg, #43C2BA, #1F8C86)'
-                             : 'linear-gradient(135deg, #C98A1B, #E8B44A)',
-                           color: 'white', fontWeight: 800, fontSize: '15px',
-                           border: 'none', borderRadius: '14px', cursor: 'pointer',
-                           boxShadow: '0 6px 20px rgba(201,138,27,0.35)',
-                           opacity: dlState[`kar-${ks.id}`] === 'busy' ? 0.75 : 1,
-                           fontFamily: ts.font,
-                         }}>
-                        {dlLabel(`kar-${ks.id}`, `⬇️ Descargar Pista Instrumental (sin voz)${label}`)}
-                      </button>
-                    </div>
-                  );
-                }
-
-                if (status === 'pending') {
-                  return (
-                    <div key={ks.id} style={{
-                      marginTop: '12px', marginBottom: '10px',
-                      padding: '14px 16px',
-                      background: isLight ? 'rgba(201,138,27,0.05)' : 'rgba(201,138,27,0.08)',
-                      border: `1px dashed ${isLight ? 'rgba(201,138,27,0.3)' : 'rgba(201,138,27,0.35)'}`,
-                      borderRadius: '14px',
-                      textAlign: 'center',
-                    }}>
-                      <p style={{
-                        margin: '0 0 4px', fontSize: '13px', fontWeight: 700,
-                        color: isLight ? '#7A5410' : '#E8B44A',
-                      }}>
-                        🎤 Preparando tu pista instrumental{label}…
-                      </p>
-                      <p style={{ margin: 0, fontSize: '11px', color: ts.textSecondary }}>
-                        Listo en ~1 minuto. La página se actualiza sola.
-                      </p>
-                    </div>
-                  );
-                }
-
-                if (status === 'failed') {
-                  return (
-                    <div key={ks.id} style={{
-                      marginTop: '12px', marginBottom: '10px',
-                      padding: '12px 16px',
-                      background: isLight ? 'rgba(239,68,68,0.06)' : 'rgba(239,68,68,0.10)',
-                      border: `1px solid ${isLight ? 'rgba(239,68,68,0.25)' : 'rgba(239,68,68,0.3)'}`,
-                      borderRadius: '14px',
-                      textAlign: 'center',
-                    }}>
-                      <p style={{ margin: 0, fontSize: '12px', color: ts.textSecondary }}>
-                        🎤 Hubo un problema preparando tu pista instrumental{label}. Te la enviamos por correo en unos minutos — o escribe a <a href="mailto:hola@regalosquecantan.com" style={{ color: ts.accent }}>hola@regalosquecantan.com</a>.
-                      </p>
-                    </div>
-                  );
-                }
-                return null;
-              });
-            })()}
-          </div>{/* end #rqc-karaoke */}
-
-          <div id="rqc-musicvideo">
-            {/* ===== MUSIC VIDEO DELIVERY (lyric + karaoke video addons) =====
-                Each shows only if purchased: status 'pending' → 'ready' → 'failed'.
-                Attached to the FIRST song in the order (per stripe-webhook),
-                same as the instrumental. Polled by the useEffect above. */}
-            {(() => {
-              const videoProducts = [
-                {
-                  key: 'lyric',
-                  song: songs.find((s) => s?.lyric_video_status),
-                  statusOf: (s) => s?.lyric_video_status,
-                  urlOf: (s) => s?.lyric_video_url,
-                  emoji: '📝',
-                  title: 'Tu Video con Letra',
-                  blurb: 'Tu canción completa en video, con la letra iluminándose al ritmo.',
-                  fileLabel: 'video-con-letra',
-                  prep: 'Creando tu video con letra…',
-                },
-                {
-                  key: 'karaoke',
-                  song: songs.find((s) => s?.karaoke_video_status),
-                  statusOf: (s) => s?.karaoke_video_status,
-                  urlOf: (s) => s?.karaoke_video_url,
-                  emoji: '🎤',
-                  title: 'Tu Video Karaoke',
-                  blurb: 'La letra en pantalla, sin la voz — para que se la canten ustedes.',
-                  fileLabel: 'video-karaoke',
-                  prep: 'Creando tu video karaoke…',
-                },
-              ];
-
-              return videoProducts.map((p) => {
-                if (!p.song) return null;
-                const status = p.statusOf(p.song);
-                const url = p.urlOf(p.song);
-                const name = p.song.recipient_name || 'ti';
-
-                if (status === 'ready' && url) {
-                  return (
-                    <div key={p.key} style={{
-                      marginTop: '12px', marginBottom: '10px', padding: '16px',
-                      background: isLight ? 'rgba(67,194,186,0.06)' : 'rgba(67,194,186,0.10)',
-                      border: `1.5px solid ${isLight ? 'rgba(67,194,186,0.25)' : 'rgba(67,194,186,0.4)'}`,
-                      borderRadius: '16px',
-                    }}>
-                      <p style={{
-                        margin: '0 0 8px', fontSize: '14px', fontWeight: 800,
-                        color: isLight ? '#12655F' : '#89DAD4',
-                        display: 'flex', alignItems: 'center', gap: '6px',
-                      }}>
-                        {p.emoji} {p.title} está listo
-                      </p>
-                      <video src={url} controls playsInline preload="metadata" style={{
-                        width: '100%', maxHeight: '360px', borderRadius: '12px',
-                        background: '#000', marginBottom: '12px', display: 'block',
-                      }} />
-                      <button
-                        onClick={() => downloadWithFeedback(`mv-${p.key}`, url, `${p.fileLabel}-para-${name}.mp4`)}
-                        disabled={dlState[`mv-${p.key}`] === 'busy'}
-                        style={{
-                          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-                          width: '100%', padding: '14px',
-                          background: 'linear-gradient(135deg, #1F8C86, #43C2BA)',
-                          color: 'white', fontWeight: 800, fontSize: '15px',
-                          border: 'none', borderRadius: '14px', cursor: 'pointer',
-                          opacity: dlState[`mv-${p.key}`] === 'busy' ? 0.75 : 1,
-                          boxShadow: '0 6px 20px rgba(67,194,186,0.35)', fontFamily: ts.font,
-                        }}>
-                        {dlLabel(`mv-${p.key}`, `⬇️ Descargar ${p.title.replace('Tu ', '')} (MP4)`)}
-                      </button>
-                    </div>
-                  );
-                }
-
-                if (status === 'pending') {
-                  return (
-                    <div key={p.key} style={{
-                      marginTop: '12px', marginBottom: '10px', padding: '14px 16px',
-                      background: isLight ? 'rgba(67,194,186,0.05)' : 'rgba(67,194,186,0.08)',
-                      border: `1px dashed ${isLight ? 'rgba(67,194,186,0.3)' : 'rgba(67,194,186,0.35)'}`,
-                      borderRadius: '14px', textAlign: 'center',
-                    }}>
-                      <p style={{ margin: '0 0 4px', fontSize: '13px', fontWeight: 700, color: isLight ? '#12655F' : '#89DAD4' }}>
-                        {p.emoji} {p.prep}
-                      </p>
-                      <p style={{ margin: 0, fontSize: '11px', color: ts.textSecondary }}>
-                        Listo en unos minutos. La página se actualiza sola — también te lo enviamos por correo.
-                      </p>
-                    </div>
-                  );
-                }
-
-                if (status === 'failed') {
-                  return (
-                    <div key={p.key} style={{
-                      marginTop: '12px', marginBottom: '10px', padding: '12px 16px',
-                      background: isLight ? 'rgba(239,68,68,0.06)' : 'rgba(239,68,68,0.10)',
-                      border: `1px solid ${isLight ? 'rgba(239,68,68,0.25)' : 'rgba(239,68,68,0.3)'}`,
-                      borderRadius: '14px', textAlign: 'center',
-                    }}>
-                      <p style={{ margin: 0, fontSize: '12px', color: ts.textSecondary }}>
-                        {p.emoji} Hubo un problema creando {p.title.toLowerCase()}. Te lo enviamos por correo en unos minutos — o escribe a <a href="mailto:hola@regalosquecantan.com" style={{ color: ts.accent }}>hola@regalosquecantan.com</a>.
-                      </p>
-                    </div>
-                  );
-                }
-                return null;
-              });
-            })()}
-          </div>{/* end #rqc-musicvideo */}
-
-          {(
-          <div style={{ marginBottom: '24px', animation: 'fadeInUp 0.7s ease-out 0.35s both' }}>
-            {/* WhatsApp Share - Step 2 — the ONE share block on the page */}
-            <div style={{
-              textAlign: 'center', marginTop: '16px',
-              padding: '12px 16px',
-              background: isLight ? 'rgba(37,211,102,0.06)' : 'rgba(37,211,102,0.1)',
-              borderRadius: '14px',
-              border: `1px solid rgba(37,211,102,${downloadComplete[currentSong?.id] ? '0.35' : '0.15'})`
-            }}>
-              <p style={{ fontSize: '15px', fontWeight: '800', margin: '0 0 4px 0', color: '#25d366' }}>
-                {downloadComplete[currentSong?.id] ? '👇 Paso 2: Envía la canción' : '💬 Paso 2: Envía por WhatsApp'}
-              </p>
-              <p style={{ fontSize: '12px', color: ts.textSecondary, margin: '0 0 12px 0' }}>
-                Comparte el enlace para que {currentSong?.recipient_name || 'tu ser querido'} escuche su canción
-              </p>
-              <button onClick={handleShareWhatsAppSingle}
-                style={{
-                  width: '100%', padding: '16px',
-                  background: 'linear-gradient(135deg, #25d366, #128c7e)',
-                  color: 'white', fontWeight: '800', fontSize: '16px',
-                  border: 'none', borderRadius: '14px', cursor: 'pointer',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
-                  boxShadow: '0 6px 25px rgba(37,211,102,0.35)',
-                  transition: 'all 0.3s', fontFamily: ts.font
-                }}>
-                💬 Compartir esta canción
-              </button>
-              {isCombo && (
-                <button onClick={handleShareWhatsApp}
-                  style={{
-                    width: '100%', padding: '14px', marginTop: '10px',
-                    background: 'transparent',
-                    color: '#25d366', fontWeight: '800', fontSize: '15px',
-                    border: '2px solid #25d366', borderRadius: '14px', cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
-                    transition: 'all 0.3s', fontFamily: ts.font
-                  }}>
-                  💬 Compartir las 2 canciones
-                </button>
-              )}
-            </div>
-
-            {/* Helpful tip */}
-            <div style={{
-              textAlign: 'center', marginTop: '14px',
-              padding: '10px 14px',
-              background: isLight ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.04)',
-              borderRadius: '12px'
-            }}>
-              <p style={{ fontSize: '12px', color: ts.textSecondary, margin: 0, lineHeight: '1.5' }}>
-                💡 <strong>¿No encuentras el archivo?</strong> Revisa tu carpeta de <strong>Descargas</strong> o busca "cancion-para-{currentSong?.recipient_name || ''}" en tus archivos. También puedes enviar directamente el enlace por WhatsApp.
-              </p>
-            </div>
-          </div>
-          )}{/* end download section conditional */}
-
-          {/* Step timeline for video addon flow */}
-          {!videoOrderIsExcess && currentSong?.has_video_addon && videoOrder && videoOrder.status === 'pending' && (
-            <div style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              gap: '0', marginBottom: '20px', padding: '0 10px',
-              animation: 'fadeInUp 0.5s ease-out',
-            }}>
-              {[
-                { label: 'Fotos', icon: '📸', active: true },
-                { label: 'Mensaje', icon: '🎤', active: false },
-                { label: 'Video', icon: '🎬', active: false },
-              ].map((step, i) => (
-                <React.Fragment key={i}>
-                  {i > 0 && (
-                    <div style={{
-                      width: '40px', height: '2px',
-                      background: step.active ? 'rgba(102,104,210,0.5)' : 'rgba(255,255,255,0.1)',
-                    }} />
-                  )}
-                  <div style={{ textAlign: 'center', minWidth: '60px' }}>
-                    <div style={{
-                      width: '40px', height: '40px', borderRadius: '50%', margin: '0 auto 4px',
-                      background: step.active
-                        ? 'linear-gradient(135deg, #4A4CA8, #8E90E8)'
-                        : 'rgba(255,255,255,0.06)',
-                      border: step.active ? 'none' : '1.5px solid rgba(255,255,255,0.1)',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: '18px',
-                      boxShadow: step.active ? '0 4px 15px rgba(74,76,168,0.4)' : 'none',
-                    }}>{step.icon}</div>
-                    <span style={{
-                      fontSize: '10px', fontWeight: '700',
-                      color: step.active ? '#A9AAEE' : 'rgba(255,255,255,0.3)',
-                    }}>{step.label}</span>
-                  </div>
-                </React.Fragment>
-              ))}
-            </div>
-          )}
-
           {/* ===== VIDEO UPSELL SECTION =====
               When the selected song's order is an excess idle row beyond the
               paid entitlement, the upload/upsell states are suppressed (the
@@ -3100,7 +2713,10 @@ export default function SuccessPage() {
               so finished videos stay one tap away from anywhere.
               Render the section only when something inside will render: the
               selected song has an order, or nobody bought a video yet (upsell).
-              Otherwise the selected song shows no video box at all. ===== */}
+              Otherwise the selected song shows no video box at all.
+              PLACEMENT (owner call 2026-08-20): right below the song area
+              (player card) and ABOVE the Paso 1/Paso 2 download steps — the
+              video belongs with its song, not after the steps. ===== */}
           {!videoOrderIsExcess && (videoOrder || Object.keys(videoOrdersMap).length === 0) && (
           <div id="rqc-video" style={{
             borderRadius: '24px', padding: '24px',
@@ -4188,6 +3804,393 @@ export default function SuccessPage() {
             )}
           </div>
           )}{/* end videoOrderIsExcess conditional */}
+
+          {/* ===== DOWNLOAD & SHARE SECTION — for EVERYONE. This is the MP3's one
+                home (Paso 1) . Video buyers used to get their MP3 through a
+                different button inside the video card instead — third door to
+                the same file (audit 2026-08-14). ===== */}
+          {(
+          <div style={{ marginBottom: '24px', animation: 'fadeInUp 0.7s ease-out 0.35s both' }}>
+
+            {/* Step indicator header */}
+            <div style={{
+              textAlign: 'center', marginBottom: '16px',
+              padding: '12px 16px',
+              background: isLight ? `rgba(${ts.accentRgb},0.06)` : `rgba(${ts.accentRgb},0.1)`,
+              borderRadius: '14px',
+              border: `1px solid ${isLight ? `rgba(${ts.accentRgb},0.12)` : `rgba(${ts.accentRgb},0.2)`}`
+            }}>
+              <p style={{ fontSize: '15px', fontWeight: '800', margin: '0 0 4px 0', color: ts.accent }}>
+                {downloadComplete[currentSong?.id] ? '✅ ¡Canción descargada!' : '👇 Paso 1: Descarga tu canción'}
+              </p>
+              <p style={{ fontSize: '12px', color: ts.textSecondary, margin: 0 }}>
+                {downloadComplete[currentSong?.id]
+                  ? 'Revisa tu carpeta de descargas · Ahora envíala por WhatsApp 👇'
+                  : 'Toca el botón para guardar el MP3 en tu teléfono o computadora'}
+              </p>
+            </div>
+
+            {/* Main download button */}
+            <button onClick={() => handleDownload(currentSong)} disabled={downloading}
+              style={{
+                width: '100%', padding: '20px',
+                background: downloadComplete[currentSong?.id]
+                  ? (isLight ? 'linear-gradient(135deg, #43C2BA, #1F8C86)' : 'linear-gradient(135deg, #43C2BA, #1F8C86)')
+                  : ts.accentGrad,
+                color: downloadComplete[currentSong?.id] ? 'white' : ts.btnText,
+                fontWeight: '800', fontSize: '18px',
+                border: 'none', borderRadius: '16px', cursor: downloading ? 'wait' : 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
+                boxShadow: downloadComplete[currentSong?.id]
+                  ? '0 8px 30px rgba(67,194,186,0.35)'
+                  : `0 8px 30px rgba(${ts.accentRgb},0.35)`,
+                opacity: downloading ? 0.7 : 1, transition: 'all 0.3s',
+                marginBottom: '10px',
+                fontFamily: ts.font
+              }}>
+              {downloading ? '⏳ Descargando...' : downloadComplete[currentSong?.id] ? '✅ Descargar de Nuevo' : '⬇️ Descargar MP3'}
+            </button>
+
+            {/* Facebook/Instagram in-app browsers block many downloads — tell
+                those users how to escape to a real browser if the tap fails. */}
+            {isInAppBrowser() && (
+              <p style={{ fontSize: '12px', color: ts.textSecondary, margin: '0 0 10px 0', textAlign: 'center' }}>
+                💡 ¿No se descarga? Toca el menú <strong>⋯</strong> arriba y elige <strong>"Abrir en el navegador"</strong> (Chrome o Safari)
+              </p>
+            )}
+
+            {/* Download All button for multiple songs */}
+            {songs.length > 1 && (
+              <button onClick={handleDownloadAll} disabled={downloading}
+                style={{
+                  width: '100%', padding: '14px',
+                  background: isLight ? 'white' : 'rgba(255,255,255,0.06)',
+                  color: ts.textPrimary, fontWeight: '700', fontSize: '15px',
+                  border: `1.5px solid ${ts.cardBorder}`, borderRadius: '16px',
+                  cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                  transition: 'all 0.3s', fontFamily: ts.font,
+                  marginBottom: '10px'
+                }}>
+                📦 Descargar Todas ({songs.length})
+              </button>
+            )}
+          </div>
+          )}{/* end audio-download section — instrumental & video add-ons below render for video buyers too */}
+
+          {/* ===== KARAOKE SECTION =====
+                Shows only when the customer bought the karaoke add-on
+                (karaoke_status will be 'pending' → 'ready' → optionally 'failed').
+                Polled by the useEffect above so 'pending' auto-updates. */}
+          <div id="rqc-karaoke">
+            {(() => {
+              // One box per song that has the instrumental add-on. A 2-song order
+              // can have an instrumental for each song (chosen at checkout), so we
+              // render every song with a karaoke_status — not just the first.
+              const karaokeSongs = songs.filter((s) => s?.karaoke_status);
+              if (karaokeSongs.length === 0) return null;
+              const multi = songs.length > 1;
+
+              return karaokeSongs.map((ks) => {
+                const status = ks.karaoke_status;
+                const url = ks.karaoke_url;
+                const songIdx = songs.findIndex((s) => s.id === ks.id);
+                const label = multi ? ` (Canción ${songIdx + 1})` : '';
+                const fileTag = multi ? `cancion-${songIdx + 1}-` : '';
+
+                if (status === 'ready' && url) {
+                  return (
+                    <div key={ks.id} style={{
+                      marginTop: '12px', marginBottom: '10px',
+                      padding: '16px',
+                      background: isLight ? 'rgba(201,138,27,0.06)' : 'rgba(201,138,27,0.10)',
+                      border: `1.5px solid ${isLight ? 'rgba(201,138,27,0.25)' : 'rgba(201,138,27,0.4)'}`,
+                      borderRadius: '16px',
+                    }}>
+                      <p style={{
+                        margin: '0 0 8px', fontSize: '14px', fontWeight: 800,
+                        color: isLight ? '#7A5410' : '#E8B44A',
+                        display: 'flex', alignItems: 'center', gap: '6px',
+                      }}>
+                        🎤 Tu pista instrumental está lista{label}
+                      </p>
+                      <p style={{
+                        margin: '0 0 12px', fontSize: '12px',
+                        color: ts.textSecondary, lineHeight: 1.4,
+                      }}>
+                        La canción sin la voz — para cantarla tú en familia, fiestas o redes.
+                      </p>
+                      <button
+                         onClick={() => downloadWithFeedback(`kar-${ks.id}`, url, `pista-instrumental-${fileTag}para-${ks.recipient_name || 'ti'}.mp3`)}
+                         disabled={dlState[`kar-${ks.id}`] === 'busy'}
+                         style={{
+                           display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                           width: '100%', padding: '14px',
+                           background: dlState[`kar-${ks.id}`] === 'done'
+                             ? 'linear-gradient(135deg, #43C2BA, #1F8C86)'
+                             : 'linear-gradient(135deg, #C98A1B, #E8B44A)',
+                           color: 'white', fontWeight: 800, fontSize: '15px',
+                           border: 'none', borderRadius: '14px', cursor: 'pointer',
+                           boxShadow: '0 6px 20px rgba(201,138,27,0.35)',
+                           opacity: dlState[`kar-${ks.id}`] === 'busy' ? 0.75 : 1,
+                           fontFamily: ts.font,
+                         }}>
+                        {dlLabel(`kar-${ks.id}`, `⬇️ Descargar Pista Instrumental (sin voz)${label}`)}
+                      </button>
+                    </div>
+                  );
+                }
+
+                if (status === 'pending') {
+                  return (
+                    <div key={ks.id} style={{
+                      marginTop: '12px', marginBottom: '10px',
+                      padding: '14px 16px',
+                      background: isLight ? 'rgba(201,138,27,0.05)' : 'rgba(201,138,27,0.08)',
+                      border: `1px dashed ${isLight ? 'rgba(201,138,27,0.3)' : 'rgba(201,138,27,0.35)'}`,
+                      borderRadius: '14px',
+                      textAlign: 'center',
+                    }}>
+                      <p style={{
+                        margin: '0 0 4px', fontSize: '13px', fontWeight: 700,
+                        color: isLight ? '#7A5410' : '#E8B44A',
+                      }}>
+                        🎤 Preparando tu pista instrumental{label}…
+                      </p>
+                      <p style={{ margin: 0, fontSize: '11px', color: ts.textSecondary }}>
+                        Listo en ~1 minuto. La página se actualiza sola.
+                      </p>
+                    </div>
+                  );
+                }
+
+                if (status === 'failed') {
+                  return (
+                    <div key={ks.id} style={{
+                      marginTop: '12px', marginBottom: '10px',
+                      padding: '12px 16px',
+                      background: isLight ? 'rgba(239,68,68,0.06)' : 'rgba(239,68,68,0.10)',
+                      border: `1px solid ${isLight ? 'rgba(239,68,68,0.25)' : 'rgba(239,68,68,0.3)'}`,
+                      borderRadius: '14px',
+                      textAlign: 'center',
+                    }}>
+                      <p style={{ margin: 0, fontSize: '12px', color: ts.textSecondary }}>
+                        🎤 Hubo un problema preparando tu pista instrumental{label}. Te la enviamos por correo en unos minutos — o escribe a <a href="mailto:hola@regalosquecantan.com" style={{ color: ts.accent }}>hola@regalosquecantan.com</a>.
+                      </p>
+                    </div>
+                  );
+                }
+                return null;
+              });
+            })()}
+          </div>{/* end #rqc-karaoke */}
+
+          <div id="rqc-musicvideo">
+            {/* ===== MUSIC VIDEO DELIVERY (lyric + karaoke video addons) =====
+                Each shows only if purchased: status 'pending' → 'ready' → 'failed'.
+                Attached to the FIRST song in the order (per stripe-webhook),
+                same as the instrumental. Polled by the useEffect above. */}
+            {(() => {
+              const videoProducts = [
+                {
+                  key: 'lyric',
+                  song: songs.find((s) => s?.lyric_video_status),
+                  statusOf: (s) => s?.lyric_video_status,
+                  urlOf: (s) => s?.lyric_video_url,
+                  emoji: '📝',
+                  title: 'Tu Video con Letra',
+                  blurb: 'Tu canción completa en video, con la letra iluminándose al ritmo.',
+                  fileLabel: 'video-con-letra',
+                  prep: 'Creando tu video con letra…',
+                },
+                {
+                  key: 'karaoke',
+                  song: songs.find((s) => s?.karaoke_video_status),
+                  statusOf: (s) => s?.karaoke_video_status,
+                  urlOf: (s) => s?.karaoke_video_url,
+                  emoji: '🎤',
+                  title: 'Tu Video Karaoke',
+                  blurb: 'La letra en pantalla, sin la voz — para que se la canten ustedes.',
+                  fileLabel: 'video-karaoke',
+                  prep: 'Creando tu video karaoke…',
+                },
+              ];
+
+              return videoProducts.map((p) => {
+                if (!p.song) return null;
+                const status = p.statusOf(p.song);
+                const url = p.urlOf(p.song);
+                const name = p.song.recipient_name || 'ti';
+
+                if (status === 'ready' && url) {
+                  return (
+                    <div key={p.key} style={{
+                      marginTop: '12px', marginBottom: '10px', padding: '16px',
+                      background: isLight ? 'rgba(67,194,186,0.06)' : 'rgba(67,194,186,0.10)',
+                      border: `1.5px solid ${isLight ? 'rgba(67,194,186,0.25)' : 'rgba(67,194,186,0.4)'}`,
+                      borderRadius: '16px',
+                    }}>
+                      <p style={{
+                        margin: '0 0 8px', fontSize: '14px', fontWeight: 800,
+                        color: isLight ? '#12655F' : '#89DAD4',
+                        display: 'flex', alignItems: 'center', gap: '6px',
+                      }}>
+                        {p.emoji} {p.title} está listo
+                      </p>
+                      <video src={url} controls playsInline preload="metadata" style={{
+                        width: '100%', maxHeight: '360px', borderRadius: '12px',
+                        background: '#000', marginBottom: '12px', display: 'block',
+                      }} />
+                      <button
+                        onClick={() => downloadWithFeedback(`mv-${p.key}`, url, `${p.fileLabel}-para-${name}.mp4`)}
+                        disabled={dlState[`mv-${p.key}`] === 'busy'}
+                        style={{
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                          width: '100%', padding: '14px',
+                          background: 'linear-gradient(135deg, #1F8C86, #43C2BA)',
+                          color: 'white', fontWeight: 800, fontSize: '15px',
+                          border: 'none', borderRadius: '14px', cursor: 'pointer',
+                          opacity: dlState[`mv-${p.key}`] === 'busy' ? 0.75 : 1,
+                          boxShadow: '0 6px 20px rgba(67,194,186,0.35)', fontFamily: ts.font,
+                        }}>
+                        {dlLabel(`mv-${p.key}`, `⬇️ Descargar ${p.title.replace('Tu ', '')} (MP4)`)}
+                      </button>
+                    </div>
+                  );
+                }
+
+                if (status === 'pending') {
+                  return (
+                    <div key={p.key} style={{
+                      marginTop: '12px', marginBottom: '10px', padding: '14px 16px',
+                      background: isLight ? 'rgba(67,194,186,0.05)' : 'rgba(67,194,186,0.08)',
+                      border: `1px dashed ${isLight ? 'rgba(67,194,186,0.3)' : 'rgba(67,194,186,0.35)'}`,
+                      borderRadius: '14px', textAlign: 'center',
+                    }}>
+                      <p style={{ margin: '0 0 4px', fontSize: '13px', fontWeight: 700, color: isLight ? '#12655F' : '#89DAD4' }}>
+                        {p.emoji} {p.prep}
+                      </p>
+                      <p style={{ margin: 0, fontSize: '11px', color: ts.textSecondary }}>
+                        Listo en unos minutos. La página se actualiza sola — también te lo enviamos por correo.
+                      </p>
+                    </div>
+                  );
+                }
+
+                if (status === 'failed') {
+                  return (
+                    <div key={p.key} style={{
+                      marginTop: '12px', marginBottom: '10px', padding: '12px 16px',
+                      background: isLight ? 'rgba(239,68,68,0.06)' : 'rgba(239,68,68,0.10)',
+                      border: `1px solid ${isLight ? 'rgba(239,68,68,0.25)' : 'rgba(239,68,68,0.3)'}`,
+                      borderRadius: '14px', textAlign: 'center',
+                    }}>
+                      <p style={{ margin: 0, fontSize: '12px', color: ts.textSecondary }}>
+                        {p.emoji} Hubo un problema creando {p.title.toLowerCase()}. Te lo enviamos por correo en unos minutos — o escribe a <a href="mailto:hola@regalosquecantan.com" style={{ color: ts.accent }}>hola@regalosquecantan.com</a>.
+                      </p>
+                    </div>
+                  );
+                }
+                return null;
+              });
+            })()}
+          </div>{/* end #rqc-musicvideo */}
+
+          {(
+          <div style={{ marginBottom: '24px', animation: 'fadeInUp 0.7s ease-out 0.35s both' }}>
+            {/* WhatsApp Share - Step 2 — the ONE share block on the page */}
+            <div style={{
+              textAlign: 'center', marginTop: '16px',
+              padding: '12px 16px',
+              background: isLight ? 'rgba(37,211,102,0.06)' : 'rgba(37,211,102,0.1)',
+              borderRadius: '14px',
+              border: `1px solid rgba(37,211,102,${downloadComplete[currentSong?.id] ? '0.35' : '0.15'})`
+            }}>
+              <p style={{ fontSize: '15px', fontWeight: '800', margin: '0 0 4px 0', color: '#25d366' }}>
+                {downloadComplete[currentSong?.id] ? '👇 Paso 2: Envía la canción' : '💬 Paso 2: Envía por WhatsApp'}
+              </p>
+              <p style={{ fontSize: '12px', color: ts.textSecondary, margin: '0 0 12px 0' }}>
+                Comparte el enlace para que {currentSong?.recipient_name || 'tu ser querido'} escuche su canción
+              </p>
+              <button onClick={handleShareWhatsAppSingle}
+                style={{
+                  width: '100%', padding: '16px',
+                  background: 'linear-gradient(135deg, #25d366, #128c7e)',
+                  color: 'white', fontWeight: '800', fontSize: '16px',
+                  border: 'none', borderRadius: '14px', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
+                  boxShadow: '0 6px 25px rgba(37,211,102,0.35)',
+                  transition: 'all 0.3s', fontFamily: ts.font
+                }}>
+                💬 Compartir esta canción
+              </button>
+              {isCombo && (
+                <button onClick={handleShareWhatsApp}
+                  style={{
+                    width: '100%', padding: '14px', marginTop: '10px',
+                    background: 'transparent',
+                    color: '#25d366', fontWeight: '800', fontSize: '15px',
+                    border: '2px solid #25d366', borderRadius: '14px', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
+                    transition: 'all 0.3s', fontFamily: ts.font
+                  }}>
+                  💬 Compartir las 2 canciones
+                </button>
+              )}
+            </div>
+
+            {/* Helpful tip */}
+            <div style={{
+              textAlign: 'center', marginTop: '14px',
+              padding: '10px 14px',
+              background: isLight ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.04)',
+              borderRadius: '12px'
+            }}>
+              <p style={{ fontSize: '12px', color: ts.textSecondary, margin: 0, lineHeight: '1.5' }}>
+                💡 <strong>¿No encuentras el archivo?</strong> Revisa tu carpeta de <strong>Descargas</strong> o busca "cancion-para-{currentSong?.recipient_name || ''}" en tus archivos. También puedes enviar directamente el enlace por WhatsApp.
+              </p>
+            </div>
+          </div>
+          )}{/* end download section conditional */}
+
+          {/* Step timeline for video addon flow */}
+          {!videoOrderIsExcess && currentSong?.has_video_addon && videoOrder && videoOrder.status === 'pending' && (
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              gap: '0', marginBottom: '20px', padding: '0 10px',
+              animation: 'fadeInUp 0.5s ease-out',
+            }}>
+              {[
+                { label: 'Fotos', icon: '📸', active: true },
+                { label: 'Mensaje', icon: '🎤', active: false },
+                { label: 'Video', icon: '🎬', active: false },
+              ].map((step, i) => (
+                <React.Fragment key={i}>
+                  {i > 0 && (
+                    <div style={{
+                      width: '40px', height: '2px',
+                      background: step.active ? 'rgba(102,104,210,0.5)' : 'rgba(255,255,255,0.1)',
+                    }} />
+                  )}
+                  <div style={{ textAlign: 'center', minWidth: '60px' }}>
+                    <div style={{
+                      width: '40px', height: '40px', borderRadius: '50%', margin: '0 auto 4px',
+                      background: step.active
+                        ? 'linear-gradient(135deg, #4A4CA8, #8E90E8)'
+                        : 'rgba(255,255,255,0.06)',
+                      border: step.active ? 'none' : '1.5px solid rgba(255,255,255,0.1)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: '18px',
+                      boxShadow: step.active ? '0 4px 15px rgba(74,76,168,0.4)' : 'none',
+                    }}>{step.icon}</div>
+                    <span style={{
+                      fontSize: '10px', fontWeight: '700',
+                      color: step.active ? '#A9AAEE' : 'rgba(255,255,255,0.3)',
+                    }}>{step.label}</span>
+                  </div>
+                </React.Fragment>
+              ))}
+            </div>
+          )}
 
           {/* ===== ANIMADO — in production / delivered (deliverables flow) ===== */}
           {renderAnimadoStatusCards()}
