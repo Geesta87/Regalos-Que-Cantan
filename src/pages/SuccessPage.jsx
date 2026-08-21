@@ -322,7 +322,12 @@ export default function SuccessPage() {
   // videoOrder is derived from the map based on whichever song is currently selected.
   // We also keep a writable state so all existing setVideoOrder() calls keep working.
   const [_videoOrder, _setVideoOrder] = useState(null);
-  const videoOrder = videoOrdersMap[songs[selectedVideoSongIdx]?.id] ?? _videoOrder;
+  // The writable state is only a fallback while the order is still a repointable
+  // pending row (0 photos — it follows the song selection until locked). A locked
+  // or finished order must never bleed onto a song it doesn't belong to: the paid
+  // video renders only under its own song (owner call 2026-08-20).
+  const videoOrder = videoOrdersMap[songs[selectedVideoSongIdx]?.id]
+    ?? ((_videoOrder?.status === 'pending' && !(_videoOrder.photo_count > 0)) ? _videoOrder : null);
   const setVideoOrder = useCallback((orderOrUpdater) => {
     _setVideoOrder(prev => {
       const next = typeof orderOrUpdater === 'function' ? orderOrUpdater(prev) : orderOrUpdater;
@@ -940,7 +945,12 @@ export default function SuccessPage() {
           const order = map[firstSongId];
           _setVideoOrder(order);
           const orderSongIdx = songs.findIndex(s => s.id === firstSongId);
-          if (orderSongIdx >= 0) setSelectedVideoSongIdx(orderSongIdx);
+          if (orderSongIdx >= 0) {
+            // Keep the top song selector in sync — the video only renders under
+            // its own song, so the page must open with that song selected.
+            setSelectedVideoSongIdx(orderSongIdx);
+            setCurrentSong(songs[orderSongIdx]);
+          }
           if (order.status === 'processing') {
             startVideoPolling(order.song_id);
           }
@@ -990,7 +1000,10 @@ export default function SuccessPage() {
         if (!insertErr && newOrder) {
           setVideoOrder(newOrder);
           const idx = songs.findIndex(s => s.id === flaggedSong.id);
-          if (idx >= 0) setSelectedVideoSongIdx(idx);
+          if (idx >= 0) {
+            setSelectedVideoSongIdx(idx);
+            setCurrentSong(songs[idx]);
+          }
         }
       } catch (e) {
         console.error('Failed to auto-create video order:', e);
@@ -3080,10 +3093,15 @@ export default function SuccessPage() {
               When the selected song's order is an excess idle row beyond the
               paid entitlement, the upload/upsell states are suppressed (the
               entitlement rule would refuse the upload — dead-end CTA, audit
-              2026-08-14). But FINISHED videos always render, regardless of
-              which song is selected — the completed stack below is keyed to
-              the whole bundle, not the selection. ===== */}
-          {(!videoOrderIsExcess || Object.values(videoOrdersMap).some((o) => o?.status === 'completed' && o?.video_url)) && (
+              2026-08-14). Owner call 2026-08-20: the video is TIED TO ITS SONG —
+              every state below (upsell, upload, processing, completed) renders
+              only when the song it belongs to is the selected one. The package
+              summary's "Video con fotos → Ver" chip switches to the right song,
+              so finished videos stay one tap away from anywhere.
+              Render the section only when something inside will render: the
+              selected song has an order, or nobody bought a video yet (upsell).
+              Otherwise the selected song shows no video box at all. ===== */}
+          {!videoOrderIsExcess && (videoOrder || Object.keys(videoOrdersMap).length === 0) && (
           <div id="rqc-video" style={{
             borderRadius: '24px', padding: '24px',
             border: '1px solid rgba(102,104,210,0.25)',
@@ -3108,8 +3126,12 @@ export default function SuccessPage() {
                 removed 2026-08-14 — the main download section above now renders
                 for video buyers too, so this was a second door to the same file.) */}
 
-            {/* STATE: No video order yet — Show upsell CTA */}
-            {!videoOrderIsExcess && !videoOrder && (
+            {/* STATE: No video order yet — Show upsell CTA.
+                Suppressed when the bundle already holds any paid order: for a
+                single-video buyer viewing their OTHER song, a "buy a video"
+                pitch reads as "your video is gone" (the two songs are versions
+                of the same song — don't sell it twice). */}
+            {!videoOrderIsExcess && !videoOrder && Object.keys(videoOrdersMap).length === 0 && (
               <>
                 {/* Film strip decoration */}
                 <div style={{ display: 'flex', gap: '3px', marginBottom: '18px', overflow: 'hidden', height: '6px', opacity: 0.35 }}>
@@ -3971,14 +3993,14 @@ export default function SuccessPage() {
               </>
             )}
 
-            {/* STATE: Completed — EVERY finished video, stacked =====
-                Owner call 2026-08-14: each song's video gets its own player and
-                its own download, visible together — no switching songs 2,000px
-                up just to reach video #2. The selected song's video leads.
-                Keyed to the BUNDLE (any completed order), not the selected song —
-                otherwise a selection sitting on a pending/excess order hid every
-                finished video (Gladys's page opened on exactly that). */}
-            {Object.values(videoOrdersMap).some((o) => o?.status === 'completed' && o?.video_url) && (
+            {/* STATE: Completed — the SELECTED song's finished video =====
+                Owner call 2026-08-20 (supersedes the 08-14 bundle-keying): the
+                paid video is tied to its song — selecting the other song must
+                NOT show it (a single-video buyer saw "a video on both songs").
+                Finished videos stay reachable from anywhere: the page opens
+                with the video's song selected, and the package summary's
+                "Video con fotos → Ver" chip switches song + scrolls here. */}
+            {videoOrder?.status === 'completed' && videoOrder?.video_url && (
               <>
                 {/* Film strip decoration */}
                 <div style={{ display: 'flex', gap: '3px', marginBottom: '18px', overflow: 'hidden', height: '6px', opacity: 0.35 }}>
@@ -3999,10 +4021,7 @@ export default function SuccessPage() {
                   }}>🎉</div>
                   <div>
                     <h3 style={{ fontSize: '19px', fontWeight: '900', marginBottom: '5px', color: ts.textPrimary, lineHeight: 1.15, letterSpacing: '-0.02em' }}>
-                      {(() => {
-                        const doneCount = songs.filter((s) => videoOrdersMap[s.id]?.status === 'completed' && videoOrdersMap[s.id]?.video_url).length;
-                        return doneCount > 1 ? '¡Tus videos están listos!' : '¡Tu video está listo!';
-                      })()}
+                      ¡Tu video está listo!
                     </h3>
                     <p style={{ fontSize: '13px', color: ts.textSecondary, lineHeight: '1.5', margin: 0 }}>
                       Tu recuerdo cinematográfico quedó increíble
@@ -4010,14 +4029,16 @@ export default function SuccessPage() {
                   </div>
                 </div>
 
-                {/* One player + one download PER finished video. Selected song's
-                    video first, then the rest in song order. */}
+                {/* The selected song's video only. `multi` (bundle has 2+
+                    finished videos — dual buyers) keeps the numbered label and
+                    filename so the two downloads don't collide on disk. */}
                 {(() => {
+                  const selectedId = songs[selectedVideoSongIdx]?.id;
                   const done = songs
                     .map((s, i) => ({ s, i, o: videoOrdersMap[s.id] }))
-                    .filter(({ o }) => o?.status === 'completed' && o?.video_url);
-                  done.sort((a, b) => (a.s.id === currentSong?.id ? -1 : b.s.id === currentSong?.id ? 1 : a.i - b.i));
-                  const multi = done.length > 1;
+                    .filter(({ s, o }) => s.id === selectedId && o?.status === 'completed' && o?.video_url);
+                  const multi = Object.values(videoOrdersMap)
+                    .filter((o) => o?.status === 'completed' && o?.video_url).length > 1;
                   return done.map(({ s, i, o }) => {
                     const key = `pv-${o.id}`;
                     const filename = `video-${multi ? `cancion-${i + 1}-` : ''}para-${s.recipient_name || 'ti'}.mp4`;
