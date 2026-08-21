@@ -702,7 +702,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
               const A = String(ch.before).split(/s+/).map(wn).filter(Boolean);
               const B = String(ch.after).split(/s+/).map(wn).filter(Boolean);
               const di = (A.length === B.length) ? A.map((t, i) => (t !== B[i] ? i : -1)).filter((i) => i >= 0) : [];
-              if (di.length === 1) {
+              if (di.length === 1 && A[di[0]].length > 2 && !/^(el|la|los|las|un|una|de|del|al|en|con|por|para|que|y|e|o|u|mi|tu|su|me|te|se|lo|le)$/.test(A[di[0]])) {
                 const oldW = A[di[0]];
                 const cnt = (ws) => ws.reduce((k, w) => k + (wn(w.word) === oldW ? 1 : 0), 0);
                 const srcCount = cnt(pristineWords);
@@ -1136,7 +1136,13 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
       const B = String(after || '').split(/\s+/).map(wordNorm).filter(Boolean);
       if (!A.length || A.length !== B.length) return null;
       const idx = A.map((t, i) => (t !== B[i] ? i : -1)).filter((i) => i >= 0);
-      return idx.length === 1 ? { oldW: A[idx[0]], newW: B[idx[0]] } : null;
+      if (idx.length !== 1) return null;
+      // A swapped-out FUNCTION WORD ("y", "de", "el"…) is not measurable: Whisper
+      // scatters those inconsistently, so a delta on them would false-reject good
+      // takes (Venancio: "juntos y aún" -> "juntos, Cristina, aún" swaps a bare
+      // "y"). Only content words carry a trustworthy count.
+      if (A[idx[0]].length <= 2 || /^(el|la|los|las|un|una|de|del|al|en|con|por|para|que|y|e|o|u|mi|tu|su|me|te|se|lo|le)$/.test(A[idx[0]])) return null;
+      return { oldW: A[idx[0]], newW: B[idx[0]] };
     };
     const countTok = (words, tok) => words.reduce((n, w) => n + (wordNorm(w.word) === tok ? 1 : 0), 0);
     let baseWords = null; // pristine transcript words — round 1's delta source
