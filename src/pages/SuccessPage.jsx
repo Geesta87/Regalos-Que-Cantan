@@ -1078,6 +1078,17 @@ export default function SuccessPage() {
         .in('song_id', bundleSongIds)
         .eq('paid', true)
         .order('created_at', { ascending: true });
+      // An order bought in its OWN Stripe checkout (video_upsell for this exact
+      // song — it carries a stripe_session_id; auto-created rows never do) is
+      // entitled by itself: continue it regardless of the bundle cap. This is
+      // how a bundle customer's second $9.99 video (bought per-song from the
+      // CTA) gets its photos uploaded without tripping the entitlement refusal.
+      const ownPurchased = (existing || []).find(o =>
+        o.song_id === song.id && o.status === 'pending' && o.stripe_session_id);
+      if (ownPurchased) {
+        setVideoOrder(ownPurchased);
+        return ownPurchased;
+      }
       // Consumed = past 'pending' and not 'failed' (photos_uploaded / processing /
       // completed). A pending order — even with photos already attached — is a
       // video still being SET UP, so retrying it must not read as a second video.
@@ -2041,7 +2052,11 @@ export default function SuccessPage() {
   const consumedVideoCount = Object.values(videoOrdersMap)
     .filter((o) => o && o.status !== 'pending' && o.status !== 'failed').length;
   // True when the current selection's order is an excess idle row we won't serve.
+  // An order with its own stripe_session_id was bought in a separate checkout
+  // (video_upsell for this exact song) — it pays for itself and is NEVER excess.
+  // Only auto-created rows (no session id) can exceed the bundle entitlement.
   const videoOrderIsExcess = !!(videoOrder && videoOrder.status === 'pending'
+    && !videoOrder.stripe_session_id
     && !(videoOrder.photo_count > 0) && videoEntitled > 0 && consumedVideoCount >= videoEntitled);
 
   // Animado production/delivered card — rendered in the DELIVERABLES flow (the
@@ -2409,8 +2424,10 @@ export default function SuccessPage() {
               if (!vo) return;
               // Excess idle order beyond the paid entitlement (duplicate-order
               // bug residue): don't list it — a "Sube tus fotos" row for a video
-              // they can't make is a dead-end prompt.
+              // they can't make is a dead-end prompt. Session-backed orders
+              // (separate video_upsell checkout) pay for themselves — always list.
               if (vo.status === 'pending' && !(vo.photo_count > 0)
+                && !vo.stripe_session_id
                 && videoEntitled > 0 && consumedVideoCount >= videoEntitled) return;
               const status = vo.status === 'completed' ? 'ready'
                 : vo.status === 'failed' ? 'failed'
@@ -2711,13 +2728,15 @@ export default function SuccessPage() {
               only when the song it belongs to is the selected one. The package
               summary's "Video con fotos → Ver" chip switches to the right song,
               so finished videos stay one tap away from anywhere.
-              Render the section only when something inside will render: the
-              selected song has an order, or nobody bought a video yet (upsell).
-              Otherwise the selected song shows no video box at all.
+              Every selected song renders something here: its own order's state
+              when it has one, otherwise the buy-a-video CTA (owner call
+              2026-08-20: a bundle customer must be able to buy a video for
+              the version that doesn't have one — each purchase is its own
+              $9.99 Stripe checkout via create-video-checkout).
               PLACEMENT (owner call 2026-08-20): right below the song area
               (player card) and ABOVE the Paso 1/Paso 2 download steps — the
               video belongs with its song, not after the steps. ===== */}
-          {!videoOrderIsExcess && (videoOrder || Object.keys(videoOrdersMap).length === 0) && (
+          {!videoOrderIsExcess && (
           <div id="rqc-video" style={{
             borderRadius: '24px', padding: '24px',
             border: '1px solid rgba(102,104,210,0.25)',
@@ -2742,12 +2761,13 @@ export default function SuccessPage() {
                 removed 2026-08-14 — the main download section above now renders
                 for video buyers too, so this was a second door to the same file.) */}
 
-            {/* STATE: No video order yet — Show upsell CTA.
-                Suppressed when the bundle already holds any paid order: for a
-                single-video buyer viewing their OTHER song, a "buy a video"
-                pitch reads as "your video is gone" (the two songs are versions
-                of the same song — don't sell it twice). */}
-            {!videoOrderIsExcess && !videoOrder && Object.keys(videoOrdersMap).length === 0 && (
+            {/* STATE: This song has no video order — show the buy CTA.
+                Per-song on purpose (owner call 2026-08-20): a bundle customer
+                who already made the video for one version can buy another
+                $9.99 video for THIS version. When the bundle already holds a
+                video, a clarifying line explains this is an additional one so
+                it can't read as "your video is gone". */}
+            {!videoOrderIsExcess && !videoOrder && (
               <>
                 {/* Film strip decoration */}
                 <div style={{ display: 'flex', gap: '3px', marginBottom: '18px', overflow: 'hidden', height: '6px', opacity: 0.35 }}>
@@ -2776,6 +2796,11 @@ export default function SuccessPage() {
                     <p style={{ fontSize: '12px', color: '#A9AAEE', fontWeight: '600', margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <span style={{ fontSize: '14px' }}>💜</span> Ya 2,400+ familias han creado su video personalizado
                     </p>
+                    {Object.keys(videoOrdersMap).length > 0 && (
+                      <p style={{ fontSize: '12px', color: ts.textSecondary, fontWeight: '600', margin: '8px 0 0', lineHeight: 1.5 }}>
+                        ✅ Tu video de la otra versión no cambia — este sería un video nuevo para esta versión de la canción.
+                      </p>
+                    )}
                   </div>
                 </div>
 
