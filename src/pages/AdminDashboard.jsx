@@ -1145,6 +1145,15 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
       return { oldW: A[idx[0]], newW: B[idx[0]] };
     };
     const countTok = (words, tok) => words.reduce((n, w) => n + (wordNorm(w.word) === tok ? 1 : 0), 0);
+    // Content words the AFTER line introduces that the BEFORE line never had
+    // (a name, a new noun) — the POSITIVE evidence a re-sung take can carry.
+    // Short/function words are excluded: Whisper scatters them.
+    const FUNC_TOK_RE = /^(el|la|los|las|un|una|de|del|al|en|con|por|para|que|y|e|o|u|mi|tu|su|me|te|se|lo|le|soy|eres|es|son|sin|tan|mas|ya|no|si|hoy|aun|ni|muy|asi|ese|esa|este|esta|eso|esto)$/;
+    const addedTokens = (before, after) => {
+      const A = new Set(String(before || '').split(/s+/).map(wordNorm).filter(Boolean));
+      return [...new Set(String(after || '').split(/s+/).map(wordNorm).filter(Boolean))]
+        .filter((t) => !A.has(t) && t.length >= 4 && !FUNC_TOK_RE.test(t));
+    };
     let baseWords = null; // pristine transcript words — round 1's delta source
 
     const reportOutcome = (outcome, detail, verified = null, kieTaskId = null) => {
@@ -1441,6 +1450,25 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
       if (unverifiable.has(target.after)) {
         windowsSung[target.after] = (windowsSung[target.after] || 0) + 1;
         perTarget[target.after] = 0;
+        // POSITIVE-EVIDENCE SHORTCUT (2026-08-21, Venancio 48606563). Forced
+        // windows exist because the transcript can't PROVE an occurrence was
+        // fixed — but when the change ADDS a content word the song never had
+        // ("juntos y aún" → "juntos, Cristina, aún"), hearing that word as many
+        // times as the corrected sheet carries it IS proof every spot landed:
+        // Kie re-renders everything after the window from the new sheet, so one
+        // window routinely lands all the choruses (Venancio: round 1 already
+        // sang both Cristinas AND the bridge's Venancio). Absence proves nothing
+        // (Whisper mangles names) and still forces the windows; only presence
+        // ends the loop. Before this, round 2 carried both Cristinas and the
+        // ladder still re-sang chorus 2 twice more — ~10 credits, each take
+        // over-extending further (432s → 549s) for a spot that was already right.
+        // Counted as a DELTA against the pristine transcript: a name the song
+        // already sang elsewhere must not vouch for the spots being re-sung.
+        const needN = Math.max(1, timesInLyrics(combinedLyrics, target.after));
+        const added = addedTokens(target.before, target.after);
+        if (baseWords && added.length && added.every((tok) => countTok(roundWinner.words, tok) - countTok(baseWords, tok) >= needN)) {
+          windowsSung[target.after] = Math.max(windowsSung[target.after], needN);
+        }
       }
       best = roundWinner;
       if (Number(sub.window?.startS) > 0) changeMarks.push(Number(sub.window.startS));
