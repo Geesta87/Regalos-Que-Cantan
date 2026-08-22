@@ -323,7 +323,7 @@ function countByGroups(words: W[], groups: string[][]): number {
   }
   return count;
 }
-function auditStructure(audible: W[], lyricsText: string): string | null {
+function auditStructure(audible: W[], lyricsText: string, baseWords: W[] | null = null): string | null {
   const lines = String(lyricsText || '').split('\n').map((s) => s.trim()).filter((l) => l && !/^\[.*\]$/.test(l));
   const need = new Map<string, { line: string; n: number; groups: string[][] }>();
   for (const l of lines) {
@@ -334,7 +334,27 @@ function auditStructure(audible: W[], lyricsText: string): string | null {
     if (e) e.n++; else need.set(key, { line: l, n: 1, groups });
   }
   for (const { line, n, groups } of need.values()) {
-    let have = countByGroups(audible, groups);
+    let have = countLineForAudit(audible, line, groups, n);
+    // BASELINE-RELATIVE (2026-08-21, Stephanie 41a61123, mirror of the browser
+    // guard). Whisper never hears "Pasé encerrado años que no cuentan" on that
+    // singer — the PRISTINE transcript scores it 0 too ("pasa"). Judged against
+    // the lyric sheet alone, every rescue of that song fails forever on a line
+    // the fix never touched. When the original transcript disagrees with the
+    // sheet on a line, the original is the reference: the take passes that line
+    // if it scores what the original scores. Reliable lines keep the exact rule.
+    if (have !== n && baseWords && baseWords.length) {
+      const baseHave = countLineForAudit(baseWords, line, groups, n);
+      if (baseHave !== n && have === baseHave) continue;
+    }
+    if (have < n) return `falta una sección: "${line.slice(0, 48)}…" (${have}/${n})`;
+    if (have > n) return `sección duplicada: "${line.slice(0, 48)}…" (${have}/${n})`;
+  }
+  return null;
+}
+// Count one ledger line in a word list, with the merged-word tolerance.
+function countLineForAudit(ws: W[], line: string, groups: string[][], n: number): number {
+  {
+    let have = countByGroups(ws, groups);
     // MERGED-WORD TOLERANCE (2026-08-14, Eric 3a5650f3): Whisper hears elided
     // Spanish as one word — "grande ero" came back "grandero" — and a per-word
     // matcher counts a correctly-sung line 0 times. Before failing a line, retry
@@ -353,15 +373,13 @@ function auditStructure(audible: W[], lyricsText: string): string | null {
           // (0 found -> glue finds 2 when n=1), and letting it exceed n flipped
           // the verdict from "missing" to a phantom "sección duplicada". The
           // tolerance exists only to cure undercounts.
-          have = Math.max(have, Math.min(n, countByGroups(audible, buildAuditGroups(merged))));
+          have = Math.max(have, Math.min(n, countByGroups(ws, buildAuditGroups(merged))));
           if (have >= n) break;
         }
       }
     }
-    if (have < n) return `falta una sección: "${line.slice(0, 48)}…" (${have}/${n})`;
-    if (have > n) return `sección duplicada: "${line.slice(0, 48)}…" (${have}/${n})`;
+    return have;
   }
-  return null;
 }
 
 // ── Count-based take checklist — port of AdminDashboard's evalChecklist ──────
@@ -803,7 +821,10 @@ async function stepValidate(admin: any, r: any, state: any): Promise<void> {
   // origStart: when the ORIGINAL's vocals begin — the intro-length yardstick
   // (see the intro guard below). Recomputed alongside origDur when missing.
   let origStart: number | null = plan.origStart ?? null;
-  if (!origDur || origStart == null) {
+  // Pristine transcript words — the structure audit's baseline (see
+  // auditStructure). Persisted in the plan so later rounds reuse them.
+  let pristineWords: W[] | null = Array.isArray(plan.pristineWords) && plan.pristineWords.length ? plan.pristineWords : null;
+  if (!origDur || origStart == null || !pristineWords) {
     let yardstickUrl: string | null = plan.originalAudioUrl || null;
     if (!yardstickUrl) {
       const { data: songRow } = await admin.from('songs')
@@ -815,6 +836,7 @@ async function stepValidate(admin: any, r: any, state: any): Promise<void> {
       const pw = parseTimed(pt?.timed || '');
       origDur = pw.length ? pw[pw.length - 1].end : origDur;
       origStart = pw.length ? pw[0].start : origStart;
+      if (pw.length) { pristineWords = pw; plan.pristineWords = pw; }
       if (origDur) await setAuto(admin, r.id, { auto_plan: { ...plan, origDur, origStart } });
       // A failed yardstick transcription is OUR outage, not a bad take — stop
       // the round and say so instead of rejecting every take for "no duration".
@@ -904,7 +926,7 @@ async function stepValidate(admin: any, r: any, state: any): Promise<void> {
     let lenOk = takeEnd >= effOrig * 0.80 && takeEnd <= effOrig * 1.08;
     if (lenOk) {
       // In-band whole take: still must contain the whole song, no dup sections.
-      structFail = auditStructure(words, combinedLyrics);
+      structFail = auditStructure(words, combinedLyrics, pristineWords);
       if (structFail) lenOk = false;
     } else if (takeEnd > effOrig * 1.08) {
       // Over-long: try each closing-line occurrence (in band, earliest first)
@@ -916,7 +938,7 @@ async function stepValidate(admin: any, r: any, state: any): Promise<void> {
         .sort((a, b) => a - b);
       for (const e of ends) {
         const aud = words.filter((w) => w.end <= e + 0.3);
-        structFail = auditStructure(aud, combinedLyrics);
+        structFail = auditStructure(aud, combinedLyrics, pristineWords);
         if (!structFail) {
           trimAtS = Math.min(takeEnd, +(e + 2.5).toFixed(2));
           lenOk = true;

@@ -653,6 +653,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
               words.filter((w) => w.end <= trimAtS),
               fullLyrics,
               [...(requireAll || []), ...(priorAfters || [])],
+              pristineWords,
             )) { trimAtS = null; lenOk = false; lenFailWhy = `salió larga (${mmss(takeEnd)}) y el recorte en el final real dejaría secciones repetidas o faltantes`; }
           }
           // Every check below runs on the AUDIBLE part only — the over-extension
@@ -980,7 +981,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
   // fuera de rango", stalling the ladder (2026-08-12, Rafael 9dd5efe4). The
   // checklist already tracks correction progress; this guard only watches for
   // MISSING or DUPLICATED sections.
-  function trimKeepsWholeSong(audibleWords, lyricsText, exclude = []) {
+  function trimKeepsWholeSong(audibleWords, lyricsText, exclude = [], baseWords = null) {
     // FULL line-by-line audit (2026-08-11, Miguel Ángel take b62256fe): closing-
     // line counting alone is beatable — Suno inserted an extra half-verse +
     // chorus cycle mid-song, which satisfied the closing-line count on a cut
@@ -1022,8 +1023,8 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
     // on audio that sang it correctly, a second veto on the same perfect take.
     // For GUARD COUNTING ONLY, also accept a line when gluing each adjacent
     // token pair closes the gap. Checklists keep the strict matcher.
-    const countForGuard = (line) => {
-      const direct = countCleanOccurrences(audibleWords, line);
+    const countForGuard = (line, inWords = audibleWords) => {
+      const direct = countCleanOccurrences(inWords, line);
       if (direct > 0) return direct;
       const toks = line.split(/\s+/).filter(Boolean);
       let best = 0;
@@ -1035,7 +1036,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
         if (a[a.length - 1] === b[0]) variants.push(a + b.slice(1));
         for (const glued of variants) {
           const merged = [...toks.slice(0, i), glued, ...toks.slice(i + 2)].join(' ');
-          best = Math.max(best, countCleanOccurrences(audibleWords, merged));
+          best = Math.max(best, countCleanOccurrences(inWords, merged));
           if (best) break;
         }
       }
@@ -1043,7 +1044,21 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
     };
     for (const { line, n } of need.values()) {
       const have = countForGuard(line);
-      if (have !== n) return false; // missing section (<) or duplicated section (>)
+      if (have === n) continue;
+      // BASELINE-RELATIVE (2026-08-21, Stephanie 41a61123). Whisper never hears
+      // "Pasé encerrado años que no cuentan" on this singer — the PRISTINE
+      // transcript scores it 0 too ("pasa"). Judging the take against the
+      // lyric sheet alone would veto every rescue of this song forever, on a
+      // line the fix never touched. When the original transcript disagrees
+      // with the sheet on a line, the original is the reference: the take
+      // passes that line if it scores what the original scores. Lines Whisper
+      // hears reliably keep the exact lyric-count rule, so a duplicated or
+      // missing section still fails on its other lines.
+      if (baseWords && baseWords.length) {
+        const baseHave = countForGuard(line, baseWords);
+        if (baseHave !== n && have === baseHave) continue;
+      }
+      return false; // missing section (<) or duplicated section (>)
     }
     return true;
   }
@@ -1382,6 +1397,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
             words.filter((w) => w.end <= trimAtS),
             combinedLyrics,
             [...ordered.map((c) => c?.after), ...(priorCorrections || []).map((p) => p?.after)],
+            baseWords,
           )) { trimAtS = null; lenOk = false; lenFail = 'el recorte dejaría secciones repetidas o faltantes'; }
         }
         // CRITICAL: evaluate the checklist only on the part the customer will
