@@ -1960,6 +1960,8 @@ Marca un problema si la letra:
 - Inventa un dato concreto (fecha, lugar, número, nombre, evento) que el cliente NO escribió.
 - Escribe una fecha o número en CIFRAS en vez de palabras (ej. "2011" en vez de "dos mil once").
 - Interpreta una fecha distinto a la INTERPRETACIÓN OBLIGATORIA dada.
+- Cambia el TIEMPO VERBAL de un hecho vigente: el cliente lo describe en PRESENTE (cualidades, costumbres, vínculos que siguen: "todos la quieren", "sus oraciones me protegen") y la letra lo pone en PASADO ("la adoraron", "me cuidaron", "cuánto amor diste"). Para una persona VIVA, el pasado implica que ya no está — es un error de hecho. (Si los datos indican que la persona falleció, el pasado es correcto.)
+- Atribuye un SENTIMIENTO o MOTIVO que el cliente no escribió ("sin rencor", "con resentimiento", "por obligación") a una acción de la persona.
 
 La atmósfera, las metáforas y las imágenes poéticas son LIBRES, siempre que NO cambien un hecho ni la dirección/sujeto de una acción o relación. Evalúa solo HECHOS y QUIÉN-hace-QUÉ-a-QUIÉN.
 
@@ -2474,6 +2476,8 @@ La letra NUNCA debe afirmar un hecho que contradiga o cambie el significado de l
 - NO INVENTES datos concretos nuevos (fechas, lugares, edades, números, nombres, eventos) que el usuario NO dio. Está PROHIBIDO agregar un hecho específico falso solo porque "suena bien" o porque ayuda a la rima.
 - SÍ tienes libertad TOTAL para la EMOCIÓN: atmósfera, imágenes sensoriales, sentimiento, metáforas. Tu creatividad es sobre CÓMO se siente la historia, NUNCA sobre QUÉ pasó. Adorna el sentimiento, no los hechos.
 - Si un detalle es AMBIGUO o incompleto, déjalo GENERAL en vez de inventar una versión específica que podría ser falsa. Mejor verdadero y vago que específico y equivocado.
+- TIEMPO VERBAL = HECHO (queja real de cliente pagado, 2026-08-22). Si la persona está VIVA (la ocasión NO es "en memoria"), lo que el cliente describe en PRESENTE se escribe en PRESENTE: cualidades, costumbres y vínculos que siguen ("todos la quieren", "sus oraciones me protegen", "es la alegría de las reuniones") NUNCA se convierten a pasado ("la adoraron", "me cuidaron", "cuánto amor diste"). El pasado en español suena a despedida o a que la persona ya no está — para una madre que vive lejos es un error grave. Usa pasado SOLO para eventos que ya ocurrieron ("se fue a trabajar", "nació en", "se casaron"). Espeja el tiempo verbal del cliente frase por frase.
+- NO INVENTES SENTIMIENTOS ni motivos que el cliente no dio: "sin rencor", "con resentimiento", "por obligación", "a pesar de todo" son afirmaciones sobre la persona. Si el cliente dice que se fue "para sus hijos", el motivo es el amor por sus hijos — no le pongas otro.
 - EXCEPCIÓN ÚNICA: si el usuario NO proporcionó NINGÚN detalle personal, entonces SÍ puedes inventar momentos verosímiles (se te indica explícitamente en el mensaje del usuario cuando aplica). La prohibición de inventar/distorsionar aplica SOLO a los datos que el usuario SÍ escribió.
 
 ANTES DE ENTREGAR — AUTO-VERIFICACIÓN OBLIGATORIA: relee cada línea de la letra que mencione un dato (fecha, lugar, nombre, parentesco, edad, evento, apodo) y confírmalo contra los DETALLES PERSONALES del mensaje del usuario, palabra por palabra. Si alguna línea cambia, exagera o inventa un hecho, REESCRÍBELA antes de llamar a la herramienta. La letra que entregas debe poder leerse junto a los detalles del cliente sin una sola contradicción.
