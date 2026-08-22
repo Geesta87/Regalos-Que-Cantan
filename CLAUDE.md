@@ -157,7 +157,10 @@ or `src/utils/audioSplice.js`.
 - Source audio is purged ~14 days per take; every applied fix is a fresh take,
   which resets that clock.
 - Whisper gotchas when validating: numbers/years transcribe as DIGITS ("13",
-  "19 de agosto") or spelled words — match both; name pronunciation cannot be
+  "19 de agosto") or spelled words — PER TAKE, unpredictably. The matcher
+  canonicalizes every 1–99 number and year to digits on BOTH sides since
+  968db94 (Stephanie d34ff7f8 burned 5 rounds before that); if a numbered
+  line keeps failing, suspect matching before Suno; name pronunciation cannot be
   judged from transcripts (g/k confusion); ignore the hallucinated
   "Subtítulos … Amara.org" over instrumental outros (verify by timestamp).
 
