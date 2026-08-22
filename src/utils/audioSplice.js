@@ -341,8 +341,21 @@ function collapseSpelledYears(atoms) {
     const y = _parseYear(t, i);
     if (y && y.next > i + 1) {
       out.push({ n: String(y.year), s: atoms[i].s, e: atoms[Math.min(y.next, atoms.length) - 1].e });
-      i = y.next;
-    } else { out.push(atoms[i]); i++; }
+      i = y.next; continue;
+    }
+    // COMPOUND NUMBERS TOO (2026-08-21, Stephanie d34ff7f8). Whisper decides PER
+    // TAKE whether it writes "cincuenta y tres" or "53" (two takes of the same
+    // round went opposite ways). Collapsing only years left every other number
+    // un-canonical: a lyric "52" never matched a sung "cincuenta y dos", and a
+    // lyric "cincuenta y tres" never matched Whisper's "53" — so the structure
+    // guard counted that verse as MISSING and vetoed the rescue of a take that
+    // sang everything right. Digits are the canonical form on both sides now.
+    const q = _parseUnder100(t, i);
+    if (q && q.next > i + 1) {
+      out.push({ n: String(q.val), s: atoms[i].s, e: atoms[Math.min(q.next, atoms.length) - 1].e });
+      i = q.next; continue;
+    }
+    out.push(atoms[i]); i++;
   }
   return out;
 }
@@ -418,6 +431,10 @@ const _TEENS = { diez: 10, once: 11, doce: 12, trece: 13, catorce: 14, quince: 1
 const _TENS = { veinte: 20, treinta: 30, cuarenta: 40, cincuenta: 50, sesenta: 60, setenta: 70, ochenta: 80, noventa: 90 };
 const _COMPOUND = { veintiuno: 21, veintidos: 22, veintitres: 23, veinticuatro: 24, veinticinco: 25, veintiseis: 26, veintisiete: 27, veintiocho: 28, veintinueve: 29 };
 const _FILLER = new Set(['de', 'del', 'la', 'el', 'y', 'a', 'en', 'que', 'lo', 'los', 'las', 'un', 'una', 'mi', 'me', 'te', 'su', 'con', 'por', 'dos', 'mil', 'has']);
+// digit -> single spelled word (1-29 and the tens), so a lyric written with
+// digits ("5 años") still accepts a transcript written in words ("cinco").
+const _SPELLED = {};
+for (const m of [_UNITS, _TEENS, _TENS, _COMPOUND]) for (const [w, v] of Object.entries(m)) _SPELLED[v] = w;
 
 // Parse a 0-99 quantity at t[i]; returns { val, next } or null.
 function _parseUnder100(t, i) {
@@ -425,7 +442,8 @@ function _parseUnder100(t, i) {
   if (_COMPOUND[w] != null) return { val: _COMPOUND[w], next: i + 1 };
   if (_TEENS[w] != null) return { val: _TEENS[w], next: i + 1 };
   if (_TENS[w] != null) {
-    if (t[i + 1] === 'y' && _UNITS[t[i + 2]] != null) return { val: _TENS[w] + _UNITS[t[i + 2]], next: i + 3 };
+    const u = _UNITS[t[i + 2]] ?? (t[i + 2] === 'un' ? 1 : null); // "treinta y un años"
+    if (t[i + 1] === 'y' && u != null) return { val: _TENS[w] + u, next: i + 3 };
     return { val: _TENS[w], next: i + 1 };
   }
   if (_UNITS[w] != null) return { val: _UNITS[w], next: i + 1 };
@@ -469,7 +487,16 @@ export function buildTokenGroups(correctedLine) {
   for (let i = 0; i < t.length;) {
     const y = _parseYear(t, i);
     if (y) { flagged.push({ g: [String(y.year)], name: false }); i = y.next; continue; } // "dos mil catorce" -> ['2014']
+    // "cincuenta y tres" -> ['53']: ONE group, because the transcript side collapses
+    // the same phrase to one atom (collapseSpelledYears) and Whisper may write the
+    // digits outright. Single number words keep their [word, digit] group below.
+    const q = _parseUnder100(t, i);
+    if (q && q.next > i + 1) { flagged.push({ g: [String(q.val)], name: false }); i = q.next; continue; }
     const w = t[i]; const idx = i; i++;
+    // A lyric written with DIGITS ("Yo 52 años", "5 hijos"): accept the digit
+    // (Whisper's digit form, or a collapsed compound) and the spelled single
+    // word when there is one. Checked before the length floor so "5" survives.
+    if (/^\d{1,2}$/.test(w)) { const sp = _SPELLED[Number(w)]; flagged.push({ g: sp ? [w, sp] : [w], name: false }); continue; }
     if (w.length < 2) continue;
     if (_FILLER.has(w)) continue;
     const numVal = _COMPOUND[w] ?? _TEENS[w] ?? _TENS[w] ?? _UNITS[w];

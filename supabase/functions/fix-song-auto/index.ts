@@ -119,13 +119,18 @@ const TEENS: Record<string, number> = { diez: 10, once: 11, doce: 12, trece: 13,
 const TENS: Record<string, number> = { veinte: 20, treinta: 30, cuarenta: 40, cincuenta: 50, sesenta: 60, setenta: 70, ochenta: 80, noventa: 90 };
 const COMPOUND: Record<string, number> = { veintiuno: 21, veintidos: 22, veintitres: 23, veinticuatro: 24, veinticinco: 25, veintiseis: 26, veintisiete: 27, veintiocho: 28, veintinueve: 29 };
 const FILLER = new Set(['de', 'del', 'la', 'el', 'y', 'a', 'en', 'que', 'lo', 'los', 'las', 'un', 'una', 'mi', 'me', 'te', 'su', 'con', 'por', 'dos', 'mil', 'has']);
+// digit -> single spelled word, so a lyric written with digits still accepts a
+// transcript written in words (mirror of audioSplice._SPELLED).
+const SPELLED: Record<number, string> = {};
+for (const m of [UNITS, TEENS, TENS, COMPOUND]) for (const [w, v] of Object.entries(m)) SPELLED[v] = w;
 
 function parseUnder100(t: string[], i: number): { val: number; next: number } | null {
   const w = t[i];
   if (COMPOUND[w] != null) return { val: COMPOUND[w], next: i + 1 };
   if (TEENS[w] != null) return { val: TEENS[w], next: i + 1 };
   if (TENS[w] != null) {
-    if (t[i + 1] === 'y' && UNITS[t[i + 2]] != null) return { val: TENS[w] + UNITS[t[i + 2]], next: i + 3 };
+    const u = UNITS[t[i + 2]] ?? (t[i + 2] === 'un' ? 1 : null); // "treinta y un años"
+    if (t[i + 1] === 'y' && u != null) return { val: TENS[w] + u, next: i + 3 };
     return { val: TENS[w], next: i + 1 };
   }
   if (UNITS[w] != null) return { val: UNITS[w], next: i + 1 };
@@ -160,7 +165,15 @@ function buildTokenGroups(line: string): string[][] {
   for (let i = 0; i < t.length;) {
     const y = parseYear(t, i);
     if (y) { flagged.push({ g: [String(y.year)], name: false }); i = y.next; continue; }
+    // COMPOUND NUMBERS (2026-08-21, Stephanie d34ff7f8, mirror of audioSplice):
+    // "cincuenta y tres" -> ['53'] — one group, matching the transcript side
+    // which collapses the same phrase to one atom; Whisper may write "53" outright.
+    const q = parseUnder100(t, i);
+    if (q && q.next > i + 1) { flagged.push({ g: [String(q.val)], name: false }); i = q.next; continue; }
     const w = t[i]; const idx = i; i++;
+    // Lyric written with DIGITS ("Yo 52 años"): accept the digit and the spelled
+    // single word when there is one. Before the length floor so "5" survives.
+    if (/^\d{1,2}$/.test(w)) { const sp = SPELLED[Number(w)]; flagged.push({ g: sp ? [w, sp] : [w], name: false }); continue; }
     if (w.length < 2 || FILLER.has(w)) continue;
     const numVal = COMPOUND[w] ?? TEENS[w] ?? TENS[w] ?? UNITS[w];
     if (numVal != null) { flagged.push({ g: [w, String(numVal)], name: false }); continue; }
@@ -175,8 +188,12 @@ function collapseSpelledYears(atoms: Atom[]): Atom[] {
   const out: Atom[] = [];
   for (let i = 0; i < atoms.length;) {
     const y = parseYear(t, i);
-    if (y && y.next > i + 1) { out.push({ n: String(y.year), s: atoms[i].s, e: atoms[Math.min(y.next, atoms.length) - 1].e }); i = y.next; }
-    else { out.push(atoms[i]); i++; }
+    if (y && y.next > i + 1) { out.push({ n: String(y.year), s: atoms[i].s, e: atoms[Math.min(y.next, atoms.length) - 1].e }); i = y.next; continue; }
+    // Compound numbers collapse to digits too (Whisper picks words OR digits per
+    // take; digits are canonical on both sides — see buildTokenGroups).
+    const q = parseUnder100(t, i);
+    if (q && q.next > i + 1) { out.push({ n: String(q.val), s: atoms[i].s, e: atoms[Math.min(q.next, atoms.length) - 1].e }); i = q.next; continue; }
+    out.push(atoms[i]); i++;
   }
   return out;
 }
