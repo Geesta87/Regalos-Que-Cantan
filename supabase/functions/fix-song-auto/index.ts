@@ -61,7 +61,10 @@ async function pingApprovers(state: any, text: string): Promise<void> {
   }
 }
 
-const CLAUDE_MODEL = 'claude-opus-4-8';
+// Judgment call (understanding the customer's request) runs on the strongest
+// model (owner decision 2026-08-24: "I want Ace to do these edits the way you
+// do"); transient-failure fallback is Opus 5 — same price as the old 4.8.
+const CLAUDE_MODEL = 'claude-fable-5';
 // Kie server errors (errorCode 5xx) get their own budget — they are not attempts
 // at the lyric line. Generous on purpose: a failed Kie job costs 0 credits (only
 // delivered takes bill, at 5), so out-waiting an outage is FREE. On 2026-08-12
@@ -69,7 +72,7 @@ const CLAUDE_MODEL = 'claude-opus-4-8';
 // during a spell that would have exhausted any small budget. This ceiling exists
 // to stop a runaway loop, not to save money — do not lower it to "cut costs".
 const MAX_INFRA_RETRIES = 40;
-const CLAUDE_FALLBACK = 'claude-sonnet-4-6';
+const CLAUDE_FALLBACK = 'claude-opus-5';
 
 const FN_BASE = `${SUPABASE_URL}/functions/v1`;
 

@@ -10,7 +10,7 @@
 //   2. We get word-level timestamps for the song from OpenAI Whisper
 //      (reusing songs.lyrics_timestamps if render-social-clip already cached
 //      them — same shape, written back if we have to compute fresh).
-//   3. Claude (claude-opus-4-8, sonnet-4-6 fallback) reads the timed
+//   3. Claude (fable-5 for judgment calls, opus-5/sonnet-5 otherwise) reads the timed
 //      transcript + the stored lyrics + the complaint and decides the minimal
 //      contiguous time window to redo, writes the corrected FULL lyrics
 //      (with Spanish-orthography phonetic respelling for mispronounced names),
@@ -64,8 +64,15 @@ const RENDER_TOKEN = Deno.env.get('RENDER_TOKEN') || '';
 
 // Best model for the reasoning (locate the window + rewrite lyrics + phonetic
 // name respelling). Sonnet fallback matches the codebase's Claude retry order.
-const CLAUDE_PRIMARY_MODEL = 'claude-opus-4-8';
-const CLAUDE_FALLBACK_MODEL = 'claude-sonnet-4-6';
+// Model split (owner decision 2026-08-24): JUDGMENT calls — plan (ForFix),
+// full-lyrics rewrite, rewording suggestions, owner chat — run on Fable 5,
+// the strongest model, with Opus 5 as the retry fallback. MECHANICAL calls
+// (summarize, cleanup) run on Opus 5 (same price as the old 4.8) with
+// Sonnet 5 fallback. None of these calls send thinking/sampling params or
+// prefills, so all three models accept them as-is.
+const CLAUDE_PLANNER_MODEL = 'claude-fable-5';
+const CLAUDE_PRIMARY_MODEL = 'claude-opus-5';
+const CLAUDE_FALLBACK_MODEL = 'claude-sonnet-5';
 
 // Kie hard limits for replace-section.
 // The FLOOR IS 10, not 6 (verified live 2026-08-12 — a 9.7s window came back
@@ -422,7 +429,7 @@ async function callClaudeForFix(userMessage: string, image?: InlineImage): Promi
   const MAX_RETRIES = 3;
   let lastErr = '';
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-    const model = attempt === MAX_RETRIES ? CLAUDE_FALLBACK_MODEL : CLAUDE_PRIMARY_MODEL;
+    const model = attempt === MAX_RETRIES ? CLAUDE_PRIMARY_MODEL : CLAUDE_PLANNER_MODEL;
     let resp: Response;
     try {
       resp = await fetch('https://api.anthropic.com/v1/messages', {
@@ -489,7 +496,7 @@ async function callClaudeChat(lyrics: string, conversation: ChatMsg[], image?: I
   const system = `${CHAT_SYSTEM_PROMPT}\n\nLETRA ACTUAL DE LA CANCIÓN:\n${lyrics}`;
   const MAX_RETRIES = 2;
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-    const model = attempt === MAX_RETRIES ? CLAUDE_FALLBACK_MODEL : CLAUDE_PRIMARY_MODEL;
+    const model = attempt === MAX_RETRIES ? CLAUDE_PRIMARY_MODEL : CLAUDE_PLANNER_MODEL;
     let resp: Response;
     try {
       resp = await fetch('https://api.anthropic.com/v1/messages', {
@@ -540,7 +547,7 @@ async function callClaudeReword(before: string, after: string, sang: string): Pr
   const system = `Eres un letrista experto en canciones en español generadas por IA (Suno/Kie). El generador NO logra cantar cierta línea corregida: la salta, canta gibberish, o vuelve a la palabra original. Propón 2-3 REDACCIONES ALTERNATIVAS de la línea que: (a) conserven EXACTAMENTE el significado que el cliente pidió; (b) sean más fáciles de cantar — evita homófonos que el modelo confunde (p. ej. "me dicen"→"me hice"), y evita frases que disparan el filtro de contenido (autolesión: "mi vida no tiene sentido"); (c) mantengan métrica y rima parecidas. Cada sugerencia: text = la línea nueva completa en ESPAÑOL; why = una frase corta en INGLÉS para el dueño. Devuelve llamando a suggest_rewordings.`;
   const user = `Línea original: "${before}"\nCorrección deseada: "${after}"\nLo que el generador cantó (fallando): "${sang || '(saltó la línea / gibberish)'}"\n\nPropón 2-3 redacciones alternativas de la línea corregida, cantables, mismo significado.`;
   for (let attempt = 1; attempt <= 2; attempt++) {
-    const model = attempt === 2 ? CLAUDE_FALLBACK_MODEL : CLAUDE_PRIMARY_MODEL;
+    const model = attempt === 2 ? CLAUDE_PRIMARY_MODEL : CLAUDE_PLANNER_MODEL;
     try {
       const resp = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
@@ -591,7 +598,7 @@ async function callClaudeForFullLyrics(currentLyrics: string, complaint: string,
     `Devuelve la letra completa corregida llamando a submit_corrected_lyrics.`;
   const MAX_RETRIES = 3;
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-    const model = attempt === MAX_RETRIES ? CLAUDE_FALLBACK_MODEL : CLAUDE_PRIMARY_MODEL;
+    const model = attempt === MAX_RETRIES ? CLAUDE_PRIMARY_MODEL : CLAUDE_PLANNER_MODEL;
     let resp: Response;
     try {
       resp = await fetch('https://api.anthropic.com/v1/messages', {
