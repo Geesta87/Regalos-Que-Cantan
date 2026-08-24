@@ -1014,8 +1014,11 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
       if (groups.length < 3) continue; // short lines are too ambiguous to count
       const key = JSON.stringify(groups);
       if (skip.has(key)) continue; // a correction line — the checklist owns it
+      // rawCap: the line starts with a Capitalized word in the SHEET — a likely
+      // name (auditCase lowercased it for the key, losing that signal).
+      const cap = /^[A-ZÁÉÍÓÚÑÜ]/.test(String(l).trim());
       const e = need.get(key);
-      if (e) e.n++; else need.set(key, { line: auditCase(l), n: 1 });
+      if (e) { e.n++; e.rawCap = e.rawCap && cap; } else need.set(key, { line: auditCase(l), n: 1, rawCap: cap });
     }
     // MERGED-WORD TOLERANCE (same take): Whisper heard the stylized rhyme
     // "grande ero" as ONE word, "grandero", and the matcher can't split a heard
@@ -1042,8 +1045,19 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
       }
       return best;
     };
-    for (const { line, n } of need.values()) {
-      const have = countForGuard(line);
+    for (const { line, n, rawCap } of need.values()) {
+      // LINE-INITIAL NAME TOLERANCE (2026-08-24, José 82c5af1a drill, mirror of
+      // Ace's audit): a line that OPENS with a name ("Yadriel me miró…") must
+      // not require the name token — Whisper spells names differently per take
+      // ("Y Adriel" vs "Y a Diel"), and auditCase's lowercasing re-required it.
+      // Count without the first word when it was Capitalized in the sheet and
+      // enough anchor words remain; ledger keys are unchanged.
+      let cLine = line;
+      if (rawCap) {
+        const rest = String(line).split(/\s+/).slice(1).join(' ');
+        if (buildTokenGroups(rest).length >= 3) cLine = rest;
+      }
+      const have = countForGuard(cLine);
       if (have === n) continue;
       // BASELINE-RELATIVE (2026-08-21, Stephanie 41a61123). Whisper never hears
       // "Pasé encerrado años que no cuentan" on this singer — the PRISTINE
@@ -1055,7 +1069,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
       // hears reliably keep the exact lyric-count rule, so a duplicated or
       // missing section still fails on its other lines.
       if (baseWords && baseWords.length) {
-        const baseHave = countForGuard(line, baseWords);
+        const baseHave = countForGuard(cLine, baseWords);
         if (baseHave !== n && have === baseHave) continue;
       }
       return false; // missing section (<) or duplicated section (>)

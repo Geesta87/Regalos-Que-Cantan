@@ -306,7 +306,13 @@ function buildAuditGroups(line: string): string[][] {
   for (let i = 0; i < t.length;) {
     const y = parseYear(t, i);
     if (y) { flagged.push({ g: [String(y.year)], name: false }); i = y.next; continue; }
+    // Compound numbers -> one digit group, digits accept the spelled word —
+    // same canonicalization the checklist tokenizer got (968db94); without it
+    // the audit's own counting stayed number-blind.
+    const q = parseUnder100(t, i);
+    if (q && q.next > i + 1) { flagged.push({ g: [String(q.val)], name: false }); i = q.next; continue; }
     const w = t[i]; const idx = i; i++;
+    if (/^\d{1,2}$/.test(w)) { const sp = SPELLED[Number(w)]; flagged.push({ g: sp ? [w, sp] : [w], name: false }); continue; }
     if (w.length < 2 || FILLER.has(w)) continue;
     const numVal = COMPOUND[w] ?? TEENS[w] ?? TENS[w] ?? UNITS[w];
     if (numVal != null) { flagged.push({ g: [w, String(numVal)], name: false }); continue; }
@@ -337,7 +343,19 @@ function auditStructure(audible: W[], lyricsText: string, baseWords: W[] | null 
     if (e) e.n++; else need.set(key, { line: l, n: 1, groups });
   }
   for (const { line, n, groups } of need.values()) {
-    let have = countLineForAudit(audible, line, groups, n);
+    // LINE-INITIAL NAME TOLERANCE (2026-08-24, José 82c5af1a drill). The audit
+    // never name-skips position 0 (keys must stay case-blind — Eric 3a5650f3),
+    // so "Yadriel me miró a los ojos…" REQUIRED the token "yadriel" — and
+    // Whisper spells that name differently per take ("Y Adriel" in the
+    // original matched fuzzily; "Y a Diel" in the take didn't). Both round-3
+    // takes SANG the line and were rejected "falta una sección". Keys stay
+    // unchanged; only the COUNTING pattern drops a line-initial Capitalized
+    // word (a likely name) when enough anchor words remain to identify the
+    // line without it.
+    const fw = norm(String(line).trim().split(/\s+/)[0] || '');
+    const rawCap = /^[A-ZÁÉÍÓÚÑÜ]/.test(String(line).trim());
+    const countGroups = (rawCap && groups.length >= 4 && groups[0] && groups[0].includes(fw)) ? groups.slice(1) : groups;
+    let have = countLineForAudit(audible, line, countGroups, n);
     // BASELINE-RELATIVE (2026-08-21, Stephanie 41a61123, mirror of the browser
     // guard). Whisper never hears "Pasé encerrado años que no cuentan" on that
     // singer — the PRISTINE transcript scores it 0 too ("pasa"). Judged against
@@ -346,7 +364,7 @@ function auditStructure(audible: W[], lyricsText: string, baseWords: W[] | null 
     // sheet on a line, the original is the reference: the take passes that line
     // if it scores what the original scores. Reliable lines keep the exact rule.
     if (have !== n && baseWords && baseWords.length) {
-      const baseHave = countLineForAudit(baseWords, line, groups, n);
+      const baseHave = countLineForAudit(baseWords, line, countGroups, n);
       if (baseHave !== n && have === baseHave) continue;
     }
     if (have < n) return `falta una sección: "${line.slice(0, 48)}…" (${have}/${n})`;
