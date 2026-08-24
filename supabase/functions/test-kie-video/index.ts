@@ -109,6 +109,37 @@ serve(async (req) => {
       return json(200, { http: r.status, taskId: raw?.data?.taskId || null, raw });
     }
 
+    // --- Suno vocal removal (ops driver) -------------------------------------
+    // { mode:'vocal-removal', taskId, audioId } -> { taskId } (the separation
+    // task), then { mode:'vocal-removal-status', taskId } until successFlag
+    // SUCCESS -> response.instrumentalUrl / vocalUrl. Same endpoints as
+    // api/karaoke-fetch's kieSeparateInstrumental — this branch just exposes
+    // them to ops for one-off comps without the Vercel trigger secret.
+    // callBackUrl points back here: the receipt guard above 200s it quietly.
+    if (body.mode === 'vocal-removal') {
+      if (!body.taskId || !body.audioId) throw new Error('Missing taskId/audioId');
+      const r = await fetch('https://api.kie.ai/api/v1/vocal-removal/generate', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${KIE_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          taskId: String(body.taskId),
+          audioId: String(body.audioId),
+          type: 'separate_vocal',
+          callBackUrl: 'https://yzbvajungshqcpusfiia.supabase.co/functions/v1/test-kie-video',
+        }),
+      });
+      const raw = await r.json().catch(() => ({ error: 'non-json response', status: r.status }));
+      return json(200, { http: r.status, taskId: raw?.data?.taskId || null, raw });
+    }
+    if (body.mode === 'vocal-removal-status') {
+      if (!body.taskId) throw new Error('Missing taskId');
+      const r = await fetch(
+        `https://api.kie.ai/api/v1/vocal-removal/record-info?taskId=${encodeURIComponent(String(body.taskId))}`,
+        { headers: { Authorization: `Bearer ${KIE_API_KEY}` } },
+      );
+      return json(200, await r.json().catch(() => ({ error: 'non-json response', status: r.status })));
+    }
+
     // --- Atlas Cloud (Seedance) — cheaper second provider --------------------
     // { mode:'atlas', variant?: 't2v'|'i2v'|'ref', prompt, duration?, resolution?,
     //   aspect_ratio?, generate_audio?, image_url?, input?: {...passthrough} }
