@@ -906,8 +906,22 @@ async function stepValidate(admin: any, r: any, state: any): Promise<void> {
     // every word check passed, but the customer would hear a different song.
     // An end-trim can't remove an intro (that would be a start-cut = surgery),
     // so long-intro takes are rejected outright.
-    const takeStart = words[0].start;
-    const introDrift = origStart != null ? takeStart - origStart : 0;
+    // SHEET-ANCHORED (2026-08-24, José 82c5af1a drill). The original opened
+    // with an unscripted intro vocalization, so first-transcript-word said the
+    // vocals start at 1.6s while VERSE 1 actually starts at 28.9s — and every
+    // re-roll take (verse at ~18s, EARLIER than the original's verse) was
+    // rejected "+16s late". Six takes, ~15 credits, all false vetoes. Compare
+    // where the FIRST LYRIC-SHEET LINE starts on both sides instead; ad-libs
+    // and hallucinated intro words on either side can no longer skew it.
+    const sheetFirstLine = String(plan.fullLyrics || plan.approvedLyrics || '').split('\n').map((x: string) => x.trim()).find((l: string) => l && !/^\[.*\]$/.test(l)) || '';
+    const firstLineGroups = sheetFirstLine ? buildTokenGroups(sheetFirstLine) : [];
+    const firstLineStart = (ws: W[], fallback: number | null): number | null => {
+      if (firstLineGroups.length && ws && ws.length) { const h = findCleanLine(ws, firstLineGroups); if (h) return h.startS; }
+      return fallback;
+    };
+    const takeStart = (firstLineStart(words, words[0].start) as number);
+    const effOrigStart = firstLineStart(pristineWords || [], origStart);
+    const introDrift = effOrigStart != null ? takeStart - effOrigStart : 0;
     // Fresh performances (new voice OR unpinned same-voice) own their intros.
     if (!plan.noPersona && !plan.noPin && introDrift > 12) {
       diags.push({ url, verdict: 'reject', reason: `intro demasiado largo (empieza +${introDrift.toFixed(0)}s tarde vs original)` });
