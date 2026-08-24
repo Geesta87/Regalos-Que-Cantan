@@ -52,6 +52,7 @@ const ITEMS: Record<string, { cents: number; label: string }> = {
   animado: { cents: 2900, label: 'Película animada' },
   instrumental: { cents: 799, label: 'Pista instrumental' },
   lyric_video: { cents: 999, label: 'Video con letra' },
+  karaoke_video: { cents: 999, label: 'Video Karaoke' },
   gift: { cents: 500, label: 'Envío sorpresa por mensaje' },
 };
 
@@ -231,20 +232,25 @@ serve(async (req) => {
         } else {
           console.warn('[charge-upsell] KARAOKE_TRIGGER_SECRET not set — instrumental flagged but worker not triggered');
         }
-      } else if (item === 'lyric_video') {
+      } else if (item === 'lyric_video' || item === 'karaoke_video') {
         // Flag the song + trigger the Vercel lyric-video renderer — mirrors the
-        // stripe-webhook render-lyric-video (mode='lyric') path.
-        await supabase.from('songs').update({ lyric_video_status: 'pending' }).eq('id', song_id);
+        // stripe-webhook render-lyric-video path. Same worker, two modes:
+        // 'lyric' = full song + on-screen lyrics; 'karaoke' = instrumental +
+        // on-screen lyrics (the renderer reuses songs.karaoke_url if the buyer
+        // also owns the instrumental, else runs Kie vocal separation itself).
+        const mode = item === 'karaoke_video' ? 'karaoke' : 'lyric';
+        const statusCol = item === 'karaoke_video' ? 'karaoke_video_status' : 'lyric_video_status';
+        await supabase.from('songs').update({ [statusCol]: 'pending' }).eq('id', song_id);
         const secret = Deno.env.get('KARAOKE_TRIGGER_SECRET') || '';
         const vercelBase = Deno.env.get('VERCEL_BASE_URL') || 'https://regalosquecantan.com';
         if (secret) {
           fetch(`${vercelBase}/api/render-lyric-video`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ songId: song_id, mode: 'lyric', secret }),
-          }).catch((e) => console.warn('[charge-upsell] lyric-video trigger failed:', e?.message || e));
+            body: JSON.stringify({ songId: song_id, mode, secret }),
+          }).catch((e) => console.warn(`[charge-upsell] ${mode}-video trigger failed:`, e?.message || e));
         } else {
-          console.warn('[charge-upsell] KARAOKE_TRIGGER_SECRET not set — lyric video flagged but worker not triggered');
+          console.warn(`[charge-upsell] KARAOKE_TRIGGER_SECRET not set — ${mode} video flagged but worker not triggered`);
         }
       } else if (item === 'gift' && giftFields) {
         // Reuse the existing scheduled-gift table + every-minute cron + Twilio

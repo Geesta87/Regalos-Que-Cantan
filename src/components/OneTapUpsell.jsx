@@ -98,6 +98,26 @@ function LyricsMedia() {
   );
 }
 
+// ── Karaoke-video preview — same synced-lyrics animation, but flagged SIN VOZ
+// so buyers see the difference vs. the lyric video at a glance. ──
+function KaraokeMedia() {
+  const lines = ['Desde el día que llegaste', 'todo cambió para bien', 'y hoy te canto esta canción', 'con todo el corazón'];
+  return (
+    <div style={{ position: 'relative', height: MEDIA_H, background: 'linear-gradient(135deg,#12224a,#0b1022)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+      <span style={{ position: 'absolute', top: 6, left: 8, fontSize: 9, color: 'rgba(255,255,255,0.7)', fontWeight: 700 }}>🎤 KARAOKE · LETRA EN PANTALLA</span>
+      <span style={{ position: 'absolute', top: 22, left: 8, fontSize: 9, fontWeight: 700, color: GOLD, background: 'rgba(232,180,74,0.14)', padding: '2px 7px', borderRadius: 20 }}>Sin voz · canta tú</span>
+      <div style={{ position: 'relative', width: '100%', height: 24, textAlign: 'center' }}>
+        {lines.map((l, i) => (
+          <span key={i} style={{ position: 'absolute', left: 6, right: 6, fontSize: 13, fontWeight: 700, color: '#fff', textShadow: '0 1px 8px rgba(0,0,0,0.6)', opacity: 0, animation: `otuLyric 8s ease-in-out ${i * 2}s infinite` }}>{l}</span>
+        ))}
+      </div>
+      <span style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 3, background: 'rgba(255,255,255,0.12)' }}>
+        <span style={{ display: 'block', height: '100%', width: '45%', background: `linear-gradient(90deg,${GOLD},#E7699F)` }} />
+      </span>
+    </div>
+  );
+}
+
 // ── Photo-slideshow preview (the $9.99 video-with-photos add-on). Mimics the
 // Ken Burns slideshow on the checkout card: real family photos cross-fade with
 // a "TUS FOTOS AQUÍ" overlay so buyers picture their own photos in it. ──
@@ -127,6 +147,7 @@ export function Media({ media, tall }) {
   if (media.type === 'video') return <VideoMedia src={media.src} tall={tall} pos={media.pos} />;
   if (media.type === 'ab') return <AbMedia />;
   if (media.type === 'lyrics') return <LyricsMedia />;
+  if (media.type === 'karaoke') return <KaraokeMedia />;
   if (media.type === 'photos') return <PhotosMedia />;
   return null;
 }
@@ -153,6 +174,7 @@ export const FEATURES = {
   animado: ['Su rostro convertido en personaje animado', 'Ilustraciones de su historia, escena por escena', 'Movimiento en los momentos clave, al ritmo de la canción', 'Intro mágica: su foto real "cobra vida"', 'Video HD listo para compartir o proyectar'],
   instrumental: ['La misma canción, solo la música — sin la voz', 'Para que la canten ustedes (karaoke)', 'MP3 en calidad estudio'],
   lyric_video: ['Tu canción en video con la letra en pantalla', 'La letra aparece e ilumina al ritmo de la música', 'Vertical HD — listo para WhatsApp y redes'],
+  karaoke_video: ['Solo la música — sin la voz, para que la cantes tú', 'La letra se ilumina palabra por palabra, al ritmo', 'Perfecto para dedicarla en persona o en una fiesta', 'Vertical HD — listo para WhatsApp y redes'],
   gift: ['Le llega por mensaje el día y la hora que elijas', 'Con tu nombre y tu mensaje personal', 'Incluye el enlace para escuchar su canción'],
 };
 const DELIVERY = {
@@ -160,6 +182,7 @@ const DELIVERY = {
   animado: 'Hecho a mano y revisado por nuestro equipo · listo en 1–2 días · garantía de calidad',
   instrumental: 'Lista en ~1 minuto · te avisamos por email',
   lyric_video: 'Lista en unos minutos · te avisamos por email',
+  karaoke_video: 'Listo en unos minutos · te avisamos por email',
   gift: 'Se programa al instante para la fecha que elijas',
 };
 // Per-item fine-print shown in the detail view. Animado sets expectations:
@@ -172,6 +195,7 @@ export const DESC = {
   animado: 'Convertimos su rostro en un personaje animado y damos vida a su historia en un video con movimiento, al ritmo de su canción. El regalo que los hace llorar de emoción.',
   instrumental: 'La misma canción, pero solo con la música — sin la voz. Para que la canten ustedes, la usen de fondo o la disfruten en versión karaoke.',
   lyric_video: 'Tu canción convertida en un video vertical con la letra apareciendo en pantalla al ritmo de la música. Perfecto para compartir por WhatsApp o redes.',
+  karaoke_video: 'Tu canción en versión karaoke: solo la música, sin la voz, con la letra iluminándose en pantalla al ritmo para que la cantes tú. El detalle perfecto para dedicarla en persona.',
   gift: 'En vez de mandar tú el enlace, nosotros le enviamos la canción por mensaje el día y la hora que elijas — con tu nombre y tu mensaje. La sorpresa perfecta.',
 };
 
@@ -376,6 +400,7 @@ export function OneTapUpsell({ recipientName = 'tu ser querido', senderName = ''
     { key: 'animado', price: 29, title: 'Película animada', sub: 'Su rostro hecho personaje', media: { type: 'video', src: '/animado-sample.mp4', pos: 'center 18%' } },
     { key: 'instrumental', price: 7.99, title: 'Pista instrumental', sub: 'Solo la música, para cantar', media: { type: 'ab' } },
     { key: 'lyric_video', price: 9.99, title: 'Video con letra', sub: 'La letra en pantalla', media: { type: 'lyrics' } },
+    { key: 'karaoke_video', price: 9.99, title: 'Video karaoke', sub: 'La letra en pantalla, sin la voz', media: { type: 'karaoke' } },
     { key: 'gift', price: 5, title: 'Enviar por mensaje', sub: 'Sorpresa el día que elijas', media: { type: 'video', src: '/sms-reaction.mp4' }, form: 'gift' },
   ];
 

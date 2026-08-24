@@ -2008,6 +2008,7 @@ export default function SuccessPage() {
     if (!ownsAnimado) out.push({ key: 'animado', price: 29, title: 'Película animada', sub: 'Su rostro hecho personaje', media: { type: 'video', src: '/animado-sample.mp4' } });
     if (!oneTapSong.karaoke_status) out.push({ key: 'instrumental', price: 7.99, title: 'Pista instrumental', sub: 'Solo la música, para cantar', media: { type: 'ab' } });
     if (!oneTapSong.lyric_video_status) out.push({ key: 'lyric_video', price: 9.99, title: 'Video con letra', sub: 'La letra en pantalla', media: { type: 'lyrics' } });
+    if (!oneTapSong.karaoke_video_status) out.push({ key: 'karaoke_video', price: 9.99, title: 'Video karaoke', sub: 'La letra en pantalla, sin la voz', media: { type: 'karaoke' } });
     out.push({ key: 'gift', price: 5, title: 'Enviar por mensaje', sub: 'Sorpresa el día que elijas', media: { type: 'video', src: '/sms-reaction.mp4' }, form: 'gift' });
     return out;
   })();
@@ -2030,7 +2031,7 @@ export default function SuccessPage() {
           has_phone: !!(oneTapSong.whatsapp_phone || oneTapSong.phone_number),
           is_family: isFamily, other_people: otherPeople,
         }]);
-      } else if (item === 'instrumental' || item === 'lyric_video') {
+      } else if (item === 'instrumental' || item === 'lyric_video' || item === 'karaoke_video') {
         // Reload so the existing "preparing…" UI + polling pick up the new status.
         loadSongs();
       } else if (item === 'video') {
