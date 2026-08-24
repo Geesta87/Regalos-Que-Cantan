@@ -519,6 +519,14 @@ Reglas:
 - verify_phrases: las palabras/frases nuevas que DEBEN oírse (p.ej. el nombre corregido).
 - Si CUALQUIER cosa es ambigua (no sabes cómo se escribe el nombre, no sabes qué poner en lugar de lo quitado, la petición menciona una línea que no existe en la letra, hay varias líneas candidatas), NO adivines: pon confidence bajo y llena open_questions.
 - Si la petición no es un arreglo de canción, confidence=0 y explica en open_questions.
+
+DECISIONES YA TOMADAS POR EL DUEÑO (playbook 2026-08-24 — aplícalas, NO las preguntes):
+- Una "NOTA DEL DUEÑO (reintento)" dentro de la petición son RESPUESTAS del dueño a tus preguntas anteriores. Son vinculantes: intégralas y no vuelvas a preguntar lo mismo.
+- Agregar NOMBRES sin lugar indicado: intégralos en líneas EXISTENTES (coro o puente primero), NUNCA como línea nueva al final. El nombre del REMITENTE = dedicatoria ("X te la dedica…") reemplazando la línea más débil o incompleta del puente. Usa type=replace_line cuando el nombre cabe en una línea existente — reserva add_line para cuando de verdad no hay dónde.
+- TIEMPO VERBAL: si el cliente dice que unas frases "deben estar en presente" (la persona vive), es un error del compositor — aplica el cambio a TODAS las líneas que liste, confianza alta, cero preguntas.
+- Apodos o frases de cariño pedidas ("mi bonita", "mi reina"): colócalas en una línea existente, idealmente una que ya estás corrigiendo por otra razón.
+- La PRONUNCIACIÓN de un nombre no se juzga por transcripción: nunca es motivo de duda — el dueño la juzga de oído en el preview.
+- Máximo 2 preguntas, y solo cuando equivocarse arruinaría el regalo (ortografía de un nombre, varias líneas candidatas). Preguntas CORTAS y concretas — el dueño responde con una línea desde su teléfono.
 Responde SIEMPRE llamando a submit_fix_spec.`;
 
 async function buildFixSpec(lyrics: string, request: string, extraContext: string): Promise<any | null> {
@@ -959,7 +967,7 @@ async function stepValidate(admin: any, r: any, state: any): Promise<void> {
       diags.push({ url, verdict: 'reject', reason: check.fail, text: audible.map((w) => w.word).join(' ').slice(0, 400) });
       continue;
     }
-    cands.push({ url, kieId, drift: Math.abs((trimAtS || takeEnd) - effOrig) + Math.max(0, introDrift), trimAtS });
+    cands.push({ url, kieId, drift: Math.abs((trimAtS || takeEnd) - effOrig) + Math.max(0, introDrift), trimAtS, words });
     diags.push({ url, verdict: trimAtS ? 'clean-trimmed' : 'clean', reason: trimAtS ? `over-long, trimmed at ${trimAtS.toFixed(1)}s` : 'in-band whole take' });
   }
 
@@ -1033,6 +1041,33 @@ async function stepValidate(admin: any, r: any, state: any): Promise<void> {
     if (!hosted) { await setAuto(admin, r.id, { auto_takes: diags.slice(-12), auto_status: 'needs_human', auto_error: 'Winner is clean but re-hosting failed — the Kie URL expires in ~14 days, so it must not be staged. Retry or finish manually.' }); return; }
   }
 
+  // EVIDENCE FOR THE APPROVER (2026-08-24 playbook): where each corrected line
+  // is heard in the winner, plus an explicit EAR-CHECK for proper names — a
+  // transcript cannot judge name pronunciation (Whisper wrote "Obed" as
+  // "Poderte"), so a name is never a reason to fail a take; it is a reason to
+  // point the human ear at a timestamp before release.
+  const mmss = (x: number) => `${Math.floor(x / 60)}:${String(Math.floor(x % 60)).padStart(2, '0')}`;
+  const winAudible: W[] = win.trimAtS ? (win.words || []).filter((w: W) => w.end <= win.trimAtS!) : (win.words || []);
+  const spotNotes: string[] = [];
+  const earChecks: string[] = [];
+  for (const c of (plan.changes || [])) {
+    if (!c?.after) continue;
+    const hit = findCleanLine(winAudible, buildTokenGroups(String(c.after)));
+    if (hit) spotNotes.push(`"${String(c.after).slice(0, 34)}" @${mmss(hit.startS)}`);
+    const beforeToks = new Set(String(c.before || '').split(/\s+/).map((t: string) => t.replace(/[^A-Za-zÁÉÍÓÚÑÜáéíóúñü]/g, '')));
+    for (const tok of String(c.after).trim().split(/\s+/).slice(1)) {
+      const clean = tok.replace(/[^A-Za-zÁÉÍÓÚÑÜáéíóúñü]/g, '');
+      if (clean.length >= 3 && /^[A-ZÁÉÍÓÚÑÜ]/.test(clean) && !beforeToks.has(clean)) {
+        earChecks.push(`"${clean}"${hit ? ` @${mmss(hit.startS)}` : ''}`);
+      }
+    }
+  }
+  const earList = [...new Set(earChecks)];
+  const evidence = [
+    spotNotes.length ? `Heard: ${spotNotes.join(', ')}` : '',
+    earList.length ? `👂 EAR-CHECK the name${earList.length > 1 ? 's' : ''} ${earList.join(', ')} before releasing (transcripts can't judge names)` : '',
+  ].filter(Boolean).join(' · ');
+
   // STAGE — human release gate unchanged.
   const scorecard = {
     corrections_sung: true,
@@ -1040,12 +1075,13 @@ async function stepValidate(admin: any, r: any, state: any): Promise<void> {
     trimmed: !!win.trimAtS,
     round: r.auto_round,
     takes_seen: diags.length,
+    ear_check: earList,
     auto: true,
   };
   await admin.from('song_fix_requests').update({
     candidate_audio_url: hosted,
     candidate_lyrics: plan.fullLyrics || plan.approvedLyrics || null,
-    candidate_summary: plan.summary || 'Automated fix (pending your approval)',
+    candidate_summary: [plan.summary || 'Automated fix (pending your approval)', evidence].filter(Boolean).join(' · ').slice(0, 900),
     // fixTaskId/fixAudioId/fixTrimAtS: the winner is always a whole Kie take, so
     // release must CHAIN the next fix off it (song-fix-queue nulls kie_task_id
     // when these are absent — which made the next fix re-sing from the pristine
@@ -1071,7 +1107,7 @@ async function stepValidate(admin: any, r: any, state: any): Promise<void> {
   // failure — a swallowed error meant a staged fix could sit with nobody told
   // and nothing in the logs saying why.
   const who = r.context?.customer_name || r.context?.phone || 'customer';
-  await pingApprovers(state, `🎧 Ace here — fix ready for ${who}: ${plan.summary || 'correction staged'}${win.trimAtS ? ' (end-trimmed)' : ''}. Listen & release in the Fix Song tab: ${ADMIN_FIX_URL}`);
+  await pingApprovers(state, `🎧 Ace here — fix ready for ${who}: ${plan.summary || 'correction staged'}${win.trimAtS ? ' (end-trimmed)' : ''}.${earList.length ? ` 👂 Ear-check ${earList.join(', ')}.` : ''} Listen & release in the Fix Song tab: ${ADMIN_FIX_URL}`);
 }
 
 // ---------------------------------------------------------------------------

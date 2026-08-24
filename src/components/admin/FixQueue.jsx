@@ -101,6 +101,24 @@ function RequestCard({ req, role, busyId, onClaim, onWork, onUnclaim, onRelease,
         <div className="rounded-lg bg-amber-500/10 border border-amber-500/25 px-3 py-2 mb-2">
           <p className="text-[11px] text-amber-200 font-semibold">🎧 Ace stopped — he needs a human on this one:</p>
           <p className="text-[11px] text-amber-100/90 whitespace-pre-wrap break-words">{req.auto_error || 'No reason recorded.'}</p>
+          {/* ANSWER-AND-RESUME (2026-08-24). His questions used to be a dead end:
+              the answer had no way back in, so every needs_human meant a human
+              redid the whole fix. Typing one line here hands it back to Ace with
+              the answer as binding guidance (send-to-ace note) and he resumes. */}
+          <textarea
+            value={aceNote}
+            onChange={(e) => setAceNote(e.target.value)}
+            rows={2}
+            className="w-full mt-2 rounded-md bg-black/30 border border-amber-500/30 px-2 py-1 text-[11px] text-amber-50 placeholder:text-amber-200/40"
+            placeholder="Answer Ace here (e.g. 'both names, work them into existing lines')…"
+          />
+          <button
+            disabled={busy || !aceNote.trim()}
+            onClick={() => { onSendToAce(req, aceNote); setAceNote(''); }}
+            className="mt-1 w-full rounded-md bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 px-2 py-1 text-[11px] font-semibold text-amber-100 disabled:opacity-40"
+          >
+            ✅ Answer Ace & continue
+          </button>
         </div>
       )}
       {req.auto_status && !['needs_human', 'staged', 'failed'].includes(req.auto_status) && req.status === 'pending' && (
