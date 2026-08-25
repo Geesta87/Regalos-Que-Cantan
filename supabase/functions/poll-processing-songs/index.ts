@@ -11,6 +11,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { buildUnsubscribeHeaders } from '../_shared/unsubscribe.ts';
 import { buildEmailParts } from '../_shared/email.ts';
 import { handleKieTerminalFailure, KIE_FAILED_STATUSES, isKieOutage, recordKieHealthEvent } from '../_shared/kie-recovery.ts';
+import { renderEmail } from '../_shared/email-shell.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -179,6 +180,48 @@ function getPreviewReadyEmailHtml(song: any, previewLink: string) {
   </table>
 </body>
 </html>`;
+}
+
+// Owner alert for a Kie outage (breaker open). Same Twilio REST pattern and
+// env vars health-check uses; deduped to one alert per hour via an 'alert'
+// row in kie_health_events. WhatsApp + plain SMS (A2P) when configured.
+async function sendBreakerAlertMessages(msg: string) {
+  const sid = Deno.env.get('TWILIO_ACCOUNT_SID');
+  const tok = Deno.env.get('TWILIO_AUTH_TOKEN');
+  if (!sid || !tok) { console.log('Twilio not configured — breaker alert skipped'); return; }
+  const url = `https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`;
+  const auth = btoa(`${sid}:${tok}`);
+  const post = async (params: Record<string, string>) => {
+    try {
+      const r = await fetch(url, {
+        method: 'POST',
+        headers: { 'Authorization': `Basic ${auth}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams(params).toString(),
+      });
+      if (!r.ok) console.error('Breaker alert Twilio error:', r.status, await r.text());
+    } catch (e: any) { console.error('Breaker alert Twilio error:', e.message); }
+  };
+  const waFrom = Deno.env.get('TWILIO_WHATSAPP_FROM');
+  const waTo = Deno.env.get('ALERT_WHATSAPP_TO');
+  if (waFrom && waTo) await post({ From: waFrom, To: waTo, Body: msg });
+  const smsTo = Deno.env.get('ALERT_SMS_TO');
+  const msgSvc = Deno.env.get('TWILIO_MESSAGING_SERVICE_SID');
+  const smsFrom = Deno.env.get('TWILIO_SMS_FROM');
+  if (smsTo && (msgSvc || smsFrom)) {
+    await post({ To: smsTo, Body: msg, ...(msgSvc ? { MessagingServiceSid: msgSvc } : { From: smsFrom! }) });
+  }
+}
+
+// Customer-facing "taking longer than usual" note (Spanish, apology shell).
+function getDelayNoticeHtml(recipientName: string) {
+  return renderEmail({
+    palette: 'apology',
+    hero: 'progress',
+    eyebrow: 'Tu canci&oacute;n est&aacute; en camino',
+    headline: 'Est&aacute; tardando un poquito m&aacute;s de lo normal.',
+    sub: `Seguimos trabajando en la canci&oacute;n para <strong>${recipientName}</strong>. A veces nuestro estudio se tarda unos minutos extra &mdash; no te preocupes: <strong>en cuanto est&eacute; lista te la enviamos a este correo</strong>. No necesitas hacer nada.`,
+    subcopy: 'Gracias por tu paciencia. &#10084;&#65039;',
+  });
 }
 
 // ============================================================================
@@ -566,6 +609,66 @@ Deno.serve(async (req) => {
         .lt('created_at', new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString());
     } catch { /* prune is best-effort */ }
 
+    // Owner alert the moment the breaker opens — earliest possible "Kie is
+    // down, fallback engaged" signal (health-check's stuck-songs alert fires
+    // much later and doesn't name the cause). One alert per hour max.
+    if (kieOutage) {
+      const { data: recentAlert } = await supabase
+        .from('kie_health_events')
+        .select('id')
+        .eq('event', 'alert')
+        .gte('created_at', new Date(Date.now() - 60 * 60 * 1000).toISOString())
+        .limit(1);
+      if (!recentAlert || recentAlert.length === 0) {
+        await supabase.from('kie_health_events').insert({ event: 'alert' });
+        await sendBreakerAlertMessages(
+          '🔴 KIE OUTAGE — fallback engaged\n\n' +
+          'Kie/Suno is failing (circuit breaker OPEN). New failures go straight to Mureka and pending songs are rescued at 5 min. ' +
+          'Customers are auto-notified of delays. No action required — FYI. ' +
+          'Logs: search "KIE BREAKER OPEN" in poll-processing-songs / song-callback.'
+        );
+      }
+    }
+
+    // Customer delay notices: any song still processing after 15 min gets ONE
+    // "taking longer than usual" email per order (delay_notified_at stamp).
+    // queued_retry songs are excluded — retry-queued-songs already emails those.
+    try {
+      const { data: delayedSongs } = await supabase
+        .from('songs')
+        .select('id, session_id, email, recipient_name, created_at')
+        .eq('status', 'processing')
+        .not('email', 'is', null)
+        .is('delay_notified_at', null)
+        .lt('created_at', new Date(Date.now() - 15 * 60 * 1000).toISOString())
+        .gt('created_at', new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString())
+        .order('created_at', { ascending: true })
+        .limit(20);
+      const notifiedOrders = new Set<string>();
+      for (const s of delayedSongs || []) {
+        const orderKey = s.session_id || s.id;
+        if (notifiedOrders.has(orderKey)) continue;
+        notifiedOrders.add(orderKey);
+        await sendEmail(
+          s.email,
+          '🎶 Tu canción está en camino — unos minutos más',
+          getDelayNoticeHtml(s.recipient_name || 'tu ser querido'),
+          'delay_notice',
+          'Está tardando un poquito más de lo normal — te la enviamos en cuanto esté lista',
+        );
+        const stamp = { delay_notified_at: new Date().toISOString() };
+        if (s.session_id) {
+          await supabase.from('songs').update(stamp).eq('session_id', s.session_id);
+        } else {
+          await supabase.from('songs').update(stamp).eq('id', s.id);
+        }
+        console.log(`[DELAY NOTICE] sent to ${s.email} (order ${orderKey})`);
+        results.push({ id: s.id, job: 'delay_notice', action: 'notified' });
+      }
+    } catch (dnErr: any) {
+      console.error('[DELAY NOTICE] error:', dnErr.message);
+    }
+
     const pollThreshold = new Date(Date.now() - POLL_AFTER_MINUTES * 60 * 1000).toISOString();
     const { data: pollSongs, error: pollError } = await supabase
       .from('songs')
@@ -654,8 +757,12 @@ Deno.serve(async (req) => {
               const ageMin = (Date.now() - new Date(song.created_at).getTime()) / 60000;
               // Outage fast lane: with the breaker open, don't make customers
               // wait for Kie's 10-25 min failure admission — rescue to Mureka
-              // once a song is clearly past normal generation time (~2-4 min).
-              const stuckAfterMin = kieOutage ? 8 : 30;
+              // as soon as a song is past normal generation time. Normal Kie
+              // takes finish in 2-4 min, so 5 min is the earliest point where
+              // "still pending" reliably means "dying". A late Kie completion
+              // is a benign race: whichever provider finishes first wins the
+              // row, the loser finds no processing songs and no-ops.
+              const stuckAfterMin = kieOutage ? 5 : 30;
               if (callbackFailed || ageMin > stuckAfterMin) {
                 if (!handledKieTasks.has(song.task_id)) {
                   handledKieTasks.add(song.task_id);

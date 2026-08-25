@@ -51,7 +51,9 @@ export async function isKieOutage(supabase: any): Promise<boolean> {
       .gte('created_at', since);
     if (error || !data) return false;
     const failures = data.filter((r: any) => r.event === 'failure').length;
-    const successes = data.length - failures;
+    // Count ONLY 'success' rows — the table also holds 'alert' dedup rows,
+    // which must not read as Kie health.
+    const successes = data.filter((r: any) => r.event === 'success').length;
     const open = failures >= BREAKER_MIN_FAILURES && failures >= successes * 2;
     if (open) console.log(`KIE BREAKER OPEN: ${failures} failures vs ${successes} successes in last ${BREAKER_WINDOW_MIN} min — skipping Kie retries, going straight to Mureka`);
     return open;
