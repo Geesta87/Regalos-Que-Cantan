@@ -10,7 +10,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { buildUnsubscribeHeaders } from '../_shared/unsubscribe.ts';
 import { buildEmailParts } from '../_shared/email.ts';
-import { handleKieTerminalFailure, KIE_FAILED_STATUSES } from '../_shared/kie-recovery.ts';
+import { handleKieTerminalFailure, KIE_FAILED_STATUSES, isKieOutage, recordKieHealthEvent } from '../_shared/kie-recovery.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -558,6 +558,14 @@ Deno.serve(async (req) => {
     //         Callbacks may be unreliable, so we actively check task completion
     // ========================================================================
 
+    // One breaker check per sweep (not per song); also prune breaker events
+    // older than 48h so kie_health_events never accumulates.
+    const kieOutage = await isKieOutage(supabase);
+    try {
+      await supabase.from('kie_health_events').delete()
+        .lt('created_at', new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString());
+    } catch { /* prune is best-effort */ }
+
     const pollThreshold = new Date(Date.now() - POLL_AFTER_MINUTES * 60 * 1000).toISOString();
     const { data: pollSongs, error: pollError } = await supabase
       .from('songs')
@@ -611,6 +619,7 @@ Deno.serve(async (req) => {
               const kieAudioUrl = track?.audioUrl || track?.audio_url || track?.streamAudioUrl;
               if (kieAudioUrl) {
                 console.log(`FOUND AUDIO via Kie polling for ${song.id}`);
+                await recordKieHealthEvent(supabase, 'success', song.task_id);
                 await supabase.from('songs').update({
                   original_audio_url: kieAudioUrl,
                   kie_payload: JSON.stringify(track),
@@ -643,10 +652,15 @@ Deno.serve(async (req) => {
               // generation time.
               const callbackFailed = (song.error_message || '').includes('(awaiting auto-recovery)');
               const ageMin = (Date.now() - new Date(song.created_at).getTime()) / 60000;
-              if (callbackFailed || ageMin > 30) {
+              // Outage fast lane: with the breaker open, don't make customers
+              // wait for Kie's 10-25 min failure admission — rescue to Mureka
+              // once a song is clearly past normal generation time (~2-4 min).
+              const stuckAfterMin = kieOutage ? 8 : 30;
+              if (callbackFailed || ageMin > stuckAfterMin) {
                 if (!handledKieTasks.has(song.task_id)) {
                   handledKieTasks.add(song.task_id);
-                  const syntheticStatus = callbackFailed ? 'CALLBACK_REPORTED_FAILURE' : 'STUCK_OVER_30_MIN';
+                  const syntheticStatus = callbackFailed ? 'CALLBACK_REPORTED_FAILURE'
+                    : (ageMin > 30 ? 'STUCK_OVER_30_MIN' : 'STUCK_KIE_OUTAGE');
                   const recovery = await handleKieTerminalFailure(supabase, song.task_id, syntheticStatus);
                   results.push({ id: song.id, job: 'poll', action: `kie_recovery_${recovery}`, kieStatus: syntheticStatus });
                 } else {

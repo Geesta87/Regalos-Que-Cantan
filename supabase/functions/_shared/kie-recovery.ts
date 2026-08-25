@@ -21,6 +21,45 @@ export const KIE_FAILED_STATUSES = new Set([
   'SENSITIVE_WORD_ERROR', 'FAILED',
 ]);
 
+// ---- Kie outage circuit-breaker -------------------------------------------
+// Every terminal failure and every completed Kie song is recorded in
+// kie_health_events. When recent failures dominate, the ladder SKIPS the
+// retry-on-Kie step and hands orders to Mureka on their FIRST terminal
+// failure. Rationale (2026-08-25 Suno outage): Kie takes 10-25 min to report
+// each failure, so the two-failure ladder meant ~35 min before any song
+// reached Mureka. The breaker closes by itself once successes come back or
+// the failures age out of the window — there is nothing to reset manually.
+const BREAKER_WINDOW_MIN = Number(Deno.env.get('KIE_BREAKER_WINDOW_MIN') || 15);
+const BREAKER_MIN_FAILURES = Number(Deno.env.get('KIE_BREAKER_MIN_FAILURES') || 3);
+
+export async function recordKieHealthEvent(supabase: any, event: 'failure' | 'success', taskId?: string) {
+  try {
+    const { error } = await supabase.from('kie_health_events').insert({ event, task_id: taskId || null });
+    if (error) console.warn(`kie_health_events insert failed: ${error.message}`);
+  } catch (e: any) {
+    console.warn(`kie_health_events insert threw: ${e.message}`);
+  }
+}
+
+// Never throws — a broken breaker must degrade to the normal ladder, not block recovery.
+export async function isKieOutage(supabase: any): Promise<boolean> {
+  try {
+    const since = new Date(Date.now() - BREAKER_WINDOW_MIN * 60 * 1000).toISOString();
+    const { data, error } = await supabase
+      .from('kie_health_events')
+      .select('event')
+      .gte('created_at', since);
+    if (error || !data) return false;
+    const failures = data.filter((r: any) => r.event === 'failure').length;
+    const successes = data.length - failures;
+    const open = failures >= BREAKER_MIN_FAILURES && failures >= successes * 2;
+    if (open) console.log(`KIE BREAKER OPEN: ${failures} failures vs ${successes} successes in last ${BREAKER_WINDOW_MIN} min — skipping Kie retries, going straight to Mureka`);
+    return open;
+  } catch {
+    return false;
+  }
+}
+
 export function englishifyMarkersForProvider(lyrics: string): string {
   if (!lyrics) return lyrics;
   return lyrics
@@ -42,6 +81,8 @@ export async function handleKieTerminalFailure(supabase: any, taskId: string, ki
     .eq('task_id', taskId)
     .eq('status', 'processing');
   if (!siblings || siblings.length === 0) return 'no_siblings';
+
+  await recordKieHealthEvent(supabase, 'failure', taskId);
 
   const attempt = Math.max(...siblings.map((s: any) => s.regenerate_count || 0));
   const failAll = async (msg: string) => {
@@ -71,7 +112,9 @@ export async function handleKieTerminalFailure(supabase: any, taskId: string, ki
   };
 
   // ---- Attempt 1: resubmit the SAME job to Kie ----
-  if (attempt === 0 && KIE_API_KEY) {
+  // Skipped when the breaker is open: during a Kie/Suno outage the retry just
+  // burns another 10-25 min waiting for Kie to admit failure again.
+  if (attempt === 0 && KIE_API_KEY && !(await isKieOutage(supabase))) {
     // The submit payload is stored on processing rows by generate-song
     // (completed rows get it overwritten with the track object — guard on .prompt)
     let submitPayload: any = null;
@@ -88,6 +131,7 @@ export async function handleKieTerminalFailure(supabase: any, taskId: string, ki
           method: 'POST',
           headers: { 'Authorization': `Bearer ${KIE_API_KEY}`, 'Content-Type': 'application/json' },
           body: JSON.stringify(submitPayload),
+          signal: AbortSignal.timeout(20000),
         });
         const data = await r.json().catch(() => ({}));
         const newTaskId = data?.data?.taskId;
@@ -152,10 +196,14 @@ export async function handleKieTerminalFailure(supabase: any, taskId: string, ki
   };
 
   try {
+    // Timeout is load-bearing: on 2026-08-25 this fetch hung with no signal,
+    // the worker was killed mid-recovery with zero logs, and only the poll
+    // backstop rescued the order. A hang now resolves in 30s → queued_retry.
     const r = await fetch('https://api.useapi.net/v1/mureka/music/create-advanced', {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${USEAPI_TOKEN_2}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(murekaPayload),
+      signal: AbortSignal.timeout(30000),
     });
     const data = await r.json().catch(() => ({}));
     if (r.ok && data.jobid) {

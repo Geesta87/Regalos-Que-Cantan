@@ -11,7 +11,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { buildUnsubscribeHeaders } from '../_shared/unsubscribe.ts';
 import { buildEmailParts } from '../_shared/email.ts';
 import { renderEmail } from '../_shared/email-shell.ts';
-import { handleKieTerminalFailure } from '../_shared/kie-recovery.ts';
+import { handleKieTerminalFailure, recordKieHealthEvent } from '../_shared/kie-recovery.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -219,6 +219,10 @@ Deno.serve(async (req) => {
         results.push({ id: dbSong.id, action: 'no_audio_url' });
       }
     }
+
+    // Feed the outage circuit-breaker (kie-recovery.ts): a completed take is
+    // proof Kie is healthy, which closes the breaker again after an outage.
+    if (completedIds.length > 0) await recordKieHealthEvent(supabase, 'success', taskId);
 
     // ---- One email per order, linking to EVERY version ----
     // This used to fire inside the loop with `/preview/<first id>`, which the
