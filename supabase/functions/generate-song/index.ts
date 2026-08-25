@@ -1353,6 +1353,16 @@ const ADDITIONAL_ARTIST_NAMES = [
   'Juanes', 'La Oreja de Van Gogh', 'Shakira', 'Ricky Martin',
   'Rocío Dúrcal', 'Rocio Durcal', 'Yuri', 'Thalía', 'Thalia',
   'Belinda',
+  // Ranchero / norteño legends (2026-08-25: "estilo Antonio Aguilar" in a
+  // custom-style write-in reached the Kie tags — Suno 400-rejected both of
+  // Nestor's orders. The matcher is accent-insensitive, so one spelling each.)
+  // NOTE the matcher is case-insensitive AND this sanitizer also runs on
+  // lyrics — never add a bare common word ("Bronco", "El Fantasma") or a
+  // plain first-name pair likely to be a RECIPIENT's real name.
+  'Antonio Aguilar', 'Ramón Ayala', 'Javier Solís', 'Marco Antonio Solís',
+  'Cornelio Reyna', 'Los Cadetes de Linares', 'Lorenzo de Monteclaro',
+  'Los Tucanes de Tijuana', 'Julión Álvarez', 'La Arrolladora',
+  'Chavela Vargas', 'Lola Beltrán', 'Los Bukis', 'Grupo Bronco',
 ];
 
 function escapeRegExp(s: string): string {
@@ -1385,6 +1395,27 @@ function artistNameRegExp(name: string): RegExp {
     })
     .join('');
   return new RegExp(`\\b${pattern}\\b`, 'gi');
+}
+
+// The custom-style write-in is the one field where customers name artists the
+// lists have never heard of ("Corrido ranchero estilo Antonio Aguilar" —
+// Nestor 2026-08-25: Suno 400-rejects ANY artist reference in tags, so both
+// his orders died on Kie twice before Mureka rescued them). Strip the whole
+// "estilo/como/tipo/al estilo de/inspirado en <Proper Name>" phrase by
+// PATTERN so unknown artists can never reach the tags. Lowercase style words
+// survive ("estilo romántico suave" is untouched — the name must start with a
+// capital). Runs ONLY on the style write-in, never on lyrics.
+function stripStyleArtistPhrases(input: string): string {
+  if (!input) return input;
+  return input
+    .replace(
+      /\b(?:al\s+estilo\s+de|estilo(?:\s+de)?|inspirad[oa]\s+en|como|tipo|a\s+lo)\s+(?:[A-ZÁÉÍÓÚÑ][A-Za-zÁÉÍÓÚÑáéíóúñü'.-]*)(?:\s+(?:del|de|los|las|la|el|y|e|[A-ZÁÉÍÓÚÑ][A-Za-zÁÉÍÓÚÑáéíóúñü'.-]*)){0,6}/g,
+      '',
+    )
+    .replace(/\s{2,}/g, ' ')
+    .replace(/\s*,\s*,/g, ',')
+    .replace(/^\s*,\s*|\s*,\s*$/g, '')
+    .trim();
 }
 
 function sanitizeArtistNames(input: string): string {
@@ -2642,7 +2673,9 @@ serve(async (req) => {
     // a newline collapse so it can't break the single-line `desc` field. A
     // Spanish-vocal + studio-quality anchor is appended at STEP 3 below.
     const customStyleClean = sanitizeArtistNames(
-      (typeof customStyle === 'string' ? customStyle : '').replace(/\s+/g, ' ').trim()
+      stripStyleArtistPhrases(
+        (typeof customStyle === 'string' ? customStyle : '').replace(/\s+/g, ' ').trim()
+      )
     ).slice(0, 150);
 
     // "Escribir mi propia letra" path: when the buyer supplies their own lyrics,

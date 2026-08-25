@@ -116,7 +116,10 @@ export async function handleKieTerminalFailure(supabase: any, taskId: string, ki
   // ---- Attempt 1: resubmit the SAME job to Kie ----
   // Skipped when the breaker is open: during a Kie/Suno outage the retry just
   // burns another 10-25 min waiting for Kie to admit failure again.
-  if (attempt === 0 && KIE_API_KEY && !(await isKieOutage(supabase))) {
+  // Also skipped for TAGS_REJECTED (Suno's deterministic artist-name/tags 400):
+  // the identical payload is guaranteed to fail again — go straight to Mureka,
+  // which doesn't enforce the artist rule.
+  if (attempt === 0 && KIE_API_KEY && kieStatus !== 'TAGS_REJECTED' && !(await isKieOutage(supabase))) {
     // The submit payload is stored on processing rows by generate-song
     // (completed rows get it overwritten with the track object — guard on .prompt)
     let submitPayload: any = null;

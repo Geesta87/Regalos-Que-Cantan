@@ -169,9 +169,15 @@ Deno.serve(async (req) => {
           error_message: `kie.ai callback: ${errMsg} (awaiting auto-recovery)`.substring(0, 500),
         }).eq('id', dbSong.id).eq('status', 'processing');
       }
+      // Suno's artist-name/tags rejection is DETERMINISTIC — resubmitting the
+      // identical payload to Kie is guaranteed to 400 again (Nestor
+      // 2026-08-25 burned a pointless Kie retry on it). Classify it so the
+      // ladder skips straight to Mureka, which doesn't enforce the rule.
+      const deterministic = /artist name|change your tags/i.test(errMsg);
       let recovery = 'recovery_error';
       try {
-        recovery = await handleKieTerminalFailure(supabase, taskId, 'CALLBACK_REPORTED_FAILURE');
+        recovery = await handleKieTerminalFailure(
+          supabase, taskId, deterministic ? 'TAGS_REJECTED' : 'CALLBACK_REPORTED_FAILURE');
         console.log(`Recovery for ${taskId}: ${recovery}`);
       } catch (e: any) {
         // Marker is already stamped — poll-processing-songs will pick it up.
