@@ -399,6 +399,18 @@ function countLineForAudit(ws: W[], line: string, groups: string[][], n: number)
         }
       }
     }
+    // SHORT-WORD-BLIND RETRY (2026-08-25, Gerardo Montero baa24fbc, mirror of
+    // the browser guard): function words are unmeasurable in a transcript —
+    // "tú no se encuentran también" came back "tú nos encuentran también" and
+    // the required "no"/"se" tokens vetoed takes that sang the line perfectly.
+    // Failing lines get one more count by their CONTENT words only.
+    if (have < n) {
+      const content = line.split(/\s+/).filter((t) => norm(t).length > 2).join(' ');
+      if (content !== line) {
+        const cg = buildAuditGroups(content);
+        if (cg.length >= 3) have = Math.max(have, Math.min(n, countByGroups(ws, cg)));
+      }
+    }
     return have;
   }
 }

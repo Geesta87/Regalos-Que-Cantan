@@ -1043,6 +1043,17 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
           if (best) break;
         }
       }
+      // SHORT-WORD-BLIND RETRY (2026-08-25, Gerardo Montero baa24fbc): Whisper
+      // scatters function words — the sheet's "tú no se encuentran también" came
+      // back "tú nos encuentran también" in every take (and "tan bien" in the
+      // original), so the required tokens "no"/"se" vetoed three rounds of takes
+      // that sang the line perfectly. Function words are unmeasurable (same
+      // truth as the be4e5a5 delta rule): when the line still fails, count it
+      // by its CONTENT words only — the >=3-group floor keeps identity.
+      if (!best) {
+        const content = toks.filter((t) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]/g, '').length > 2).join(' ');
+        if (content !== line && buildTokenGroups(content).length >= 3) best = countCleanOccurrences(inWords, content);
+      }
       return best;
     };
     for (const { line, n, rawCap } of need.values()) {
