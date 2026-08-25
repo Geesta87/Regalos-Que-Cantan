@@ -21,6 +21,36 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 // caught by the soft caps during testing. Empty/unset = override disabled.
 const ADMIN_OVERRIDE_PIN = Deno.env.get('ADMIN_OVERRIDE_PIN') || '';
 
+// Same Twilio WhatsApp alert channel health-check uses. A fact-check verdict
+// that stays ok=false after the full correction loop used to end its life as a
+// console.error nobody reads (Araceli/Javier 2026-08-24: the audit flagged the
+// wrong year-count, the loop couldn't fix it, and the song shipped silently).
+// The song still ships — the audit never blocks a customer — but a human now
+// hears about it in time to fix the lyrics before the customer pays.
+const TWILIO_ACCOUNT_SID = Deno.env.get('TWILIO_ACCOUNT_SID');
+const TWILIO_AUTH_TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN');
+const TWILIO_WHATSAPP_FROM = Deno.env.get('TWILIO_WHATSAPP_FROM');
+const ALERT_WHATSAPP_TO = Deno.env.get('ALERT_WHATSAPP_TO');
+
+async function sendFactCheckAlert(message: string): Promise<void> {
+  if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_WHATSAPP_FROM || !ALERT_WHATSAPP_TO) {
+    console.warn('Fact-check alert skipped: Twilio WhatsApp secrets not configured');
+    return;
+  }
+  try {
+    const url = `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json`;
+    const auth = btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`);
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'Authorization': `Basic ${auth}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ From: TWILIO_WHATSAPP_FROM, To: ALERT_WHATSAPP_TO, Body: message }),
+    });
+    if (!resp.ok) console.warn('Fact-check alert send failed:', resp.status, (await resp.text()).slice(0, 200));
+  } catch (e) {
+    console.warn('Fact-check alert threw:', e);
+  }
+}
+
 // =============================================================================
 // COMPLETE GENRE DNA DATABASE - From RegalosQueCantan_Genre_DNA_FILLED.xlsx
 // All 18 genres with sub-genres, tempos, instruments, vibes, and negative tags
@@ -1757,7 +1787,27 @@ function spellSpanishDate(day: number, month: number, year: number): string {
   return `${d} de ${SPANISH_MONTHS[month - 1]} de ${spellSpanishCardinal(year)}`;
 }
 
-interface DateReading { raw: string; display: string; spelled: string; ambiguous: boolean; }
+interface DateReading { raw: string; display: string; spelled: string; ambiguous: boolean; day?: number; month?: number; year: number; yearOnly?: boolean; }
+
+// The business's "today", pinned to Pacific time so a late-night order doesn't
+// flip to tomorrow's date. Every model in this pipeline (writer, verifier,
+// corrector) has a STALE internal clock — on 2026-08-24 the fact-checker wrote
+// "si la canción se hace en 2025" into a verdict (song 10b60cdc). Any year math
+// MUST come from here, never from a model's own idea of "now".
+function todayPacific(): { y: number; m: number; d: number } {
+  const s = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date());
+  const [y, m, d] = s.split('-').map((n) => parseInt(n, 10));
+  return { y, m, d };
+}
+
+// One shared line telling a model what day it actually is. Injected into the
+// writer guidance and both audit prompts.
+function todayLineES(): string {
+  const t = todayPacific();
+  return `FECHA DE HOY: ${t.d} de ${SPANISH_MONTHS[t.m - 1]} de ${t.y}.`;
+}
 
 function analyzeDates(details: string): { guidance: string; readings: DateReading[] } {
   if (!details) return { guidance: '', readings: [] };
@@ -1780,14 +1830,77 @@ function analyzeDates(details: string): { guidance: string; readings: DateReadin
       display: `${day} de ${SPANISH_MONTHS[month - 1]} de ${year}`,
       spelled: spellSpanishDate(day, month, year),
       ambiguous,
+      day, month, year,
     });
   }
+
+  // Text dates: "16 de septiembre del 2006", "16 se septiembre de 2006" (typo
+  // "se" for "de" is common), "16 septiembre 2006". These slipped straight past
+  // the numeric regex above — Araceli's "El 16 se septiembre del 2006"
+  // (2026-08-24, song 10b60cdc) got ZERO date guidance and the writer invented
+  // its own year math. Month is named, so these are never ambiguous.
+  const MONTH_RE = SPANISH_MONTHS.join('|');
+  const textRe = new RegExp(
+    `\\b(\\d{1,2})\\s*(?:de|del|se|d)?\\s+(${MONTH_RE})(?:\\s+(?:de|del))?\\s+(\\d{4})\\b`,
+    'gi'
+  );
+  while ((m = textRe.exec(details)) !== null) {
+    const day = parseInt(m[1], 10);
+    const month = SPANISH_MONTHS.indexOf(m[2].toLowerCase()) + 1;
+    const year = parseInt(m[3], 10);
+    if (month < 1 || day < 1 || day > 31 || year < 1900 || year > 2100) continue;
+    readings.push({
+      raw: m[0],
+      display: `${day} de ${SPANISH_MONTHS[month - 1]} de ${year}`,
+      spelled: spellSpanishDate(day, month, year),
+      ambiguous: false,
+      day, month, year,
+    });
+  }
+
+  // Bare years ("en 2006 nos conocimos", "desde el 2011") not already claimed
+  // by a full date above: no day/month, but still an invitation for the writer
+  // to compute elapsed time — so they get precomputed math too.
+  const claimed = new Set(readings.map((r) => r.year));
+  const yearRe = /\b(19\d{2}|20\d{2})\b/g;
+  while ((m = yearRe.exec(details)) !== null) {
+    const year = parseInt(m[1], 10);
+    if (claimed.has(year)) continue;
+    claimed.add(year);
+    readings.push({
+      raw: m[0],
+      display: `año ${year}`,
+      spelled: spellSpanishCardinal(year),
+      ambiguous: false,
+      year, yearOnly: true,
+    });
+  }
+
   if (!readings.length) return { guidance: '', readings };
   const lines = readings.map(r =>
     `- "${r.raw}" = ${r.display}${r.ambiguous ? ' (interpretado en formato de EE.UU.: mes-día-año)' : ''} → en la letra escríbelo SIEMPRE con palabras: "${r.spelled}"`
   ).join('\n');
+
+  // Precomputed elapsed-years math, anchored to the REAL current date. The
+  // writer must never do this arithmetic itself: its internal clock is stale
+  // (it believes ~2025) and it turned the customer's "20 años" into
+  // "diecinueve años" exactly that way.
+  const t = todayPacific();
+  const mathLines = readings.map((r) => {
+    if (r.yearOnly) {
+      const approx = t.y - r.year;
+      return `- Desde el año ${r.year}: hasta hoy han pasado ${approx - 1} o ${approx} años (${spellSpanishCardinal(approx - 1)} o ${spellSpanishCardinal(approx)}), según el mes exacto.`;
+    }
+    let elapsed = t.y - r.year;
+    if (t.m < r.month! || (t.m === r.month! && t.d < r.day!)) elapsed--;
+    const nextNo = elapsed + 1;
+    const nextYear = r.year + nextNo;
+    const thisYear = nextYear === t.y ? ' (ESTE año)' : '';
+    return `- Desde el ${r.display}: han pasado ${elapsed} años completos (${spellSpanishCardinal(elapsed)}); el aniversario número ${nextNo} (${spellSpanishCardinal(nextNo)}) cae el ${r.day} de ${SPANISH_MONTHS[r.month! - 1]} de ${nextYear}${thisYear}.`;
+  }).join('\n');
+
   const guidance =
-    `\nINTERPRETACIÓN OBLIGATORIA DE FECHAS (el cliente escribió fechas con números — úsalas EXACTAMENTE así, nunca en cifras):\n${lines}`;
+    `\nINTERPRETACIÓN OBLIGATORIA DE FECHAS (el cliente escribió fechas o años — úsalos EXACTAMENTE así, nunca en cifras):\n${lines}\n\n${todayLineES()} MATEMÁTICA DE AÑOS — YA RESUELTA (NO calcules nada por tu cuenta):\n${mathLines}\nREGLA DE ORO: si el cliente escribió CUÁNTOS años ("20 años", "diez años juntos"), usa EXACTAMENTE el número del cliente — su número SIEMPRE le gana a cualquier cálculo. Si el cliente NO dio un total y necesitas uno, usa SOLO los números precalculados de arriba. NUNCA calcules años transcurridos tú mismo.`;
   return { guidance, readings };
 }
 
@@ -1960,13 +2073,16 @@ Marca un problema si la letra:
 - Inventa un dato concreto (fecha, lugar, número, nombre, evento) que el cliente NO escribió.
 - Escribe una fecha o número en CIFRAS en vez de palabras (ej. "2011" en vez de "dos mil once").
 - Interpreta una fecha distinto a la INTERPRETACIÓN OBLIGATORIA dada.
+- Afirma un TOTAL DE AÑOS transcurridos que el cliente NO escribió, o distinto al que el cliente escribió. Si el cliente dio un número de años ("20 años"), la letra debe usar EXACTAMENTE ese número: un número distinto "calculado" desde una fecha es un ERROR SEGURO (ok=false, uncertain=false), NUNCA una ambigüedad — el modelo que escribió la letra no sabe qué día es hoy y su cálculo no es confiable. Usa la FECHA DE HOY que te doy abajo para cualquier verificación de años; NUNCA tu propia idea de "ahora".
 - Cambia el TIEMPO VERBAL de un hecho vigente: el cliente lo describe en PRESENTE (cualidades, costumbres, vínculos que siguen: "todos la quieren", "sus oraciones me protegen") y la letra lo pone en PASADO ("la adoraron", "me cuidaron", "cuánto amor diste"). Para una persona VIVA, el pasado implica que ya no está — es un error de hecho. (Si los datos indican que la persona falleció, el pasado es correcto.)
 - Atribuye un SENTIMIENTO o MOTIVO que el cliente no escribió ("sin rencor", "con resentimiento", "por obligación") a una acción de la persona.
 
 La atmósfera, las metáforas y las imágenes poéticas son LIBRES, siempre que NO cambien un hecho ni la dirección/sujeto de una acción o relación. Evalúa solo HECHOS y QUIÉN-hace-QUÉ-a-QUIÉN.
 
+Cada issue que reportes debe ser una INSTRUCCIÓN DE CORRECCIÓN concreta y ejecutable ("cambia 'diecinueve años' por 'veinte años' porque el cliente escribió '20 años'"), nunca una reflexión ni un análisis. Si tras analizar algo concluyes que es aceptable, NO lo pongas en issues — un issue que dice "esto es aceptable/ambiguo" no se puede corregir y atasca el ciclo de corrección.
+
 Si todo es fiel, ok=true con issues vacío. Si NO estás completamente seguro de un posible problema, pon uncertain=true para pedir una segunda revisión. Entrega SIEMPRE llamando a report_fact_check.`;
-  const userMsg = `DATOS DEL CLIENTE:\n${details}\n${dateGuidance || ''}\n\nLETRA GENERADA:\n${lyrics}`;
+  const userMsg = `${todayLineES()}\n\nDATOS DEL CLIENTE:\n${details}\n${dateGuidance || ''}\n\nLETRA GENERADA:\n${lyrics}`;
   // Retry transient failures instead of silently treating them as "passed".
   // Only after MAX_ATTEMPTS exhaust do we return ran=false so the caller can
   // escalate / log loudly rather than ship an unverified song as if it were clean.
@@ -2028,8 +2144,8 @@ async function correctLyricFacts(opts: {
       additionalProperties: false,
     },
   } as const;
-  const sys = `Eres editor de letras. Te doy una letra y una lista de PROBLEMAS DE HECHOS. Corrige SOLO esos problemas y deja intacto TODO lo demás (estructura, rima, métrica, emoción, marcadores de sección). Mantén la fidelidad EXACTA a los datos del cliente, escribe TODAS las fechas y números con palabras, y respeta la interpretación de fechas dada. No inventes datos nuevos. Entrega llamando a submit_corrected_lyrics.`;
-  const userMsg = `DATOS DEL CLIENTE:\n${details}\n${dateGuidance || ''}\n\nPROBLEMAS A CORREGIR:\n${issues.map((i, n) => `${n + 1}. ${i}`).join('\n')}\n\nLETRA ACTUAL:\n${lyrics}`;
+  const sys = `Eres editor de letras. Te doy una letra y una lista de PROBLEMAS DE HECHOS. Corrige SOLO esos problemas y deja intacto TODO lo demás (estructura, rima, métrica, emoción, marcadores de sección). Mantén la fidelidad EXACTA a los datos del cliente, escribe TODAS las fechas y números con palabras, y respeta la interpretación de fechas dada. No inventes datos nuevos. SOBRE AÑOS TRANSCURRIDOS: nunca calcules tú cuántos años han pasado — usa la FECHA DE HOY que te doy, y si el cliente escribió un número de años, ese número gana SIEMPRE. Entrega llamando a submit_corrected_lyrics.`;
+  const userMsg = `${todayLineES()}\n\nDATOS DEL CLIENTE:\n${details}\n${dateGuidance || ''}\n\nPROBLEMAS A CORREGIR:\n${issues.map((i, n) => `${n + 1}. ${i}`).join('\n')}\n\nLETRA ACTUAL:\n${lyrics}`;
   try {
     const resp = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -2473,6 +2589,7 @@ La letra NUNCA debe afirmar un hecho que contradiga o cambie el significado de l
   • "es de Jalisco" → PROHIBIDO escribir "vive en Jalisco" (origen ≠ residencia actual)
   • "su papá / su hijo" → PROHIBIDO cambiarlo a "su abuelo / su hermano" (cada parentesco es exacto)
   • un nombre, número, fecha o lugar → cópialo TAL CUAL, no lo "mejores" ni lo aproximes.
+- AÑOS TRANSCURRIDOS — NUNCA HAGAS LA CUENTA TÚ. No sabes qué día es hoy, así que cualquier "X años desde..." que calcules saldrá mal. Si el cliente escribió cuántos años son ("20 años", "diez años juntos"), usa EXACTAMENTE su número: el número del cliente SIEMPRE le gana a tu cálculo. Si no lo escribió, usa SOLO los números de la sección "MATEMÁTICA DE AÑOS — YA RESUELTA" del mensaje; y si esa sección no existe, NO afirmes ningún total de años transcurridos.
 - NO INVENTES datos concretos nuevos (fechas, lugares, edades, números, nombres, eventos) que el usuario NO dio. Está PROHIBIDO agregar un hecho específico falso solo porque "suena bien" o porque ayuda a la rima.
 - SÍ tienes libertad TOTAL para la EMOCIÓN: atmósfera, imágenes sensoriales, sentimiento, metáforas. Tu creatividad es sobre CÓMO se siente la historia, NUNCA sobre QUÉ pasó. Adorna el sentimiento, no los hechos.
 - Si un detalle es AMBIGUO o incompleto, déjalo GENERAL en vez de inventar una versión específica que podría ser falsa. Mejor verdadero y vago que específico y equivocado.
@@ -3376,8 +3493,17 @@ Cuando termines, llama a la herramienta submit_song_lyrics con la letra completa
           console.log(`✓ Fact-check passed${escalated ? ' (escalated)' : ''}${corrections ? ` after ${corrections} correction(s)` : ''} — lyrics faithful to customer details`);
         } else if (verdict.ran && !verdict.ok) {
           // Still not clean after the correction loop. Ship the best (corrected)
-          // version but log LOUDLY (grep LYRIC_FACT_CHECK_UNRESOLVED).
+          // version but log LOUDLY (grep LYRIC_FACT_CHECK_UNRESOLVED) AND wake a
+          // human: a red verdict that only lives in a log line is a verdict
+          // nobody acts on (proven 2026-08-24). Best-effort — never blocks.
           console.error(`LYRIC_FACT_CHECK_UNRESOLVED email=${email} recipient=${recipientName} remaining=${verdict.issues.join(' | ')}`);
+          await sendFactCheckAlert(
+            `🚨 FACT-CHECK SIN RESOLVER (la canción SE GENERÓ igual)\n` +
+            `Para: ${recipientName} · De: ${senderName}\n` +
+            `Cliente: ${email}\n` +
+            `Problemas: ${verdict.issues.join(' | ').slice(0, 700)}\n` +
+            `Revisa la letra en /admin (Lookup por email) y corrígela ANTES de que el cliente pague.`
+          );
         } else {
           // Checker never returned a real verdict even after retries + escalation.
           // Do NOT silently treat as clean — record it loudly (grep LYRIC_FACT_CHECK_NO_VERDICT).
@@ -3707,6 +3833,9 @@ Cuando termines, llama a la herramienta submit_song_lyrics con la letra completa
       style_used: finalStyle,
       task_id: taskId,
       provider: winningProvider,
+      // Same audit record as v1 — both siblings share the same lyric sheet, so
+      // both must carry the verdict (v2 used to stay NULL and looked unaudited).
+      fact_check: factCheckVerdict,
       // Same anti-abuse stamp as the v1 insert.
       client_ip: clientIp || null,
     };
