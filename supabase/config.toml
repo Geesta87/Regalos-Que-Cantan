@@ -1047,3 +1047,10 @@ verify_jwt = true
 # commit that adds the caller.
 [functions.generate-cuento]
 verify_jwt = true
+
+[functions.song-notify-me]
+# "Text me when my song is ready" (GeneratingPage escape hatch, 2026-08-25).
+# Called from our own frontend with the anon key; validates the order is <24h
+# old server-side and writes only sms_notify_phone/_requested_at with the
+# service role. Frontend-only caller → default gate stays ON.
+verify_jwt = true

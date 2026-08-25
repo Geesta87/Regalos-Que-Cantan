@@ -212,6 +212,38 @@ async function sendBreakerAlertMessages(msg: string) {
   }
 }
 
+// Customer SMS via the A2P Messaging Service (falls back to a single SMS_FROM
+// number). Same Twilio REST call the breaker alert uses.
+async function sendCustomerSms(to: string, body: string): Promise<boolean> {
+  const sid = Deno.env.get('TWILIO_ACCOUNT_SID');
+  const tok = Deno.env.get('TWILIO_AUTH_TOKEN');
+  const msgSvc = Deno.env.get('TWILIO_MESSAGING_SERVICE_SID');
+  const smsFrom = Deno.env.get('TWILIO_SMS_FROM');
+  if (!sid || !tok || (!msgSvc && !smsFrom)) {
+    console.warn('[SMS NOTIFY] Twilio SMS not configured — skipping');
+    return false;
+  }
+  try {
+    const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Basic ${btoa(`${sid}:${tok}`)}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({
+        To: to,
+        Body: body,
+        ...(msgSvc ? { MessagingServiceSid: msgSvc } : { From: smsFrom! }),
+      }).toString(),
+    });
+    if (!r.ok) { console.error('[SMS NOTIFY] Twilio error:', r.status, await r.text()); return false; }
+    return true;
+  } catch (e: any) {
+    console.error('[SMS NOTIFY] Twilio error:', e.message);
+    return false;
+  }
+}
+
 // Customer-facing "taking longer than usual" note (Spanish, apology shell).
 function getDelayNoticeHtml(recipientName: string) {
   return renderEmail({
@@ -640,6 +672,7 @@ Deno.serve(async (req) => {
         .eq('status', 'processing')
         .not('email', 'is', null)
         .is('delay_notified_at', null)
+        .is('sms_notify_requested_at', null)
         .lt('created_at', new Date(Date.now() - 15 * 60 * 1000).toISOString())
         .gt('created_at', new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString())
         .order('created_at', { ascending: true })
@@ -667,6 +700,72 @@ Deno.serve(async (req) => {
       }
     } catch (dnErr: any) {
       console.error('[DELAY NOTICE] error:', dnErr.message);
+    }
+
+    // "Text me when it's ready": completed songs whose customer opted into an
+    // SMS on the generating page. One SMS per order, once every version that
+    // is plausibly still rendering has finished (same 30-min hold rule as the
+    // preview email), with the payment-gated /listen link for ALL completed
+    // versions. Covers every completion path (callback, poll, Mureka) since
+    // this sweep runs every 2 min.
+    try {
+      const { data: smsReady } = await supabase
+        .from('songs')
+        .select('id, session_id, version, sms_notify_phone, recipient_name, created_at')
+        .eq('status', 'completed')
+        .not('sms_notify_requested_at', 'is', null)
+        .is('sms_notify_sent_at', null)
+        .gt('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
+        .order('created_at', { ascending: true })
+        .limit(20);
+      const smsHandledOrders = new Set<string>();
+      for (const s of smsReady || []) {
+        const orderKey = s.session_id || s.id;
+        if (smsHandledOrders.has(orderKey)) continue;
+        smsHandledOrders.add(orderKey);
+        if (!s.sms_notify_phone) continue;
+
+        let ids = [s.id];
+        let pending = 0;
+        if (s.session_id) {
+          const { data: siblings } = await supabase
+            .from('songs')
+            .select('id, version, status, created_at')
+            .eq('session_id', s.session_id)
+            .order('version', { ascending: true });
+          if (siblings?.length) {
+            const HOLD_WINDOW_MS = 30 * 60 * 1000;
+            pending = siblings.filter((x: any) =>
+              x.status === 'processing' &&
+              Date.now() - new Date(x.created_at).getTime() < HOLD_WINDOW_MS
+            ).length;
+            const done = siblings.filter((x: any) => x.status === 'completed');
+            if (done.length) ids = done.map((x: any) => x.id);
+          }
+        }
+        if (pending > 0) {
+          console.log(`[SMS NOTIFY] holding for ${orderKey} — ${pending} version(s) still rendering`);
+          continue;
+        }
+
+        const link = `https://regalosquecantan.com/listen?song_ids=${ids.join(',')}&utm_source=sms&utm_medium=transactional&utm_campaign=notify_ready`;
+        const sent = await sendCustomerSms(
+          s.sms_notify_phone,
+          `🎶 ¡Tus canciones para ${s.recipient_name || 'tu ser querido'} ya están listas! Escúchalas aquí antes de pagar: ${link} — Regalos Que Cantan`,
+        );
+        if (sent) {
+          const stamp = { sms_notify_sent_at: new Date().toISOString() };
+          if (s.session_id) {
+            await supabase.from('songs').update(stamp).eq('session_id', s.session_id);
+          } else {
+            await supabase.from('songs').update(stamp).eq('id', s.id);
+          }
+          console.log(`[SMS NOTIFY] sent to ${s.sms_notify_phone.slice(0, 3)}***${s.sms_notify_phone.slice(-2)} (order ${orderKey}, ${ids.length} version(s))`);
+          results.push({ id: s.id, job: 'sms_notify', action: 'sent' });
+        }
+      }
+    } catch (snErr: any) {
+      console.error('[SMS NOTIFY] error:', snErr.message);
     }
 
     const pollThreshold = new Date(Date.now() - POLL_AFTER_MINUTES * 60 * 1000).toISOString();

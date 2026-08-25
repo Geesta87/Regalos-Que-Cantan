@@ -1,6 +1,6 @@
 import React, { useContext, useEffect, useState, useRef } from 'react';
 import { AppContext } from '../App';
-import { generateSong, checkSongStatus } from '../services/api';
+import { generateSong, checkSongStatus, requestSmsNotify } from '../services/api';
 import genres from '../config/genres';
 import { trackStep, logAffiliateSongCreated } from '../services/tracking';
 import { CenzoMark, CenzoGuide, CenzoLive } from '../components/Cenzo';
@@ -90,6 +90,14 @@ export default function GeneratingPage() {
   const [song2Data, setSong2Data] = useState(null);
   const [apiSessionId, setApiSessionId] = useState(null);
   
+  // "Text me when it's ready" escape hatch — offered after SMS_OFFER_AFTER_MS
+  // of waiting so a delayed customer can close the page instead of abandoning.
+  // Prefills from formData if the funnel ever captured a phone earlier.
+  const SMS_OFFER_AFTER_MS = 6 * 60 * 1000;
+  const [showSmsOffer, setShowSmsOffer] = useState(false);
+  const [smsPhone, setSmsPhone] = useState(formData.whatsappPhone || formData.phone || '');
+  const [smsNotifyState, setSmsNotifyState] = useState('idle'); // idle | saving | saved | error
+
   // Lyrics preview state
   const [lyricsPreview, setLyricsPreview] = useState('');
   const [showLyrics, setShowLyrics] = useState(false);
@@ -172,6 +180,40 @@ export default function GeneratingPage() {
       return () => clearTimeout(timer);
     }
   }, [lyricsLines, visibleLines]);
+
+  // Offer the SMS escape hatch once the wait is clearly abnormal (normal is
+  // 2-4 min). Never shows after navigation, completion, or a hard error.
+  useEffect(() => {
+    if (!generationStartTime.current) return;
+    const offerCheck = setInterval(() => {
+      const elapsed = Date.now() - generationStartTime.current;
+      const stillWaiting = !hasNavigated.current && !error &&
+        (song1Status === 'generating' || song1Status === 'pending' ||
+          (!isFastFunnel && (song2Status === 'generating' || song2Status === 'pending')));
+      if (elapsed >= SMS_OFFER_AFTER_MS && stillWaiting) {
+        setShowSmsOffer(true);
+        clearInterval(offerCheck);
+      }
+    }, 5000);
+    return () => clearInterval(offerCheck);
+  }, [song1Status, song2Status, error, isFastFunnel]);
+
+  const handleSmsNotifySubmit = async (e) => {
+    e.preventDefault();
+    const digits = (smsPhone || '').replace(/\D/g, '');
+    if (digits.length < 10) { setSmsNotifyState('error'); return; }
+    setSmsNotifyState('saving');
+    try {
+      const res = await requestSmsNotify({
+        sessionId: apiSessionId,
+        songIds: [song1Id, song2Id].filter(Boolean),
+        phone: smsPhone,
+      });
+      setSmsNotifyState(res?.ok ? 'saved' : 'error');
+    } catch {
+      setSmsNotifyState('error');
+    }
+  };
 
   // ✅ FIX: Added timeout check for stuck generation
   useEffect(() => {
@@ -757,6 +799,62 @@ export default function GeneratingPage() {
               )}
             </div>
           </div>
+
+          {/* SMS escape hatch — shows only after an abnormally long wait */}
+          {showSmsOffer && (
+            <div className="bg-gradient-to-br from-turquesa/15 to-gold/10 backdrop-blur-sm border border-gold/30 rounded-2xl p-6 mb-6">
+              {smsNotifyState === 'saved' ? (
+                <div className="text-center">
+                  <span className="material-symbols-outlined text-turquesa text-4xl mb-2">check_circle</span>
+                  <h3 className="text-white font-bold text-lg mb-2">¡Listo! Puedes cerrar esta página 🎉</h3>
+                  <p className="text-white/70 text-sm">
+                    En cuanto tus canciones estén listas, te mandamos un mensaje de texto
+                    con el enlace para escucharlas — antes de pagar, sin compromiso.
+                  </p>
+                </div>
+              ) : (
+                <form onSubmit={handleSmsNotifySubmit}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="material-symbols-outlined text-gold">sms</span>
+                    <h3 className="text-white font-bold">Está tardando un poquito más de lo normal…</h3>
+                  </div>
+                  <p className="text-white/70 text-sm mb-4">
+                    No tienes que esperar aquí. Déjanos tu número y te mandamos un
+                    <strong className="text-white"> mensaje de texto</strong> con tus canciones en cuanto
+                    estén listas — las escuchas <strong className="text-white">antes de pagar</strong>.
+                  </p>
+                  <div className="flex gap-2">
+                    <input
+                      type="tel"
+                      inputMode="tel"
+                      autoComplete="tel"
+                      value={smsPhone}
+                      onChange={(e) => { setSmsPhone(e.target.value); if (smsNotifyState === 'error') setSmsNotifyState('idle'); }}
+                      placeholder="Tu número de celular"
+                      disabled={smsNotifyState === 'saving'}
+                      className="flex-1 min-w-0 px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/40 focus:outline-none focus:border-gold/60 disabled:opacity-50"
+                    />
+                    <button
+                      type="submit"
+                      disabled={smsNotifyState === 'saving' || (smsPhone || '').replace(/\D/g, '').length < 10}
+                      className="px-5 py-3 bg-gold text-forest font-bold rounded-xl hover:bg-gold/90 disabled:opacity-40 disabled:cursor-not-allowed transition whitespace-nowrap"
+                    >
+                      {smsNotifyState === 'saving' ? 'Guardando…' : 'Avísame 📲'}
+                    </button>
+                  </div>
+                  {smsNotifyState === 'error' && (
+                    <p className="text-red-300 text-xs mt-2">
+                      No pudimos guardar tu número. Revísalo (10 dígitos) e intenta de nuevo.
+                    </p>
+                  )}
+                  <p className="text-white/45 text-[11px] mt-3 leading-relaxed">
+                    Al tocar &laquo;Avísame&raquo; aceptas recibir un mensaje de texto único con tu canción.
+                    Sin spam. Pueden aplicar tarifas de mensajes de tu operador.
+                  </p>
+                </form>
+              )}
+            </div>
+          )}
 
           {/* Lyrics Preview Section */}
           {showLyrics && lyricsLines.length > 0 && (

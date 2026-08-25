@@ -370,6 +370,30 @@ export async function chargeUpsell({ songId, item, sessionId, gift = null }) {
 }
 
 /**
+ * "Text me when my song is ready" — generating-page escape hatch. Stores the
+ * customer's phone + consent on the order's song rows; poll-processing-songs
+ * sends ONE SMS with the payment-gated /listen link once everything completes.
+ * Pass whichever identifiers exist (sessionId preferred; songIds as fallback
+ * for orders whose session hasn't landed yet).
+ */
+export async function requestSmsNotify({ sessionId = null, songIds = [], phone }) {
+  const response = await fetch(`${SUPABASE_URL}/functions/v1/song-notify-me`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+    },
+    body: JSON.stringify({ sessionId, songIds, phone })
+  });
+  if (!response.ok) {
+    let err = 'notify_failed';
+    try { const j = await response.json(); err = j?.error || err; } catch { /* ignore */ }
+    return { ok: false, error: err };
+  }
+  return response.json();
+}
+
+/**
  * Regenerate a song with the same details but new music
  */
 export async function regenerateSong(songId) {
