@@ -317,12 +317,12 @@ const TOOLS = [
 const OPENER_REPLY =
   '¡Hola! 👋 Gracias por escribirnos a Regalos Que Cantan 🎵 Con mucho gusto le ayudo. Para empezar, ¿ya creó su canción con nosotros o le gustaría hacer una?';
 
-// Same idea for a customer we DID identify: still an instant, deterministic
-// welcome that orients them (owner rule 2026-08-08: the opener button always
-// gets the friendly created-or-create question) — but acknowledging that they
-// already have songs with us instead of asking as if they were new.
-const openerReplyKnown = (name: string | null) =>
-  `¡Hola${name ? `, ${name}` : ''}! 👋 Qué gusto saludarle de nuevo en Regalos Que Cantan 🎵 ¿Le ayudo con su canción, o le gustaría crear una nueva?`;
+// IDENTIFIED customers no longer get a fixed opener (owner decision 2026-08-25,
+// supersedes the 2026-08-08 always-fixed rule): the generic welcome wastes a
+// touch when the situation snapshot already knows their paid song or pending
+// order — the Aug audit showed the team immediately following it with the real
+// link. Their opener goes through the model instead, grounded in the snapshot,
+// and lands as a draft (greeting is not on the auto-send allowlist).
 
 function isButtonOpener(text: string): boolean {
   const t = String(text || '')
@@ -833,19 +833,22 @@ serve(async (req) => {
     // ── Tool-use loop (max a few hops) ──────────────────────────────────────
     let finalText = '';
 
-    // FAST PATH — the contentless "Hola, tengo una pregunta" button. There is
-    // nothing to reason about: the button carries zero information, so the one
-    // right reply is the friendly welcome that asks whether they already
-    // created their song or want to make one (owner rule 2026-08-08: ALWAYS
-    // answer the opener this way, instantly). Identified customers get the
-    // welcome-back variant that doesn't treat them like a stranger. Skips the
-    // model entirely; the fixed text also qualifies for auto-send below.
+    // FAST PATH — the contentless "Hola, tengo una pregunta" button, but ONLY
+    // when the customer is a stranger to us. For an unidentified sender the
+    // button carries zero information and there is exactly one right reply, so
+    // the fixed welcome auto-sends without a model round-trip. An IDENTIFIED
+    // customer skips the fast path (owner decision 2026-08-25): their situation
+    // snapshot already knows their paid link or pending order, so the model
+    // writes a grounded reply that lands as a draft — the Aug audit caught the
+    // fixed "¿le ayudo con su canción?" going out seconds before the team sent
+    // the customer's actual ready-song link.
     const useOpenerFastPath =
       !last.media_path &&
+      !customerIdentified &&
       isButtonOpener(String(last.body || ''));
 
     if (useOpenerFastPath) {
-      finalText = customerIdentified ? openerReplyKnown(convo.customer_name) : OPENER_REPLY;
+      finalText = OPENER_REPLY;
     }
 
     for (let hop = 0; !useOpenerFastPath && hop < 4; hop++) {
@@ -1060,8 +1063,9 @@ serve(async (req) => {
     }
 
     // The opener fast path is FIXED text we wrote ourselves — no model output,
-    // no links, no customer data beyond their first name. Category allowlist
-    // and safety critic don't apply to it; the master switch still does.
+    // no links, no customer data at all (it only fires for unidentified
+    // senders). Category allowlist and safety critic don't apply to it; the
+    // master switch still does.
     if (useOpenerFastPath) {
       autoBlockers.length = 0;
       if (settings?.auto_send_enabled !== true) autoBlockers.push('master switch off');
