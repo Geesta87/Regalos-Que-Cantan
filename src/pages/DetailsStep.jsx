@@ -324,6 +324,9 @@ export default function DetailsStep() {
                     <p className="text-white text-sm md:text-base leading-relaxed">
                       Usa esta opción <strong>SOLO si ya tienes la letra COMPLETA de una canción</strong> — con sus <strong>versos, coro (el gancho que se repite) y puente</strong>. Cantaremos <strong>exactamente</strong> lo que escribas aquí, palabra por palabra — y <strong>solo eso, aunque sea corto</strong>. No la modificaremos.
                     </p>
+                    <p className="text-white text-sm md:text-base leading-relaxed mt-3">
+                      🎵 <strong>La duración de tu canción depende del tamaño de tu letra.</strong> Una canción completa de 3–4 minutos necesita una letra completa; si tu letra es corta, tu canción también será corta (por ejemplo, 1–2 minutos).
+                    </p>
                     <p className="text-white/85 text-sm leading-relaxed mt-3">
                       ¿Solo tienes datos, fechas o anécdotas (no una letra ya compuesta)? <strong>No los pegues aquí</strong> — usa{' '}
                       <button
