@@ -24,7 +24,7 @@ import ActionInboxTab, {
   loadHidden as loadInboxHidden, isHiddenNow as isInboxHiddenNow, INBOX_COUNT_EVENT,
 } from '../components/admin/ActionInboxTab';
 import { Package, Send, Flame, MessageSquare, Users, Search, Mic, Music, X, Wrench, Film, Video, Sparkles, Newspaper, Compass, UserPlus, Scissors, Target, Inbox, Contact, BookOpen, QrCode, Gift } from 'lucide-react';
-import { spliceIntoOriginal, spliceLineReplace, trimTake, parseTimed, findLastLineEnd, findCleanLine, validateTake, buildTokenGroups, lastSungWordEnd, findAnchorEnd } from '../utils/audioSplice';
+import { spliceIntoOriginal, spliceLineReplace, trimTake, parseTimed, findLastLineEnd, findCleanLine, validateTake, buildTokenGroups, lastSungWordEnd, findAnchorEnd, timelineDamage } from '../utils/audioSplice';
 
 // Debounce hook for search inputs
 function useDebounce(value, delay = 350) {
@@ -601,9 +601,20 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
       const cands = [];
       const lineCands = []; // line-replace candidates (clean corrected line found in-take)
       const wholeCands = []; // WHOLE takes that sang the fix AND match the original length
-      for (const take of takeList) {
+      // SECOND LISTEN (2026-08-26): structure-based vetoes get one fresh
+      // Whisper pass before the take is discarded — see the ladder's note.
+      const secondListen = new Set();
+      const takeQueue = [...takeList];
+      while (takeQueue.length) {
+        const take = takeQueue.shift();
         const url = take.audioUrl;
         const takeId = take.id || null;
+        const relisten = () => {
+          if (secondListen.has(url)) return false;
+          secondListen.add(url);
+          takeQueue.push(take);
+          return true;
+        };
         // Same cheap pre-filter as the ladder: a whole-take run can never use a
         // take longer than 1.15x, so don't pay for its transcription.
         // >3x only — see the ladder's note: a long take is usually a repeated
@@ -654,7 +665,10 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
               fullLyrics,
               [...(requireAll || []), ...(priorAfters || [])],
               pristineWords,
-            )) { trimAtS = null; lenOk = false; lenFailWhy = `salió larga (${mmss(takeEnd)}) y el recorte en el final real dejaría secciones repetidas o faltantes`; }
+            )) {
+              trimAtS = null; lenOk = false; lenFailWhy = `salió larga (${mmss(takeEnd)}) y el recorte en el final real dejaría secciones repetidas o faltantes`;
+              if (relisten()) { lastTakesSeen.push({ url, text: '(segunda escucha — veredicto estructural, re-transcribiendo)', reason: lenFailWhy }); continue; }
+            }
           }
           // Every check below runs on the AUDIBLE part only — the over-extension
           // tail often re-sings everything correctly and used to satisfy checks
@@ -711,7 +725,24 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
               }
             }
           }
-          if (sang && keptPrior && consistent && lenOk && deltaOk) {
+          // TIMELINE GATE (2026-08-26, San Lucas Colucán 693c8846): the line
+          // ledger is blind on prose lyric sheets, and a replace-section take
+          // can silently re-render OUTSIDE its window — duplicating or dropping
+          // a section — while still singing every countable line. When the
+          // sheet is too weak to audit by lines, compare the take against the
+          // pristine transcript IN TIME: outside the declared window nothing
+          // may go missing or appear that the original doesn't sing there.
+          let tlOk = true;
+          if (pristineWords && Number.isFinite(origCut) && countableLedgerLines(fullLyrics) < 6) {
+            const dmg = timelineDamage(pristineWords, audible, [{ startS: Number.isFinite(startS) ? startS : 0, endS: origCut }]);
+            if (dmg) {
+              tlOk = false;
+              lastReason = `${dmg} — y la letra (en prosa) no permite auditar por líneas`;
+              lastTakesSeen.push({ url, text: audible.map((w) => w.word).join(' '), reason: lastReason });
+              if (relisten()) continue;
+            }
+          }
+          if (sang && keptPrior && consistent && lenOk && deltaOk && tlOk) {
             wholeCands.push({ url, takeId, drift: Math.abs((trimAtS || takeEnd) - origFullDur), trimAtS });
           } else if (wholeOnly && !lenOk && takeEnd > origFullDur * 1.08) {
             lastReason = `la toma ${lenFailWhy || 'salió demasiado larga'}`;
@@ -981,6 +1012,14 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
   // fuera de rango", stalling the ladder (2026-08-12, Rafael 9dd5efe4). The
   // checklist already tracks correction progress; this guard only watches for
   // MISSING or DUPLICATED sections.
+  // How much line-audit signal a lyric sheet offers: lines the checklist and
+  // structure guards can anchor on. Prose sheets (one giant paragraph) score
+  // near zero — exactly the sheets the timeline gate below exists to cover.
+  function countableLedgerLines(lyricsText) {
+    return String(lyricsText || '').split('\n').map((s) => s.trim())
+      .filter((l) => l && !/^\[.*\]$/.test(l) && buildTokenGroups(l).length >= 3).length;
+  }
+
   function trimKeepsWholeSong(audibleWords, lyricsText, exclude = [], baseWords = null) {
     // FULL line-by-line audit (2026-08-11, Miguel Ángel take b62256fe): closing-
     // line counting alone is beatable — Suno inserted an extra half-verse +
@@ -1369,7 +1408,21 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
       onMsg?.('Verificando que cantó todo bien…');
       lastTakesSeen = [];
       let roundWinner = null;
-      for (const t of takeList) {
+      // SECOND LISTEN (2026-08-26): structure-based vetoes (trim guard, cross-
+      // round regression, timeline gate) get one fresh Whisper pass before the
+      // take is discarded — Whisper wobbles per run, and a burned take costs
+      // Kie credits while a re-listen costs pennies. Wording vetoes ("no cantó
+      // lo corregido") are not retried.
+      const secondListen = new Set();
+      const takeQueue = [...takeList];
+      while (takeQueue.length) {
+        const t = takeQueue.shift();
+        const relisten = () => {
+          if (secondListen.has(t.audioUrl)) return false;
+          secondListen.add(t.audioUrl);
+          takeQueue.push(t);
+          return true;
+        };
         // CHEAP PRE-FILTER (2026-08-12, Mariela 62fd68ed): Kie tells us each
         // take's length. A take longer than 1.15x can never pass (that's the
         // trimmed ceiling), so reject it WITHOUT transcribing — Whispering a
@@ -1423,7 +1476,10 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
             combinedLyrics,
             [...ordered.map((c) => c?.after), ...(priorCorrections || []).map((p) => p?.after)],
             baseWords,
-          )) { trimAtS = null; lenOk = false; lenFail = 'el recorte dejaría secciones repetidas o faltantes'; }
+          )) {
+            trimAtS = null; lenOk = false; lenFail = 'el recorte dejaría secciones repetidas o faltantes';
+            if (relisten()) { lastTakesSeen.push({ url: t.audioUrl, text: '(segunda escucha — veredicto estructural, re-transcribiendo)', reason: lenFail }); continue; }
+          }
         }
         // CRITICAL: evaluate the checklist only on the part the customer will
         // hear. Over-extended takes append extra repetitions that often sing
@@ -1456,6 +1512,10 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
           if (it.kind === 'change' && unverifiable.has(it.after)) return true;
           const p = prevOf(it); return !p || it.have >= p.have;
         });
+        if (!noRegression && relisten()) {
+          lastTakesSeen.push({ url: t.audioUrl, text: '(segunda escucha — la regresión puede ser ruido de Whisper, re-transcribiendo)', reason: 'posible regresión entre rondas' });
+          continue;
+        }
         const tPrev = targetItem ? prevOf(targetItem) : null;
         const progressed = !!targetItem && !targetLanded &&
           (targetItem.have > (tPrev?.have || 0) || (!!tPrev && targetItem.beforeLeft < tPrev.beforeLeft));
@@ -1487,6 +1547,27 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
           + chk.items.reduce((n, it) => n + Math.min(it.have, it.need) / Math.max(1, it.need), 0) / 100
           + (lenOk ? 0.5 : 0);
         if (!deltaOk) { lastReason = finalReason; continue; }
+        // TIMELINE GATE (2026-08-26, San Lucas Colucán 693c8846): chain rounds
+        // verify each take against the take it CHAINED FROM, so a section that
+        // re-rendered outside its window and duplicated a line slid through
+        // round after round — and the prose lyric sheet kept the line ledger
+        // blind the whole time. When the sheet can't be audited by lines,
+        // compare the take against its chain source IN TIME: outside the
+        // submitted window nothing may go missing or appear duplicated.
+        let tlOk = true;
+        if (countableLedgerLines(combinedLyrics) < 6) {
+          const srcW = best?.words || baseWords;
+          const ws = Number(sub.window?.startS), we = Number(sub.window?.endS);
+          if (srcW && Number.isFinite(we)) {
+            const dmg = timelineDamage(srcW, audibleWords, [{ startS: Number.isFinite(ws) ? ws : 0, endS: we }]);
+            if (dmg) {
+              tlOk = false;
+              lastReason = `${dmg} — y la letra (en prosa) no permite auditar por líneas`;
+              if (lastTakesSeen.length) lastTakesSeen[lastTakesSeen.length - 1].reason = lastReason;
+            }
+          }
+        }
+        if (!tlOk) { relisten(); continue; }
         if ((targetLanded || progressed) && lenOk && priorsOk && noRegression && (!roundWinner || score > roundWinner.score)) {
           roundWinner = { url: t.audioUrl, takeId: t.id || null, fixTaskId: sub.fixTaskId, words: audibleWords, dur: takeEnd, trimAtS, chk, score, partial: !targetLanded };
         }

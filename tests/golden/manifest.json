@@ -1,0 +1,61 @@
+{
+  "note": "Real-incident timeline-gate cases (2026-08). Fixture files are Whisper transcripts of customer takes — they live ONLY in tests/golden/fixtures/ (gitignored; this repo is public). expectDamage=true means the gate MUST flag the take; false means it MUST come back clean. Windows are the replace-section windows (or declared cuts) that were actually submitted.",
+  "cases": [
+    {
+      "name": "San Lucas 693c8846: r2B re-rendered outside its window (duplicated 'Mágico pueblo' — shipped to a PAID song)",
+      "ref": "slc-ORIG.json",
+      "take": "slc-r2B.json",
+      "windows": [{ "startS": 77, "endS": 96.5 }],
+      "expectDamage": true
+    },
+    {
+      "name": "San Lucas: take P — surgical piedra window, rest untouched",
+      "ref": "slc-ORIG.json",
+      "take": "slc-P.json",
+      "windows": [{ "startS": 77, "endS": 96.5 }],
+      "expectDamage": false
+    },
+    {
+      "name": "San Lucas: released FINAL (start-trim + piedra window as declared cuts)",
+      "ref": "slc-ORIG.json",
+      "take": "slc-FINALCHECK.json",
+      "windows": [{ "startS": 0, "endS": 14 }, { "startS": 77, "endS": 96.5 }],
+      "expectDamage": false
+    },
+    {
+      "name": "Anny 09fae72b: take M — surgical date fix (the one released)",
+      "ref": "anny-ORIG.json",
+      "take": "anny-M.json",
+      "windows": [{ "startS": 113.6, "endS": 124.9 }],
+      "expectDamage": false
+    },
+    {
+      "name": "Anny: take A — re-rendered song (owner: 'I need the exact same song')",
+      "ref": "anny-ORIG.json",
+      "take": "anny-A.json",
+      "windows": [{ "startS": 113.6, "endS": 124.9 }],
+      "expectDamage": true
+    },
+    {
+      "name": "Patricia 26930fa8: r2A — clean chained window fix",
+      "ref": "patri-ORIG.json",
+      "take": "patri-r2A.json",
+      "windows": [{ "startS": 163, "endS": 175 }],
+      "expectDamage": false
+    },
+    {
+      "name": "Gerardo Montero baa24fbc: r1A — re-rendered take (shipped legitimately by LINE LEDGER, which is why the gate only rules when the sheet is prose)",
+      "ref": "gm-ORIG.json",
+      "take": "gm-r1A.json",
+      "windows": [],
+      "expectDamage": true
+    },
+    {
+      "name": "Venancio 48606563: V2 take G — re-rendered structure",
+      "ref": "venancio-V2-ORIG.json",
+      "take": "venancio-V2-takeG.json",
+      "windows": [],
+      "expectDamage": true
+    }
+  ]
+}

@@ -12,5 +12,9 @@ node_modules
 
 # In-house FFmpeg video-renderer POC: large test renders + downloaded order assets (never commit)
 video-poc/
+
+# Golden-exam fixtures: Whisper transcripts of CUSTOMER takes — this repo is
+# public, so they must never be committed. See tests/golden/run-golden.cjs.
+tests/golden/fixtures/
 supabase/.temp/
 deno.lock

@@ -332,6 +332,94 @@ function countByGroups(words: W[], groups: string[][]): number {
   }
   return count;
 }
+
+// ---------------------------------------------------------------------------
+// TIMELINE GATE (2026-08-26, San Lucas Colucán 693c8846) — port of
+// src/utils/audioSplice.js timelineDamage. Prose lyric sheets blind
+// auditStructure (no lines to count), and a replace-section take can
+// re-render OUTSIDE its window while every countable check still passes.
+// This compares a take against a reference transcript IN TIME, no lyric
+// sheet needed: MISSING = a run of reference content words (outside the
+// exempt windows) with no same-word match in the take near the expected
+// moment; INSERTED = the symmetric run on the take side (duplicated
+// sections land here — their words exist in the reference, but far away).
+// Isolated misses are Whisper noise; only RUNS fail, and a run whose words
+// don't exist in the counterpart at all needs a longer streak (a coverage
+// hole in ONE transcript is not damage). Returns null when clean.
+function timelineDamage(refWords: W[], takeWords: W[], windows: { startS: number; endS: number }[] = [], tolS = 3.0, runLen = 4, weakRunLen = 7): string | null {
+  type A = { n: string; s: number; e: number };
+  const clean = (ws: W[]): A[] => {
+    const out = (ws || []).map((w) => ({ n: norm(w.word), s: w.start, e: w.end }))
+      .filter((a) => a.n && a.n.length >= 3 && !/^(amara|subtitulos|realizados|comunidad)$/.test(a.n));
+    // Hallucination filter: Whisper sometimes invents a burst of "lyrics" over
+    // an outro/fade — 20+ words crammed into ~3s. Real singing never sustains
+    // that rate across 8+ words; those ghosts live in ONE transcript only and
+    // would read as damage. Drop hyper-compressed spans.
+    const keep = new Array(out.length).fill(true);
+    for (let i = 0; i + 7 < out.length; i++) {
+      const span = out[i + 7].s - out[i].s;
+      if (span >= 0 && span < 2.0) { for (let k = i; k <= i + 7; k++) keep[k] = false; }
+    }
+    return out.filter((_, i) => keep[i]);
+  };
+  const R = clean(refWords), T = clean(takeWords);
+  if (R.length < 20 || T.length < 20) return null; // too little signal to judge
+  const inWin = (t: number) => windows.some((w) => t >= w.startS - 2.5 && t <= w.endS + 2.5);
+  // Global offset (a start-cut or lead-in shift moves everything uniformly):
+  // median delta over exact-token pairs.
+  const deltas: number[] = [];
+  for (const r of R) { let bd: number | null = null; for (const t of T) { if (t.n === r.n) { const d = t.s - r.s; if (bd === null || Math.abs(d) < Math.abs(bd)) bd = d; } } if (bd !== null && Math.abs(bd) < 60) deltas.push(bd); }
+  deltas.sort((a, b) => a - b);
+  const off = deltas.length ? deltas[Math.floor(deltas.length / 2)] : 0;
+  const scan = (Aw: A[], Bw: A[], aShift: number, winSideA: (a: A) => boolean): A[] | null => {
+    let run: A[] = [];
+    const runs: A[][] = [];
+    for (const a of Aw) {
+      if (winSideA(a)) { if (run.length) { runs.push(run); run = []; } continue; }
+      const hit = Bw.some((b) => b.n === a.n && Math.abs(b.s - (a.s + aShift)) <= tolS);
+      if (hit) { if (run.length) { runs.push(run); run = []; } }
+      else run.push(a);
+    }
+    if (run.length) runs.push(run);
+    for (const r of runs) {
+      if (r.length < runLen) continue;
+      const anywhere = r.filter((a) => Bw.some((b) => b.n === a.n)).length >= Math.ceil(r.length / 2);
+      if (anywhere || r.length >= weakRunLen) return r;
+    }
+    return null;
+  };
+  const miss = scan(R, T, off, (a) => inWin(a.s));
+  if (miss) return `fuera de la ventana: el audio ya no canta "${miss.slice(0, 6).map((x) => x.n).join(' ')}…" donde el original lo canta (~${Math.floor(miss[0].s / 60)}:${String(Math.floor(miss[0].s % 60)).padStart(2, '0')})`;
+  const ins = scan(T, R, -off, (a) => inWin(a.s - off));
+  if (ins) return `fuera de la ventana: el audio canta contenido EXTRA "${ins.slice(0, 6).map((x) => x.n).join(' ')}…" (~${Math.floor(ins[0].s / 60)}:${String(Math.floor(ins[0].s % 60)).padStart(2, '0')}) que el original no tiene ahí — sección re-cantada o duplicada`;
+  return null;
+}
+
+// How much line-audit signal a lyric sheet offers. Prose sheets score near
+// zero — those are the ones the timeline gate covers.
+function countAuditLines(lyricsText: string): number {
+  return String(lyricsText || '').split('\n').map((s) => s.trim())
+    .filter((l) => l && !/^\[.*\]$/.test(l) && buildTokenGroups(l).length >= 3).length;
+}
+
+// Exempt neighborhoods for the gate: where the planned changes live in the
+// pristine song (the replace-section window is centered there). A re-sung
+// window sings the same words at the same moments, so it mostly self-matches;
+// only the changed lines themselves need the exemption.
+function changeWindows(pristine: W[], changes: any[]): { startS: number; endS: number }[] {
+  const wins: { startS: number; endS: number }[] = [];
+  for (const c of changes || []) {
+    for (const t of [c?.before, c?.after]) {
+      if (!t) continue;
+      const g = buildTokenGroups(String(t));
+      if (!g.length) continue;
+      const h = findCleanLine(pristine, g);
+      if (h) wins.push({ startS: h.startS - 8, endS: h.endS + 8 });
+    }
+  }
+  return wins;
+}
+
 function auditStructure(audible: W[], lyricsText: string, baseWords: W[] | null = null): string | null {
   const lines = String(lyricsText || '').split('\n').map((s) => s.trim()).filter((l) => l && !/^\[.*\]$/.test(l));
   const need = new Map<string, { line: string; n: number; groups: string[][] }>();
@@ -901,7 +989,20 @@ async function stepValidate(admin: any, r: any, state: any): Promise<void> {
   type Cand = { url: string; kieId: string | null; drift: number; trimAtS: number | null };
   const cands: Cand[] = [];
 
-  for (const { url, kieId, dur } of takes) {
+  // SECOND LISTEN (2026-08-26): structure-based vetoes (structure audit,
+  // timeline gate) get one fresh Whisper pass before the take is discarded —
+  // Whisper wobbles per run, and a burned take costs Kie credits while a
+  // re-listen costs pennies. Wording vetoes are not retried.
+  const secondListen = new Set<string>();
+  const takeQueue = [...takes];
+  while (takeQueue.length) {
+    const { url, kieId, dur } = takeQueue.shift()!;
+    const relisten = () => {
+      if (secondListen.has(url)) return false;
+      secondListen.add(url);
+      takeQueue.push({ url, kieId, dur });
+      return true;
+    };
     // Absurd-length guard only (>3x). Raw duration CANNOT distinguish a
     // rescuable take from a hopeless one (2026-08-12, Rafael 9dd5efe4): a 1.62x
     // take sang the entire song correctly and then repeated verse+chorus+bridge
@@ -1002,6 +1103,10 @@ async function stepValidate(admin: any, r: any, state: any): Promise<void> {
       }
     }
     if (!lenOk) {
+      if (structFail && relisten()) {
+        diags.push({ url, verdict: 'second-listen', reason: `veredicto estructural (${String(structFail).slice(0, 90)}) — re-transcribiendo una vez` });
+        continue;
+      }
       diags.push({ url, verdict: 'reject', reason: structFail || (takeEnd > effOrig * 1.08 ? 'demasiado larga, sin punto de corte estructuralmente completo' : 'demasiado corta') });
       continue;
     }
@@ -1010,6 +1115,21 @@ async function stepValidate(admin: any, r: any, state: any): Promise<void> {
     if (!check.ok) {
       diags.push({ url, verdict: 'reject', reason: check.fail, text: audible.map((w) => w.word).join(' ').slice(0, 400) });
       continue;
+    }
+    // TIMELINE GATE — section mode only (a full re-roll is a new performance
+    // with its own timeline; auditStructure + owner ears judge those). Applied
+    // when the sheet is too weak to audit by lines: the take must match the
+    // pristine song in time everywhere outside the planned changes.
+    if (plan.mode !== 'full' && pristineWords && countAuditLines(combinedLyrics) < 6) {
+      const dmg = timelineDamage(pristineWords, audible, changeWindows(pristineWords, plan.changes || []));
+      if (dmg) {
+        if (relisten()) {
+          diags.push({ url, verdict: 'second-listen', reason: `daño de línea de tiempo (${dmg.slice(0, 90)}) — re-transcribiendo una vez` });
+          continue;
+        }
+        diags.push({ url, verdict: 'reject', reason: `${dmg} — y la letra (en prosa) no permite auditar por líneas`, text: audible.map((w) => w.word).join(' ').slice(0, 400) });
+        continue;
+      }
     }
     cands.push({ url, kieId, drift: Math.abs((trimAtS || takeEnd) - effOrig) + Math.max(0, introDrift), trimAtS, words });
     diags.push({ url, verdict: trimAtS ? 'clean-trimmed' : 'clean', reason: trimAtS ? `over-long, trimmed at ${trimAtS.toFixed(1)}s` : 'in-band whole take' });

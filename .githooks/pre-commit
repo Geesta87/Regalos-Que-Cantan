@@ -80,4 +80,17 @@ if [ -n "$NEW_FUNCTIONS" ]; then
   done <<< "$NEW_FUNCTIONS"
 fi
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Check 3 — Fix-Song validator changes must pass the golden exam
+# (tests/golden/run-golden.cjs). Synthetic cases always run; real-incident
+# fixture cases run when tests/golden/fixtures/ is present (gitignored —
+# customer transcripts, public repo).
+# ─────────────────────────────────────────────────────────────────────────────
+VALIDATOR_TOUCHED=$(git diff --cached --name-only --diff-filter=ACM | grep -E '^(src/utils/audioSplice\.js|supabase/functions/fix-song-auto/index\.ts|tests/golden/)' || true)
+if [ -n "$VALIDATOR_TOUCHED" ] && [ -f tests/golden/run-golden.cjs ]; then
+  if ! node tests/golden/run-golden.cjs; then
+    fail "The Fix-Song golden exam failed. A validator change broke a verdict that shipped (or blocked) a real customer song. Fix the regression — do not weaken the exam."
+  fi
+fi
+
 exit 0

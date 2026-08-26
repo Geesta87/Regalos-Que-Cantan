@@ -359,6 +359,74 @@ function collapseSpelledYears(atoms) {
   }
   return out;
 }
+
+// ---------------------------------------------------------------------------
+// TIMELINE GATE (2026-08-26, San Lucas Colucán 693c8846). The line-ledger
+// guard is blind on prose lyric sheets (one giant paragraph = no lines to
+// count), and chain-link verification inherits its base's defects — a take
+// that silently re-rendered 17s outside its window shipped a duplicated
+// "Mágico pueblo" line to a PAID song. This gate compares a take against a
+// reference transcript IN TIME, no lyric sheet needed:
+//   MISSING  — a run of consecutive reference content words (outside the
+//              declared windows) with no same-word match in the take near the
+//              expected moment. Re-rendered or dropped audio.
+//   INSERTED — a run of consecutive take content words (outside the windows)
+//              with no same-word match in the reference near that moment.
+//              Duplicated sections land here: their words exist in the
+//              reference, but only far away.
+// Isolated misses are Whisper noise and ignored; only RUNS fail. A run whose
+// words don't exist in the counterpart at all needs a longer streak (Whisper
+// sometimes misses a whole masked line in ONE transcript — coverage hole,
+// not damage). Returns null when clean, else a reason string.
+export function timelineDamage(refWords, takeWords, windows = [], { tolS = 3.0, runLen = 4, weakRunLen = 7 } = {}) {
+  const clean = (ws) => {
+    const out = (ws || []).map((w) => ({ n: norm(w.word ?? w.w), s: w.start ?? w.s, e: w.end ?? w.e }))
+      .filter((a) => a.n && a.n.length >= 3 && !/^(amara|subtitulos|realizados|comunidad)$/.test(a.n));
+    // HALLUCINATION FILTER: Whisper sometimes invents a burst of "lyrics" over
+    // an outro/fade — observed as 20+ words crammed into ~3s (real singing
+    // never sustains >4 words/sec across 8+ words). Those ghosts live in ONE
+    // transcript only and would read as damage. Drop hyper-compressed spans.
+    const keep = new Array(out.length).fill(true);
+    for (let i = 0; i + 7 < out.length; i++) {
+      const span = out[i + 7].s - out[i].s;
+      if (span >= 0 && span < 2.0) { for (let k = i; k <= i + 7; k++) keep[k] = false; }
+    }
+    return out.filter((_, i) => keep[i]);
+  };
+  const R = clean(refWords), T = clean(takeWords);
+  if (R.length < 20 || T.length < 20) return null; // too little signal to judge
+  const inWin = (t) => windows.some((w) => t >= (w.startS ?? w.start) - 2.5 && t <= (w.endS ?? w.end) + 2.5);
+  // Global offset (a start-cut or lead-in shift moves everything uniformly):
+  // median delta over exact-token pairs.
+  const deltas = [];
+  for (const r of R) { let bd = null; for (const t of T) { if (t.n === r.n) { const d = t.s - r.s; if (bd === null || Math.abs(d) < Math.abs(bd)) bd = d; } } if (bd !== null && Math.abs(bd) < 60) deltas.push(bd); }
+  deltas.sort((a, b) => a - b);
+  const off = deltas.length ? deltas[Math.floor(deltas.length / 2)] : 0;
+  const scan = (A, B, aShift, winSideA) => {
+    // for each word in A (shifted by aShift), is there a same-token word in B within tolS?
+    let run = [];
+    const runs = [];
+    for (const a of A) {
+      if (winSideA(a)) { if (run.length) { runs.push(run); run = []; } continue; }
+      const hit = B.some((b) => b.n === a.n && Math.abs(b.s - (a.s + aShift)) <= tolS);
+      if (hit) { if (run.length) { runs.push(run); run = []; } }
+      else run.push(a);
+    }
+    if (run.length) runs.push(run);
+    for (const r of runs) {
+      if (r.length < runLen) continue;
+      const anywhere = r.filter((a) => B.some((b) => b.n === a.n)).length >= Math.ceil(r.length / 2);
+      if (anywhere || r.length >= weakRunLen) return r;
+    }
+    return null;
+  };
+  const miss = scan(R, T, off, (a) => inWin(a.s));
+  if (miss) return `fuera de la ventana: el audio ya no canta "${miss.slice(0, 6).map((x) => x.n).join(' ')}…" donde el original lo canta (~${Math.floor(miss[0].s / 60)}:${String(Math.floor(miss[0].s % 60)).padStart(2, '0')})`;
+  const ins = scan(T, R, -off, (a) => inWin(a.s - off));
+  if (ins) return `fuera de la ventana: el audio canta contenido EXTRA "${ins.slice(0, 6).map((x) => x.n).join(' ')}…" (~${Math.floor(ins[0].s / 60)}:${String(Math.floor(ins[0].s % 60)).padStart(2, '0')}) que el original no tiene ahí — sección re-cantada o duplicada`;
+  return null;
+}
+
 export function validateTake(words, tokenGroups, { maxGapS = 6, maxSpanS = 32 } = {}) {
   if (!words?.length) return { ok: false, reason: 'no transcription' };
   if (!tokenGroups?.length) return { ok: true, reason: 'no check' };
