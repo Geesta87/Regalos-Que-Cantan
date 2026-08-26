@@ -130,7 +130,7 @@ serve(async (req) => {
 
     if (action === 'list') {
       const { data, error } = await admin.from('email_queue')
-        .select('id, week_of, reason, subject, subject_b, segment, campaign_key, preview_text, body_html, cta_text, status, recipients_total, recipients_sent, sent_at, error, created_at')
+        .select('id, week_of, reason, subject, subject_b, segment, campaign_key, preview_text, body_html, cta_text, cta_url, status, recipients_total, recipients_sent, sent_at, error, created_at')
         .order('created_at', { ascending: false }).limit(40);
       if (error) return json({ success: false, error: error.message }, 500);
       // Live size of every segment for the UI ("will go to N people").

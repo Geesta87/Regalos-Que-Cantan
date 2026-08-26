@@ -184,7 +184,7 @@ export default function EmailMarketerSection({ accessToken, showToast, onEditInS
               <X size={15} /> Reject
             </button>
             {onEditInStudio && (
-              <button onClick={() => onEditInStudio({ id: sel.id, subject: sel.subject, subject_b: sel.subject_b, segment: sel.segment, preview_text: sel.preview_text, html: sel.body_html })}
+              <button onClick={() => onEditInStudio({ id: sel.id, subject: sel.subject, subject_b: sel.subject_b, segment: sel.segment, preview_text: sel.preview_text, html: sel.body_html, cta_url: sel.cta_url })}
                 disabled={busy} className={btn.ghost}>
                 <Palette size={15} /> Edit in Studio
               </button>

@@ -100,6 +100,19 @@ const PRESETS = [
 
 const DEVICE_WIDTHS = { desktop: '100%', mobile: 390 };
 
+// Everything you were working on survives a refresh, a closed tab, or a switch
+// to another Creative Studio view (this component unmounts on every view
+// switch — before this, that silently threw away the whole session, including
+// a queued draft opened via "Edit in Studio").
+const STORAGE_KEY = 'rqc_email_studio_state_v1';
+const loadSaved = () => {
+  try {
+    const s = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
+    return s && typeof s === 'object' ? s : null;
+  } catch { return null; }
+};
+const EMPTY_BH = { headline: '', kicker: '', accent: '', sub: '', cta: '', align: 'center', prompt: '' };
+
 // Platform-level failures (a wall-clock kill, a gateway error) come back as
 // {code, message} with no `error` field. Without this the UI showed a generic
 // "failed" and hid the one detail that explains what happened.
@@ -120,31 +133,33 @@ const SEGMENTS = [
 ];
 
 export default function EmailStudioSection({ accessToken, showToast, initialDraft, onDraftConsumed }) {
-  const [styleId, setStyleId] = useState(STYLES[0].id);
-  const [styleNote, setStyleNote] = useState(''); // free-form color/theme override
-  const [brief, setBrief] = useState('');
-  const [presetId, setPresetId] = useState(null);
-  const [ctaUrl, setCtaUrl] = useState(SITE);
-  const [polish, setPolish] = useState(true);
-  const [segment, setSegment] = useState('all');
-  const [abTest, setAbTest] = useState(false);
-  const [subjectB, setSubjectB] = useState('');
+  // Read once per mount; each field below falls back to its normal default.
+  const [saved] = useState(loadSaved);
+  const [styleId, setStyleId] = useState(saved?.styleId || STYLES[0].id);
+  const [styleNote, setStyleNote] = useState(saved?.styleNote || ''); // free-form color/theme override
+  const [brief, setBrief] = useState(saved?.brief || '');
+  const [presetId, setPresetId] = useState(saved?.presetId ?? null);
+  const [ctaUrl, setCtaUrl] = useState(saved?.ctaUrl || SITE);
+  const [polish, setPolish] = useState(saved?.polish ?? true);
+  const [segment, setSegment] = useState(saved?.segment || 'all');
+  const [abTest, setAbTest] = useState(saved?.abTest ?? false);
+  const [subjectB, setSubjectB] = useState(saved?.subjectB || '');
 
-  const [imageUrl, setImageUrl] = useState('');
+  const [imageUrl, setImageUrl] = useState(saved?.imageUrl || '');
   const [imagePrompt, setImagePrompt] = useState('');
   const [imageBusy, setImageBusy] = useState(false);
   const fileRef = useRef(null);
 
   // Designed banner hero (text-free photo + our typeset design layer) and the
   // gallery that feeds the photo-tile grid.
-  const [bannerUrl, setBannerUrl] = useState('');
+  const [bannerUrl, setBannerUrl] = useState(saved?.bannerUrl || '');
   const [bannerBusy, setBannerBusy] = useState(false);
-  const [bh, setBh] = useState({ headline: '', kicker: '', accent: '', sub: '', cta: '', align: 'center', prompt: '' });
-  const [gallery, setGallery] = useState([]);
+  const [bh, setBh] = useState(saved?.bh || EMPTY_BH);
+  const [gallery, setGallery] = useState(saved?.gallery || []);
   const galleryRef = useRef(null);
   // Portrait 9:16 stills (Animado frames) — kept apart from `gallery` because
   // they must reach the designer uncropped, as a poster row.
-  const [posters, setPosters] = useState([]);
+  const [posters, setPosters] = useState(saved?.posters || []);
 
   // The house photo library (creative-studio/photo-lab) — text-free shots the
   // ad lab already produced. Free to reuse; generating a new photo costs credits.
@@ -153,11 +168,11 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
   const [libBusy, setLibBusy] = useState(false);
   const [libFolder, setLibFolder] = useState('photo-lab');
   const [libCache, setLibCache] = useState({}); // folder -> photos[], so switching tabs is instant
-  const [plan, setPlan] = useState(null);   // what auto-design chose, shown as chips
+  const [plan, setPlan] = useState(saved?.plan ?? null);   // what auto-design chose, shown as chips
 
-  const [html, setHtml] = useState('');
-  const [subject, setSubject] = useState('');
-  const [previewText, setPreviewText] = useState('');
+  const [html, setHtml] = useState(saved?.html || '');
+  const [subject, setSubject] = useState(saved?.subject || '');
+  const [previewText, setPreviewText] = useState(saved?.previewText || '');
   const [stage, setStage] = useState('');            // '', 'design', 'polish', 'refine'
   const [busy, setBusy] = useState(false);            // send/queue actions
   const [error, setError] = useState('');
@@ -165,10 +180,12 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
   const [device, setDevice] = useState('desktop');
   const [refineText, setRefineText] = useState('');
   const [copied, setCopied] = useState(false);
-  const [history, setHistory] = useState([]);
-  const [editingId, setEditingId] = useState(null); // set when editing an existing email_queue draft
+  const [history, setHistory] = useState(saved?.history || []);
+  const [editingId, setEditingId] = useState(saved?.editingId ?? null); // set when editing an existing email_queue draft
 
   // "Edit in Studio" handoff from the Emails section: load the queued draft.
+  // Runs after the restore above, so an explicit handoff always wins over a
+  // restored session.
   useEffect(() => {
     if (!initialDraft) return;
     setHtml(initialDraft.html || '');
@@ -177,10 +194,38 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
     setSegment(initialDraft.segment || 'all');
     setSubjectB(initialDraft.subject_b || '');
     setAbTest(!!initialDraft.subject_b);
+    if (initialDraft.cta_url) setCtaUrl(initialDraft.cta_url);
     setEditingId(initialDraft.id || null);
     setTab('preview');
     onDraftConsumed?.();
   }, [initialDraft, onDraftConsumed]);
+
+  // Autosave the working session (debounced). Quota/blocked storage is
+  // non-fatal — the studio just behaves like before.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({
+          presetId, brief, styleId, styleNote, ctaUrl, polish, segment, abTest, subjectB,
+          imageUrl, bannerUrl, bh, gallery, posters, plan,
+          html, subject, previewText, editingId,
+          history: history.slice(0, 3),
+        }));
+      } catch { /* storage full or blocked — non-fatal */ }
+    }, 400);
+    return () => clearTimeout(t);
+  }, [presetId, brief, styleId, styleNote, ctaUrl, polish, segment, abTest, subjectB,
+      imageUrl, bannerUrl, bh, gallery, posters, plan, html, subject, previewText, editingId, history]);
+
+  const startFresh = () => {
+    if ((html || brief) && !window.confirm('Clear the studio and start a fresh email? Drafts already saved to the Emails queue are not affected.')) return;
+    try { localStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
+    setPresetId(null); setBrief(''); setStyleId(STYLES[0].id); setStyleNote(''); setCtaUrl(SITE);
+    setSegment('all'); setAbTest(false); setSubjectB(''); setImageUrl(''); setImagePrompt('');
+    setBannerUrl(''); setBh(EMPTY_BH); setGallery([]); setPosters([]); setPlan(null);
+    setHtml(''); setSubject(''); setPreviewText(''); setEditingId(null); setHistory([]);
+    setError(''); setRefineText('');
+  };
 
   const call = useCallback(async (payload) => {
     const res = await fetch(FN, {
@@ -224,8 +269,14 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
     setHistory((prev) => [{ ts: Date.now(), html: h, subject: subj, styleId }, ...prev].slice(0, 5));
   };
 
+  // Editing a queued draft? Generating builds a NEW email — warn before the
+  // silent detach that used to make a "fix" quietly land nowhere.
+  const confirmDetach = () => !editingId
+    || window.confirm('You are editing a queued draft. Generating builds a NEW email and detaches from that draft — the version in the Emails queue stays as it is. Continue?');
+
   const generate = async () => {
     if (!brief.trim()) { showToast?.('Write a brief first (or pick a preset)'); return; }
+    if (!confirmDetach()) return;
     setEditingId(null); // a fresh generate is a NEW email, not the queued draft
     setError(''); setStage('design'); setTab('preview');
     try {
@@ -282,6 +333,8 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
     try {
       const r = await call({ action: 'queue', id: editingId || undefined, html, subject, subject_b: abTest ? subjectB : '', segment, preview_text: previewText, cta_url: ctaUrl, style_id: styleId });
       if (!r.success) throw new Error(errOf(r, 'Queue failed'));
+      // Adopt the queued row: further saves update it instead of inserting a duplicate.
+      if (r.id) setEditingId(r.id);
       showToast?.(r.updated ? 'Draft updated — review it in the Emails section.' : 'Added to the Emails queue — open the Emails section to test & approve the send.');
     } catch (e) { showToast?.(`Error: ${e.message}`); }
     finally { setBusy(false); }
@@ -410,6 +463,7 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
     const runNote = (o.styleNote ?? styleNote).toString();
     const runPosters = o.posters ?? posters;
     if (!runBrief.trim()) { showToast?.('Pick an offering above, or write one line about the email'); return; }
+    if (!confirmDetach()) return;
     setEditingId(null);
     setError(''); setPlan(null); setStage('auto'); setTab('preview');
     try {
@@ -551,14 +605,22 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
 
   return (
     <div className="max-w-6xl">
-      <div className="mb-4">
-        <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2">
-          <Palette size={18} className="text-indigo-600" /> Email Studio
-        </h3>
-        <p className="text-sm text-gray-500 mt-1 max-w-2xl">
-          Design a marketing email on demand for any offering. Generate, refine in plain English, send yourself a test —
-          then add it to the Emails queue, where you approve it before it goes to your list.
-        </p>
+      <div className="mb-4 flex items-start justify-between gap-4">
+        <div>
+          <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2">
+            <Palette size={18} className="text-indigo-600" /> Email Studio
+          </h3>
+          <p className="text-sm text-gray-500 mt-1 max-w-2xl">
+            Design a marketing email on demand for any offering. Generate, refine in plain English, send yourself a test —
+            then add it to the Emails queue, where you approve it before it goes to your list.
+            Your work saves automatically — it survives a refresh or switching tabs.
+          </p>
+        </div>
+        {(html || brief) && (
+          <button onClick={startFresh} disabled={!!stage || busy} className={btn.ghost + ' whitespace-nowrap'} title="Clear the studio and start a new email">
+            <X size={15} /> Start fresh
+          </button>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
