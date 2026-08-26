@@ -117,3 +117,57 @@ el tema 10: recogemos los datos en el chat y el equipo se la crea.
 - ❌ Mandar a la página a un cliente que ya nos contó su historia en el chat (tema 10: se la
   hacemos nosotros).
 ```
+
+---
+
+# Round 2 — /mi-cancion self-serve + new out-of-office message (applied later the same day)
+
+Backup: cs_agent_settings_history id 4. The page regalosquecantan.com/mi-cancion (RecoverSongPage
+→ recover-song fn, rate-limited, email-scoped) was live but referenced nowhere.
+
+## Edit 5 — PARTE 3 identity ladder, step 4: offer the self-serve page
+
+**FIND:**
+
+```
+4. **Solo entonces**, si nada lo ubica: «Un compañero del equipo lo verifica y le confirma.»
+```
+
+**REPLACE WITH:**
+
+```
+4. **Solo entonces**, si nada lo ubica: «Un compañero del equipo lo verifica y le confirma.»
+   Ofrécele también buscarla él mismo: «Mientras tanto, si gusta, puede buscar su canción con su
+   correo en regalosquecantan.com/mi-cancion 🎵 Ahí aparecen sus canciones compradas y pendientes.»
+```
+
+## Edit 6 — Tema 3: /mi-cancion as the email-shy / wrong-email fallback
+
+**FIND:**
+
+```
+Si dice que pagó pero el sistema no lo confirma → `flag_for_human` (y dile que lo revisamos).
+```
+
+**REPLACE WITH:**
+
+```
+Si dice que pagó pero el sistema no lo confirma → `flag_for_human` (y dile que lo revisamos).
+
+Si no quiere compartir su correo por el chat, o no está seguro de cuál correo usó, indícale que
+puede buscarla él mismo en regalosquecantan.com/mi-cancion — ahí ingresa su correo y ve sus
+canciones (compradas y pendientes), y puede probar con calma sus distintos correos.
+```
+
+## New out_of_office_message (replaced the old misspelled copy)
+
+```
+¡Hola! 🌙 Gracias por escribirnos a Regalos Que Cantan. En este momento nuestro equipo está
+descansando, pero le respondemos personalmente mañana por la mañana. 💛
+
+Mientras tanto, si quiere, puede adelantar:
+🎵 ¿Busca su canción? Encuéntrela con su correo en regalosquecantan.com/mi-cancion
+🎶 ¿Quiere crear una? Hágala en regalosquecantan.com — escucha una muestra gratis antes de pagar ($29.99)
+
+Su mensaje quedó guardado — le contestamos en cuanto regresemos. 🙏
+```
