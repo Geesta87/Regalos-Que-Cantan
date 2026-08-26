@@ -118,6 +118,24 @@ or `src/utils/audioSplice.js`.
 - **Length discipline:** a take ships as-is only if its sung length is ≤1.08× the
   original; longer takes get the end-trim rescue (trimmed target ≤1.15×); beyond
   that, reject the take. The old 1.30× as-is ceiling shipped a 3:52 song as 4:49.
+- **EARS BEFORE RELEASE on any PAID song** (2026-08-26, San Lucas 693c8846: a
+  duplicated line shipped to a paying customer). Before releasing a fix into a
+  paid song, LISTEN to the final take (or have the owner listen) — transcript
+  checks are necessary but not sufficient. Never dismiss a diff's inserted/
+  missing block as "Whisper noise" without checking its timestamps, and always
+  verify the FINAL take against the ORIGINAL song's timeline, not just against
+  the take it chained from.
+- **Timeline gate** (`timelineDamage` in `src/utils/audioSplice.js`, ported into
+  `fix-song-auto`): when the lyric sheet is prose (<6 countable lines), every
+  section-mode take must match its reference transcript in time outside the
+  declared windows. Wired into fixOneSong, resingOne, and Ace's stepValidate.
+  Guarded by the golden exam: `node tests/golden/run-golden.cjs` (runs from the
+  pre-commit hook whenever the validators change; fixtures are customer
+  transcripts and stay gitignored — this repo is public).
+- **Window discipline:** ~10–12s replace-section windows ending on a natural
+  breath come back SURGICAL (rest of the song untouched); wide windows usually
+  come back re-rendered and can duplicate/drop sections outside the window.
+  The planner prompt encodes this — don't loosen it.
 
 ### The flow
 
