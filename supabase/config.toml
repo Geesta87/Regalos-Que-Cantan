@@ -1020,6 +1020,17 @@ verify_jwt = true
 # 'list'/'sync' finalize pass (no callBackUrl), so no webhook path exists.
 verify_jwt = true
 
+[functions.ad-studio]
+# Ad Studio — owner-driven ad-video generator on Atlas Cloud (Seedance 2.5),
+# the productized "Podcast & Street" recipe. Called from the admin dashboard
+# with a logged-in admin's JWT AND server-to-server with the service-role key
+# (ops probes) — the gateway rejects a service-role Bearer when verify_jwt is
+# on (same 401 generate-cloned-voice-song hit), so verification lives IN the
+# handler instead: service-role key or admin_users.role='admin' session; the
+# public anon key is rejected (same pattern as fix-song-section). Atlas jobs
+# are POLLED via the 'list' finalize pass, so no webhook path exists.
+verify_jwt = false
+
 # Business Analyst — ask-the-business chat agent (read-only SQL via the
 # analyst_run_sql RPC). Called only by the admin frontend with the owner's
 # JWT (admin_users gate inside); default gate stays ON.
