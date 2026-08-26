@@ -1443,7 +1443,19 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
         // one more corrected spot, or one less old-wording spot — as long as it
         // broke nothing: the next round chains off it and finishes the job.
         const prevOf = (it) => (state?.items || []).find((x) => x.kind === it.kind && x.after === it.after);
-        const noRegression = chk.items.every((it) => { const p = prevOf(it); return !p || it.have >= p.have; });
+        const noRegression = chk.items.every((it) => {
+          // UNVERIFIABLE items are exempt (2026-08-26, San Lucas Colucán
+          // 693c8846): a pronunciation change's transcript count is noise by
+          // construction — the same function says so where it forces windows —
+          // yet this check compared those counts across rounds. Whisper's
+          // per-run wobble on a respelled line then read as "the take lost
+          // something" and vetoed rounds 2-3 whose takes were strictly better
+          // than their source (verified against the original: nothing lost).
+          // Real regressions still fail through the verifiable items and the
+          // priors check.
+          if (it.kind === 'change' && unverifiable.has(it.after)) return true;
+          const p = prevOf(it); return !p || it.have >= p.have;
+        });
         const tPrev = targetItem ? prevOf(targetItem) : null;
         const progressed = !!targetItem && !targetLanded &&
           (targetItem.have > (tPrev?.have || 0) || (!!tPrev && targetItem.beforeLeft < tPrev.beforeLeft));
