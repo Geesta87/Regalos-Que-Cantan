@@ -771,6 +771,70 @@ async function checkCreativePipeline(supabase: any): Promise<CheckResult> {
   }
 }
 
+/**
+ * CHECK 8: Clona Mi Voz pipeline — PAID cloned-voice songs that are stuck,
+ * failed, or missing their permanent audio copy. The poll-cloned-voice-songs
+ * sweeper (every 2 min) normally finishes/alerts these itself; this check is
+ * the backstop for the sweeper being broken or its cron disabled. Suno CDN
+ * URLs expire in ~14 days, so a stuck paid row is a countdown to lost audio
+ * (it already happened once: the 2026-08-08 paid test order).
+ */
+async function checkClonamivozPipeline(supabase: any): Promise<CheckResult> {
+  try {
+    const stuckCutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+    const windowStart = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
+
+    const [stuckRes, failedRes, unhostedRes] = await Promise.all([
+      supabase
+        .from('cloned_voice_songs')
+        .select('id', { count: 'exact', head: true })
+        .eq('paid', true)
+        .in('status', ['paid', 'generating_song'])
+        .lt('paid_at', stuckCutoff)
+        .gt('paid_at', windowStart),
+      supabase
+        .from('cloned_voice_songs')
+        .select('id', { count: 'exact', head: true })
+        .eq('paid', true)
+        .eq('status', 'failed')
+        .gt('paid_at', windowStart),
+      supabase
+        .from('cloned_voice_songs')
+        .select('id', { count: 'exact', head: true })
+        .eq('paid', true)
+        .eq('status', 'success')
+        .is('permanent_audio_urls', null)
+        .gt('paid_at', windowStart),
+    ]);
+
+    const stuck = stuckRes.count || 0;
+    const failed = failedRes.count || 0;
+    const unhosted = unhostedRes.count || 0;
+
+    if (stuck + failed + unhosted > 0) {
+      const fire = await shouldAlert(supabase, 'clonamivoz-pipeline', 6);
+      const parts: string[] = [];
+      if (stuck) parts.push(`${stuck} paid song(s) stuck >30 min`);
+      if (failed) parts.push(`${failed} paid song(s) FAILED`);
+      if (unhosted) parts.push(`${unhosted} paid song(s) without permanent audio copy`);
+      return {
+        name: 'Clona Mi Voz Pipeline',
+        status: fire ? 'alert' : 'ok',
+        severity: 'critical',
+        message: `${parts.join(', ')}${fire ? '' : ' (already alerted, suppressed)'}`,
+        details:
+          `Clona Mi Voz paid orders need attention (last 14 days):\n\n• ${parts.join('\n• ')}\n\n` +
+          `Check /admin?tab=clonamivoz and the poll-cloned-voice-songs sweeper (cron 'poll-cloned-voice-songs-tick'). ` +
+          `Suno CDN URLs expire ~14 days after generation — unhosted successes are on a countdown.`,
+      };
+    }
+
+    return { name: 'Clona Mi Voz Pipeline', status: 'ok', severity: 'info', message: 'No paid cloned-voice orders need attention' };
+  } catch (e) {
+    return { name: 'Clona Mi Voz Pipeline', status: 'error', severity: 'warning', message: `Check failed: ${e.message}` };
+  }
+}
+
 // ============================================================================
 // MAIN HANDLER
 // ============================================================================
@@ -802,6 +866,7 @@ Deno.serve(async (req: Request) => {
     checkCreativePipeline(supabase),
     checkMurekaFallback(supabase),
     checkMetaCapiToken(supabase),
+    checkClonamivozPipeline(supabase),
   ]);
 
   // Filter for alerts

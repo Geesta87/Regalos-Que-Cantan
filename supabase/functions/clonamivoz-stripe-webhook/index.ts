@@ -42,6 +42,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import Stripe from 'https://esm.sh/stripe@13.10.0?target=deno';
+import { sendClonedVoicePaidEmail } from '../_shared/cloned-voice-delivery.ts';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY')!, {
   apiVersion: '2023-10-16',
@@ -202,6 +203,19 @@ serve(async (req) => {
     return new Response(`DB error marking paid: ${paidUpdateError.message}`, {
       status: 500,
     });
+  }
+
+  // ---------------- "pago recibido" confirmation email ----------------
+  // Fire-and-forget + idempotent (paid_email_sent_at claim). Tells the
+  // customer they can close the tab — the delivery email carries the
+  // final links. Must never 4xx the webhook.
+  try {
+    await sendClonedVoicePaidEmail(supabase, {
+      ...row,
+      customer_email: session.customer_email || row.customer_email,
+    });
+  } catch (e) {
+    console.error('[clonamivoz-stripe-webhook] Paid email failed (non-fatal):', e);
   }
 
   // ---------------- trigger full song generation ----------------

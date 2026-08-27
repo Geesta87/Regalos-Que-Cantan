@@ -947,6 +947,17 @@ verify_jwt = true
 # with the Supabase anon JWT, same pattern as the other clonamivoz fns.
 verify_jwt = true
 
+[functions.poll-cloned-voice-songs]
+# pg_cron sweeper (every 2 min, job 'poll-cloned-voice-songs-tick') that
+# finishes Clone Mi Voz songs server-side: polls Kie for rows stuck in
+# generating_song/generating_preview, rehosts audio to the permanent
+# bucket, retries failed rehosts, re-triggers generation for stalled paid
+# rows, sends the delivery email, and alerts the owner about paid
+# failures. Added 2026-08-27 after a paid song's audio was lost because
+# completion only ever happened in the customer's browser tab.
+# Called by pg_cron → verify_jwt = false (CLAUDE.md §3.2).
+verify_jwt = false
+
 [functions.test-suno-voice]
 # TEMPORARY test harness added 2026-08-08 to evaluate Kie's Suno Voice
 # real-voice-cloning APIs (/api/v1/voice/validate → validate-info →
