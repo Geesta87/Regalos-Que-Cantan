@@ -328,7 +328,11 @@ serve(async (req) => {
       for (const s of (stale || [])) await postProcess(admin, s.id, s.meta || {});
       const { data: generations } = await admin.from('ad_studio_generations').select('*')
         .order('created_at', { ascending: false }).limit(100);
-      return json({ success: true, generations: generations || [] });
+      // Per-ad sales attribution: paid songs whose utm_campaign carries this
+      // ad's tracked-link tag ('ad-<first 8 of gen id>'), deduped per Stripe
+      // session (bundle rule). Numbers are a floor — untagged buyers exist.
+      const { data: stats } = await admin.rpc('ad_studio_stats');
+      return json({ success: true, generations: generations || [], stats: stats || [] });
     }
 
     // -- write-script: Claude writes / conversationally refines the prompt -----
@@ -532,6 +536,19 @@ Write the Seedance prompt for this ad.`;
         meta: { ...(gen.meta || {}), clipProjectId: proj.id }, updated_at: new Date().toISOString(),
       }).eq('id', gen.id);
       return json({ success: true, clipProjectId: proj.id });
+    }
+
+    // -- save-template: winners bank — flag a render's prompt as a proven ------
+    // reusable template ('Proven templates' chips in the composer).
+    if (action === 'save-template') {
+      const { data: gen } = await admin.from('ad_studio_generations').select('id, meta')
+        .eq('id', String(body.generationId)).single();
+      if (!gen) throw new Error('Render not found');
+      const on = body.on !== false;
+      await admin.from('ad_studio_generations').update({
+        meta: { ...(gen.meta || {}), template: on }, updated_at: new Date().toISOString(),
+      }).eq('id', gen.id);
+      return json({ success: true, template: on });
     }
 
     // -- delete-generation -----------------------------------------------------

@@ -12,7 +12,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Clapperboard, RefreshCw, Loader2, Trash2, Sparkles, Film, AlertTriangle,
   Download, Send, Mic2, MapPin, Heart, Palette, Volume2, VolumeX, Wand2,
-  Link2, Subtitles, Scissors,
+  Link2, Subtitles, Scissors, Copy, FlaskConical, Star, DollarSign,
 } from 'lucide-react';
 
 const FN = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ad-studio`;
@@ -27,6 +27,15 @@ const FORMATS = [
 const DURATIONS = [10, 15, 20, 25, 30];
 const ASPECTS = ['9:16', '1:1', '16:9'];
 const COST_PER_SEC = 0.134;
+
+// Tracked link: paste as the ad's destination URL in Meta. The funnel stores
+// utm_campaign onto songs, so paid orders roll up per ad ('ad-<hex8>' cannot
+// collide with Banner QR's reserved 'b-*' campaigns). Numbers are a floor.
+const tagFor = (g) => `ad-${String(g.id).replace(/-/g, '').slice(0, 8)}`;
+const trackedLink = (g) => `https://regalosquecantan.com/?utm_source=facebook&utm_medium=paid&utm_campaign=${tagFor(g)}`;
+
+// One-flip A/B partner request for the script-writer.
+const AB_NOTE = 'Create the A/B TEST PARTNER of this prompt: change EXACTLY ONE meaningful condition and keep everything else identical — same structure, same energy, same length. Pick the single most informative flip: if a price is spoken, make the version WITHOUT it (or add it if absent); otherwise flip the setting (podcast studio ↔ street interview) while keeping the same script; otherwise flip the hook style. In your reply, say exactly which condition you flipped.';
 
 // Proven briefs from the 08-19 batch — one tap fills the brief box (still
 // editable). Real A/B pairs: price named vs not, studio vs street.
@@ -89,6 +98,8 @@ export default function AdStudioTab({ accessToken, showToast }) {
   const [refining, setRefining] = useState(false);
   // Per-card Original / Grainy pick (id -> 'original' | 'finished').
   const [variantSel, setVariantSel] = useState({});
+  // Sales attribution per tracked-link tag: { 'ad-xxxxxxxx': {orders, revenue} }.
+  const [stats, setStats] = useState({});
   const pollRef = useRef(null);
   const chatEndRef = useRef(null);
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }, [chat]);
@@ -123,6 +134,7 @@ export default function AdStudioTab({ accessToken, showToast }) {
     try {
       const j = await call('list');
       setGenerations(j.generations || []);
+      setStats(Object.fromEntries((j.stats || []).map((s) => [s.tag, s])));
     } catch (e) {
       if (!silent) showToast?.(e.message, 'error');
     } finally {
@@ -242,6 +254,64 @@ export default function AdStudioTab({ accessToken, showToast }) {
     }
   };
 
+  const copyLink = async (gen) => {
+    const link = trackedLink(gen);
+    try {
+      await navigator.clipboard.writeText(link);
+      showToast?.('Tracked link copied — paste it as the ad\'s destination URL in Meta so sales count here', 'success');
+    } catch (_) {
+      window.prompt('Copy the tracked link:', link);
+    }
+  };
+
+  const abPartner = async (gen) => {
+    setBusy(true);
+    try {
+      const j = await call('write-script', {
+        format: gen.format || 'custom', brief: gen.brief || '', duration: gen.duration || 30,
+        note: AB_NOTE, currentPrompt: gen.prompt,
+      });
+      setFormat(gen.format || 'custom');
+      setBrief(gen.brief || '');
+      setDuration(gen.duration || 30);
+      setPrompt(j.prompt || '');
+      setLabel(j.label || `${gen.meta?.label || 'Ad'} — B`);
+      setChat([{ role: 'assistant', text: j.reply || 'B variant loaded — review it, then generate.' }]);
+      setHistory([{ role: 'assistant', content: JSON.stringify({ label: j.label, prompt: j.prompt }) }]);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      showToast?.('A/B partner script loaded in the composer', 'success');
+    } catch (e) {
+      showToast?.(e.message, 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const toggleTemplate = async (gen) => {
+    const on = !gen.meta?.template;
+    setBusy(true);
+    try {
+      await call('save-template', { generationId: gen.id, on });
+      showToast?.(on ? 'Saved to Proven templates' : 'Removed from templates', 'success');
+      refresh(true);
+    } catch (e) {
+      showToast?.(e.message, 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const useTemplate = (g) => {
+    setFormat(g.format || 'custom');
+    setBrief(g.brief || '');
+    setDuration(g.duration || 30);
+    setPrompt(g.prompt || '');
+    setLabel(`${g.meta?.label || 'Ad'} — new`);
+    setChat([{ role: 'assistant', text: 'Template loaded — tell me what to change (new occasion, new angle) and I\'ll rewrite it.' }]);
+    setHistory([{ role: 'assistant', content: JSON.stringify({ label: g.meta?.label, prompt: g.prompt }) }]);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const deleteGen = async (gen) => {
     if (!window.confirm('Delete this render? The video file is removed too.')) return;
     setBusy(true);
@@ -294,6 +364,22 @@ export default function AdStudioTab({ accessToken, showToast }) {
             );
           })}
         </div>
+
+        {/* Winners bank — prompts the owner starred as proven templates */}
+        {generations.some((g) => g.meta?.template) && (
+          <div className="mb-4">
+            <Label>Proven templates</Label>
+            <div className="flex flex-wrap gap-1.5">
+              {generations.filter((g) => g.meta?.template).map((g) => (
+                <button key={g.id} onClick={() => useTemplate(g)}
+                  className="inline-flex items-center gap-1 text-[11px] font-medium px-2.5 py-1 rounded-full bg-amber-500/15 border border-amber-400/30 text-amber-200 hover:bg-amber-500/25 transition"
+                  title={g.prompt}>
+                  <Star size={11} /> {g.meta?.label || g.brief?.slice(0, 40) || 'template'}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Brief + presets */}
         <Label>What should the ad say?</Label>
@@ -462,6 +548,12 @@ export default function AdStudioTab({ accessToken, showToast }) {
                   {g.meta?.hookTrimSec ? <Chip title="Dead air before the first spoken word was trimmed so the hook lands fast"><Scissors size={10} /> hook −{g.meta.hookTrimSec}s</Chip> : null}
                   {g.meta?.clipProjectId ? <Chip tone="indigo"><Subtitles size={10} /> in Clip Studio</Chip> : null}
                   {g.meta?.sentToCreative ? <Chip tone="green">Sent</Chip> : null}
+                  {g.meta?.template ? <Chip tone="amber"><Star size={10} /> template</Chip> : null}
+                  {stats[tagFor(g)] ? (
+                    <Chip tone="green" title="Paid orders whose link carried this ad's tag — a floor, untagged buyers exist">
+                      <DollarSign size={10} /> {stats[tagFor(g)].orders} sold · ${Number(stats[tagFor(g)].revenue).toFixed(0)}
+                    </Chip>
+                  ) : null}
                 </div>
                 <p className="text-xs text-gray-300 line-clamp-2" title={g.prompt}>
                   {g.meta?.label || g.brief || g.prompt}
@@ -484,6 +576,19 @@ export default function AdStudioTab({ accessToken, showToast }) {
                     <button onClick={() => sendToCreative(g, sel)} disabled={busy || g.meta?.sentToCreative} className={`${btnGhost} !px-2.5 !py-1.5 text-xs`}
                       title={variants.length > 1 ? `Sends the ${sel} version` : undefined}>
                       <Send size={13} /> Creative Studio
+                    </button>
+                    <button onClick={() => copyLink(g)} className={`${btnGhost} !px-2 !py-1.5 text-xs`}
+                      title="Copy this ad's tracked link — use it as the destination URL in Meta so its sales count here">
+                      <Copy size={13} />
+                    </button>
+                    <button onClick={() => abPartner(g)} disabled={busy} className={`${btnGhost} !px-2 !py-1.5 text-xs`}
+                      title="A/B partner: the AI flips exactly one condition (price, setting, hook) and loads the twin script in the composer">
+                      <FlaskConical size={13} />
+                    </button>
+                    <button onClick={() => toggleTemplate(g)} disabled={busy}
+                      className={`${btnGhost} !px-2 !py-1.5 text-xs ${g.meta?.template ? 'text-amber-300' : ''}`}
+                      title={g.meta?.template ? 'Remove from Proven templates' : 'Save as a Proven template (winners bank)'}>
+                      <Star size={13} fill={g.meta?.template ? 'currentColor' : 'none'} />
                     </button>
                     <button onClick={() => deleteGen(g)} disabled={busy} className={`${btnGhost} !px-2 !py-1.5 text-xs text-red-300 hover:text-red-200 ml-auto`}>
                       <Trash2 size={13} />
