@@ -86,6 +86,8 @@ export default function AdStudioTab({ accessToken, showToast }) {
   const [history, setHistory] = useState([]);
   const [chatInput, setChatInput] = useState('');
   const [refining, setRefining] = useState(false);
+  // Per-card Original / Grainy pick (id -> 'original' | 'finished').
+  const [variantSel, setVariantSel] = useState({});
   const pollRef = useRef(null);
   const chatEndRef = useRef(null);
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }, [chat]);
@@ -198,10 +200,10 @@ export default function AdStudioTab({ accessToken, showToast }) {
     }
   };
 
-  const sendToCreative = async (gen) => {
+  const sendToCreative = async (gen, variant) => {
     setBusy(true);
     try {
-      const j = await call('send-to-creative', { generationId: gen.id });
+      const j = await call('send-to-creative', { generationId: gen.id, variant });
       showToast?.(j.already ? 'Already in the Creative Studio queue' : 'Sent to Creative Studio for approval', 'success');
       refresh(true);
     } catch (e) {
@@ -386,7 +388,13 @@ export default function AdStudioTab({ accessToken, showToast }) {
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {generations.map((g) => (
+          {generations.map((g) => {
+            // Both versions exist when the finish pass ran — the owner picks
+            // which one to watch, download, or send. media_url = original.
+            const hasFinished = Boolean(g.meta?.finishedUrl);
+            const sel = variantSel[g.id] || 'original';
+            const activeUrl = sel === 'finished' && hasFinished ? g.meta.finishedUrl : g.media_url;
+            return (
             <div key={g.id} className={`${panel} overflow-hidden flex flex-col`}>
               <div className={`relative bg-black/40 ${g.aspect_ratio === '16:9' ? 'aspect-video' : g.aspect_ratio === '1:1' ? 'aspect-square' : 'aspect-[9/16] max-h-[420px]'}`}>
                 {g.status === 'generating' ? (
@@ -397,7 +405,17 @@ export default function AdStudioTab({ accessToken, showToast }) {
                     <span className="text-xs">{g.error || 'Generation failed'}</span>
                   </div>
                 ) : (
-                  <video src={g.media_url} controls preload="metadata" className="absolute inset-0 w-full h-full object-contain" />
+                  <video key={activeUrl} src={activeUrl} controls preload="metadata" className="absolute inset-0 w-full h-full object-contain" />
+                )}
+                {g.status === 'ready' && hasFinished && (
+                  <div className="absolute top-2 left-1/2 -translate-x-1/2 flex rounded-full bg-black/60 backdrop-blur-sm p-0.5">
+                    {[['original', 'Original'], ['finished', 'Grainy']].map(([v, name]) => (
+                      <button key={v} onClick={() => setVariantSel((s) => ({ ...s, [g.id]: v }))}
+                        className={`text-[11px] font-semibold px-2.5 py-1 rounded-full transition ${sel === v ? 'bg-white text-black' : 'text-gray-300 hover:text-white'}`}>
+                        {name}
+                      </button>
+                    ))}
+                  </div>
                 )}
               </div>
               <div className="p-3.5 flex flex-col gap-2.5">
@@ -406,6 +424,7 @@ export default function AdStudioTab({ accessToken, showToast }) {
                   {g.duration ? <Chip>{g.duration}s</Chip> : null}
                   {g.meta?.estCostUsd ? <Chip>${Number(g.meta.estCostUsd).toFixed(2)}</Chip> : null}
                   {g.meta?.take ? <Chip tone="amber">take {g.meta.take}</Chip> : null}
+                  {hasFinished ? <Chip tone={sel === 'finished' ? 'amber' : 'gray'}>{sel === 'finished' ? 'grainy' : 'original'}</Chip> : null}
                   {g.meta?.sentToCreative ? <Chip tone="green">Sent</Chip> : null}
                 </div>
                 <p className="text-xs text-gray-300 line-clamp-2" title={g.prompt}>
@@ -413,10 +432,11 @@ export default function AdStudioTab({ accessToken, showToast }) {
                 </p>
                 {g.status === 'ready' && (
                   <div className="flex items-center gap-1.5">
-                    <a href={g.media_url} download target="_blank" rel="noreferrer" className={`${btnGhost} !px-2.5 !py-1.5 text-xs`}>
+                    <a href={activeUrl} download target="_blank" rel="noreferrer" className={`${btnGhost} !px-2.5 !py-1.5 text-xs`}>
                       <Download size={13} /> Download
                     </a>
-                    <button onClick={() => sendToCreative(g)} disabled={busy || g.meta?.sentToCreative} className={`${btnGhost} !px-2.5 !py-1.5 text-xs`}>
+                    <button onClick={() => sendToCreative(g, sel)} disabled={busy || g.meta?.sentToCreative} className={`${btnGhost} !px-2.5 !py-1.5 text-xs`}
+                      title={hasFinished ? `Sends the ${sel === 'finished' ? 'grainy' : 'original'} version` : undefined}>
                       <Send size={13} /> Creative Studio
                     </button>
                     <button onClick={() => deleteGen(g)} disabled={busy} className={`${btnGhost} !px-2 !py-1.5 text-xs text-red-300 hover:text-red-200 ml-auto`}>
@@ -433,7 +453,8 @@ export default function AdStudioTab({ accessToken, showToast }) {
                 )}
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

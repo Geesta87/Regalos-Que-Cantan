@@ -137,15 +137,18 @@ async function finalize(admin: any) {
         const up = await admin.storage.from(BUCKET).upload(path, bytes, { contentType: 'video/mp4', upsert: true });
         if (up.error) throw up.error;
         const { data: pub } = admin.storage.from(BUCKET).getPublicUrl(path);
-        let finalUrl = pub.publicUrl;
+        // Keep BOTH versions: media_url is always the untouched ORIGINAL; the
+        // grainy finish-pass version (when it succeeds) lands in
+        // meta.finishedUrl so the gallery can offer an Original / Grainy
+        // choice per render (owner request 2026-08-27).
         const finishMeta: Record<string, unknown> = {};
         if ((row.meta?.finish ?? 'standard') !== 'off') {
           const finished = await finishVideo(pub.publicUrl, String(row.meta?.finish || 'standard'), row.id);
-          if (finished) { finishMeta.rawUrl = pub.publicUrl; finishMeta.finished = true; finalUrl = finished; }
+          if (finished) { finishMeta.finishedUrl = finished; finishMeta.finished = true; }
           else finishMeta.finished = false;
         }
         await admin.from('ad_studio_generations').update({
-          status: 'ready', media_url: finalUrl,
+          status: 'ready', media_url: pub.publicUrl,
           meta: { ...(row.meta || {}), ...finishMeta },
           updated_at: new Date().toISOString(),
         }).eq('id', row.id);
@@ -380,7 +383,10 @@ Write the Seedance prompt for this ad.`;
       const { data: gen } = await admin.from('ad_studio_generations').select('*')
         .eq('id', String(body.generationId)).eq('status', 'ready').single();
       if (!gen?.media_url) throw new Error('That render is not ready');
-      const { data: dupe } = await admin.from('creative_queue').select('id').eq('media_url', gen.media_url).limit(1);
+      // The owner picks WHICH version ships: 'finished' (grainy) or 'original'.
+      const wantFinished = body.variant === 'finished';
+      const mediaUrl = wantFinished && gen.meta?.finishedUrl ? String(gen.meta.finishedUrl) : String(gen.media_url);
+      const { data: dupe } = await admin.from('creative_queue').select('id').eq('media_url', mediaUrl).limit(1);
       if (dupe?.length) return json({ success: true, already: true });
       const label = gen.meta?.label || gen.brief || gen.prompt.slice(0, 100);
       const copy = await writeCaption(gen);
@@ -391,7 +397,7 @@ Write the Seedance prompt for this ad.`;
         concept: `Ad Studio — ${String(label).slice(0, 140)}`,
         gen_prompt: gen.prompt,
         headline: copy.headline, caption: copy.caption, hashtags: copy.hashtags,
-        score: 75, status: 'ready', media_url: gen.media_url,
+        score: 75, status: 'ready', media_url: mediaUrl,
       });
       if (error) throw error;
       await admin.from('ad_studio_generations').update({
