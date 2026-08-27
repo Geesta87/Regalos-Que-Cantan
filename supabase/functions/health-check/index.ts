@@ -504,6 +504,83 @@ async function checkMurekaFallback(supabase: any): Promise<CheckResult> {
 // ============================================================================
 
 /**
+ * CHECK 9: Meta CAPI token canary (added 2026-08-27 after the token expired
+ * silently on 08-25 and every server-side Purchase event failed for ~24h with
+ * no alert). Validates the EXACT credential stripe-webhook's CAPI sender uses
+ * (same env fallback chain) with a cheap read of the pixel object. An OAuth
+ * error here means purchases are not reaching Meta server-side right now.
+ * Throttled to once per 6h via ops_alert_state so a dead token pages once a
+ * shift, not every 10 minutes.
+ */
+const CAPI_META_PIXEL_ID = Deno.env.get('META_PIXEL_ID') || '';
+const CAPI_META_TOKEN =
+  Deno.env.get('META_CAPI_ACCESS_TOKEN') ||
+  Deno.env.get('META_ACCESS_TOKEN') ||
+  Deno.env.get('META_CONVERSIONS_API_TOKEN') ||
+  '';
+
+async function checkMetaCapiToken(supabase: any): Promise<CheckResult> {
+  const name = 'Meta CAPI Token';
+  try {
+    if (!CAPI_META_PIXEL_ID || !CAPI_META_TOKEN) {
+      if (await shouldAlert(supabase, 'meta_capi_token_unset', 24)) {
+        return {
+          name, status: 'alert', severity: 'warning',
+          message: 'META_PIXEL_ID / CAPI token not configured — server-side purchase events are OFF',
+          details: 'stripe-webhook is skipping every Meta CAPI Purchase send because the pixel id or access token secret is unset. Set META_CAPI_ACCESS_TOKEN and redeploy stripe-webhook + create-checkout.'
+        };
+      }
+      return { name, status: 'ok', severity: 'info', message: 'not configured (already alerted)' };
+    }
+
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 5000);
+    let resp: Response;
+    try {
+      resp = await fetch(
+        `https://graph.facebook.com/v19.0/${CAPI_META_PIXEL_ID}?fields=id&access_token=${encodeURIComponent(CAPI_META_TOKEN)}`,
+        { signal: ctrl.signal }
+      );
+    } finally {
+      clearTimeout(t);
+    }
+
+    if (resp.ok) {
+      return { name, status: 'ok', severity: 'info', message: 'token valid' };
+    }
+
+    const body = await resp.json().catch(() => ({} as any));
+    const err = body?.error || {};
+    const isOAuth = err?.code === 190 || err?.type === 'OAuthException';
+    const detail = String(err?.message || `HTTP ${resp.status}`).slice(0, 300);
+
+    if (isOAuth) {
+      if (await shouldAlert(supabase, 'meta_capi_token_dead', 6)) {
+        return {
+          name, status: 'alert', severity: 'critical',
+          message: 'Meta access token EXPIRED/INVALID — purchases are NOT reaching Meta server-side',
+          details: `Meta rejected the CAPI credential: "${detail}"\n\nEvery server-side Purchase/InitiateCheckout/relay event is failing right now (campaign optimization is running on browser-pixel data only).\n\nFix:\n1. Events Manager → Regalos Que Cantan 2026 → Settings → Conversions API → Generate access token (a System User token never expires)\n2. supabase secrets set META_CAPI_ACCESS_TOKEN=<token> --project-ref yzbvajungshqcpusfiia\n3. Redeploy stripe-webhook, create-checkout, meta-capi-relay to force fresh instances\n4. Verify "[meta-capi] Purchase sent" lines return in the function logs`
+        };
+      }
+      return { name, status: 'ok', severity: 'info', message: 'token dead (already alerted this window)' };
+    }
+
+    // Non-OAuth failure (permissions change, Meta hiccup) — warn, longer throttle.
+    if (await shouldAlert(supabase, 'meta_capi_token_other', 12)) {
+      return {
+        name, status: 'alert', severity: 'warning',
+        message: `Meta CAPI credential check failed (HTTP ${resp.status})`,
+        details: `Graph API refused the pixel read the CAPI sender depends on: "${detail}". If this persists, server-side events may be failing — check stripe-webhook logs for [meta-capi] errors.`
+      };
+    }
+    return { name, status: 'ok', severity: 'info', message: `non-OAuth failure (already alerted): ${detail.slice(0, 80)}` };
+  } catch (e: any) {
+    // Network blip from the canary itself — don't page on our own timeout.
+    return { name, status: 'ok', severity: 'info', message: `canary fetch failed (${String(e?.message || e).slice(0, 60)}) — will retry next run` };
+  }
+}
+
+/**
  * Throttle helper: returns true (and stamps the state row) only if we have NOT
  * alerted on this key within the last `hours`. Prevents a persistent condition
  * from re-alerting on every 10-minute run.
@@ -724,6 +801,7 @@ Deno.serve(async (req: Request) => {
     checkStaleApprovals(supabase),
     checkCreativePipeline(supabase),
     checkMurekaFallback(supabase),
+    checkMetaCapiToken(supabase),
   ]);
 
   // Filter for alerts
