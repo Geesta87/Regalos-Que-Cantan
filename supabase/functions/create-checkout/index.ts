@@ -20,6 +20,104 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const BASE_URL = Deno.env.get('BASE_URL') || 'https://regalosquecantan.com';
 
+// Meta Conversions API — same project secrets stripe-webhook uses for the
+// server-side Purchase event. Both optional: unset ⇒ the IC event is skipped.
+const META_PIXEL_ID = Deno.env.get('META_PIXEL_ID') || '';
+const META_CAPI_ACCESS_TOKEN = Deno.env.get('META_CAPI_ACCESS_TOKEN') || '';
+const META_TEST_EVENT_CODE = Deno.env.get('META_TEST_EVENT_CODE') || '';
+
+// SHA-256 lowercase-trim hash for Meta user_data fields (same normalization
+// as stripe-webhook's metaHash — Meta rejects cleartext PII).
+async function metaHash(value: string): Promise<string> {
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return '';
+  const bytes = new TextEncoder().encode(normalized);
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(digest))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+// Server-side InitiateCheckout to Meta CAPI. Mirrors stripe-webhook's
+// sendMetaCAPIPurchase contract: NEVER throws, 5s hard timeout, gated on env
+// vars. Dedupes with the browser pixel via event_id = the icEventId the
+// frontend minted when it fired fbq('track','InitiateCheckout',…,{eventID}).
+// When the frontend passed no id (old cached bundle), a session-derived id is
+// used — unique, but it simply won't dedup an id-less browser event.
+async function sendMetaCAPIInitiateCheckout(args: {
+  eventId: string;
+  email: string | null | undefined;
+  amountUsd: number | null;
+  songIds: string[];
+  fbc: string;
+  fbp: string;
+  clientIp: string;
+  clientUserAgent: string;
+}): Promise<void> {
+  if (!META_PIXEL_ID || !META_CAPI_ACCESS_TOKEN) {
+    console.log('[meta-capi] IC skipped — META_PIXEL_ID or META_CAPI_ACCESS_TOKEN not set');
+    return;
+  }
+  try {
+    const userData: Record<string, any> = {};
+    if (args.email) {
+      const emHash = await metaHash(args.email);
+      userData.em = [emHash];
+      userData.external_id = [emHash];
+    }
+    if (args.fbc) userData.fbc = args.fbc;
+    if (args.fbp) userData.fbp = args.fbp;
+    // IP only travels with a user agent (Meta flags lone IPs).
+    if (args.clientIp && args.clientUserAgent) userData.client_ip_address = args.clientIp;
+    if (args.clientUserAgent) userData.client_user_agent = args.clientUserAgent;
+
+    const payload: Record<string, any> = {
+      data: [{
+        event_name: 'InitiateCheckout',
+        event_time: Math.floor(Date.now() / 1000),
+        event_id: args.eventId,
+        action_source: 'website',
+        event_source_url: `${BASE_URL}/preview`,
+        user_data: userData,
+        custom_data: {
+          currency: 'USD',
+          value: args.amountUsd ?? 0,
+          content_type: 'product',
+          content_ids: args.songIds,
+          num_items: args.songIds.length
+        }
+      }]
+    };
+    if (META_TEST_EVENT_CODE) payload.test_event_code = META_TEST_EVENT_CODE;
+
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 5000);
+    let resp: Response;
+    try {
+      resp = await fetch(
+        `https://graph.facebook.com/v19.0/${META_PIXEL_ID}/events?access_token=${encodeURIComponent(META_CAPI_ACCESS_TOKEN)}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+          signal: ctrl.signal
+        }
+      );
+    } finally {
+      clearTimeout(t);
+    }
+    if (!resp.ok) {
+      const errText = await resp.text().catch(() => '');
+      console.error(`[meta-capi] IC non-2xx ${resp.status} for event ${args.eventId}: ${errText.slice(0, 500)}`);
+      return;
+    }
+    const json = await resp.json().catch(() => ({}));
+    console.log(`[meta-capi] InitiateCheckout sent — event_id=${args.eventId} value=${args.amountUsd} events_received=${json?.events_received ?? '?'}`);
+  } catch (err: any) {
+    console.error(`[meta-capi] IC threw for event ${args.eventId}:`, err?.message || err);
+  }
+}
+
 // Gift-SMS add-on ($5) — bundled into the main checkout so the buyer pays once.
 const GIFT_PRICE_CENTS = 500;
 function giftToE164(raw: string): string | null {
@@ -101,7 +199,7 @@ serve(async (req) => {
     }
 
     let { email } = body;
-    const { couponCode, utm_source, utm_medium, utm_campaign, session_id, from_email_campaign, purchaseBoth, pricingTier, videoAddon, videoAddonCount: rawVideoAddonCount, karaokeAddon, lyricVideoAddon, karaokeVideoAddon, fbc, fbp, ttclid, ttp, clientUserAgent, affiliateCode, referrer_source, referrer_host, landing_path } = body;
+    const { couponCode, utm_source, utm_medium, utm_campaign, session_id, from_email_campaign, purchaseBoth, pricingTier, videoAddon, videoAddonCount: rawVideoAddonCount, karaokeAddon, lyricVideoAddon, karaokeVideoAddon, fbc, fbp, ttclid, ttp, clientUserAgent, affiliateCode, referrer_source, referrer_host, landing_path, icEventId } = body;
     // Gift-SMS add-on payload (optional): { recipient_name, recipient_phone,
     // buyer_name, personal_message, send_at (ISO UTC), buyer_timezone, attestation }
     const giftRaw = body.giftSms || null;
@@ -830,6 +928,28 @@ serve(async (req) => {
       for (const sid of songIds) {
         await supabase.from('songs').update(songUpdate).eq('id', sid);
       }
+    }
+
+    // Meta CAPI — server-side InitiateCheckout (Week-0 measurement work: raises
+    // CAPI event coverage beyond Purchase-only). Runs after the response via
+    // waitUntil when the runtime provides it, so checkout latency is untouched;
+    // falls back to an awaited call (helper never throws, 5s cap).
+    {
+      const icPromise = sendMetaCAPIInitiateCheckout({
+        eventId: (typeof icEventId === 'string' && icEventId.trim())
+          ? icEventId.trim().slice(0, 100)
+          : `ic_${session.id}`,
+        email,
+        amountUsd: session.amount_total != null ? session.amount_total / 100 : null,
+        songIds,
+        fbc: (fbc || '').slice(0, 500),
+        fbp: (fbp || '').slice(0, 500),
+        clientIp,
+        clientUserAgent: resolvedUserAgent
+      });
+      const rt = (globalThis as any).EdgeRuntime;
+      if (rt && typeof rt.waitUntil === 'function') rt.waitUntil(icPromise);
+      else await icPromise;
     }
 
     return new Response(

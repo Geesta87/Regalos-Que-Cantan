@@ -122,6 +122,15 @@ async function sendMetaCAPIPurchase(args: {
   recipientName?: string | null;
   buyerPhone?: string | null;
   buyerName?: string | null;
+  // Funnel-captured WhatsApp number (songs.whatsapp_phone) — used only when
+  // Stripe collected no phone. Stored 10-digit US; Meta's ph format needs the
+  // country code, so a 10-digit fallback gets a leading 1.
+  fallbackPhone?: string | null;
+  // Billing geo from Stripe customer_details.address. Checkout deliberately
+  // collects no full billing address (owner 2026-08-19 — keep checkout
+  // light), but Stripe still returns card ZIP + country when AVS ran.
+  buyerZip?: string | null;
+  buyerCountry?: string | null;
 }): Promise<void> {
   if (!META_PIXEL_ID || !META_CAPI_ACCESS_TOKEN) {
     console.log('[meta-capi] skipped — META_PIXEL_ID or META_CAPI_ACCESS_TOKEN not set');
@@ -129,13 +138,28 @@ async function sendMetaCAPIPurchase(args: {
   }
   try {
     const userData: Record<string, any> = {};
-    if (args.email) userData.em = [await metaHash(args.email)];
+    if (args.email) {
+      const emHash = await metaHash(args.email);
+      userData.em = [emHash];
+      // Stable customer key — the parameter Meta's "insufficient customer
+      // parameters" diagnostic names. Hashed email keeps it consistent with
+      // what the browser pixel's advanced matching derives.
+      userData.external_id = [emHash];
+    }
     // Extra match keys (hashed): phone digits-only per Meta's ph format, and
     // buyer first/last name from Stripe customer_details. All optional —
     // checkout only sometimes captures phone, but every field raises match
     // quality when present.
-    const phoneDigits = (args.buyerPhone || '').replace(/\D/g, '');
+    let phoneDigits = (args.buyerPhone || '').replace(/\D/g, '');
+    if (!phoneDigits) {
+      const wa = (args.fallbackPhone || '').replace(/\D/g, '');
+      phoneDigits = wa.length === 10 ? `1${wa}` : wa;
+    }
     if (phoneDigits) userData.ph = [await metaHash(phoneDigits)];
+    const zipRaw = (args.buyerZip || '').trim().toLowerCase().slice(0, 5);
+    if (zipRaw) userData.zp = [await metaHash(zipRaw)];
+    const countryRaw = (args.buyerCountry || '').trim().toLowerCase();
+    if (countryRaw.length === 2) userData.country = [await metaHash(countryRaw)];
     const nameParts = (args.buyerName || '').trim().split(/\s+/).filter(Boolean);
     if (nameParts.length) {
       userData.fn = [await metaHash(nameParts[0])];
@@ -1116,7 +1140,10 @@ serve(async (req) => {
           clientUserAgent: session.metadata?.client_user_agent || '',
           recipientName: firstSong?.recipient_name || null,
           buyerPhone: session.customer_details?.phone || null,
-          buyerName: session.customer_details?.name || null
+          buyerName: session.customer_details?.name || null,
+          fallbackPhone: firstSong?.whatsapp_phone || null,
+          buyerZip: session.customer_details?.address?.postal_code || null,
+          buyerCountry: session.customer_details?.address?.country || null
         });
       } catch (capiErr: any) {
         // Defensive: sendMetaCAPIPurchase already swallows everything, but

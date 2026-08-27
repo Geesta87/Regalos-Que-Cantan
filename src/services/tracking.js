@@ -424,10 +424,22 @@ export const trackStep = async (step, metadata = {}) => {
       
       const pixelData = pixelEventMap[step];
       if (pixelData) {
+        // checkout_clicked: mint a dedup id shared with the server-side CAPI
+        // InitiateCheckout (create-checkout). api.js reads it back from
+        // sessionStorage and passes it as icEventId, so browser + server
+        // copies of this event count once in Events Manager.
+        let fbqOpts;
+        if (step === 'checkout_clicked') {
+          try {
+            const icId = crypto.randomUUID();
+            sessionStorage.setItem('rqc_ic_event_id', JSON.stringify({ id: icId, expiresAt: Date.now() + 30 * 60 * 1000 }));
+            fbqOpts = { eventID: icId };
+          } catch { /* ignore — event still fires, just without dedup */ }
+        }
         window.fbq('track', pixelData.event, {
           ...pixelData.params,
           ...metadata
-        });
+        }, fbqOpts);
         console.log(`[Meta Pixel] ${pixelData.event}:`, step);
       } else {
         // Custom event for unmapped steps

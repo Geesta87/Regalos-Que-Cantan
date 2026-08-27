@@ -214,6 +214,17 @@ export async function createCheckout(songIds, email, couponCode = null, purchase
       fbp,
       ttclid,
       ttp,
+      // Dedup id for the server-side CAPI InitiateCheckout — minted by
+      // tracking.js when the checkout click fired the browser pixel event.
+      // Null when the pixel never fired (blocked) — server falls back to a
+      // session-derived id.
+      icEventId: (() => {
+        try {
+          const raw = JSON.parse(sessionStorage.getItem('rqc_ic_event_id') || 'null');
+          if (raw && raw.id && raw.expiresAt > Date.now()) return raw.id;
+        } catch { /* ignore */ }
+        return null;
+      })(),
       clientUserAgent: navigator.userAgent,
       // 30-day localStorage attribution (see tracking.js). Falls back to the
       // legacy sessionStorage location during the rollout window so anyone
