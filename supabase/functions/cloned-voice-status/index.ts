@@ -34,6 +34,7 @@ import {
   pollKieTask,
   mapKieTerminal,
   extractSunoUrls,
+  extractSunoDurations,
   copyToPermanentStorage,
   finalizeFullSongSuccess,
   sendClonedVoiceDeliveryEmail,
@@ -82,6 +83,11 @@ function buildResponse(row: any, overrides: Record<string, unknown> = {}) {
     paid_at: row.paid_at || null,
     error_message: row.error_message || null,
     completed_at: row.completed_at || null,
+    // Gift-page fields (/regalo?id=<uuid>, 2026-08-27). The id is an
+    // unguessable UUID and the endpoint already exposed title + lyrics.
+    recipient_name: row.recipient_name || null,
+    genre_slug: row.genre_slug || null,
+    occasion: row.occasion || null,
     ...overrides,
   };
 }
@@ -140,7 +146,7 @@ serve(async (req) => {
   const { data: row, error: loadError } = await supabase
     .from('cloned_voice_songs')
     .select(
-      'id, status, kie_task_id, preview_kie_task_id, title, lyrics, suno_audio_urls, permanent_audio_urls, preview_audio_url, paid, paid_at, error_message, completed_at, customer_email, recipient_name, genre_slug, delivery_email_sent_at'
+      'id, status, kie_task_id, preview_kie_task_id, title, lyrics, suno_audio_urls, permanent_audio_urls, preview_audio_url, paid, paid_at, error_message, completed_at, customer_email, recipient_name, genre_slug, occasion, delivery_email_sent_at'
     )
     .eq('id', clonedVoiceSongId)
     .maybeSingle();
@@ -306,11 +312,15 @@ serve(async (req) => {
   // and a failure must never break the poll response.
   if (row.paid && !row.delivery_email_sent_at) {
     try {
-      await sendClonedVoiceDeliveryEmail(supabase, {
-        ...row,
-        permanent_audio_urls: permanentUrls.length > 0 ? permanentUrls : null,
-        suno_audio_urls: sunoUrls,
-      });
+      await sendClonedVoiceDeliveryEmail(
+        supabase,
+        {
+          ...row,
+          permanent_audio_urls: permanentUrls.length > 0 ? permanentUrls : null,
+          suno_audio_urls: sunoUrls,
+        },
+        { durationsS: extractSunoDurations(kieData) }
+      );
     } catch (e) {
       console.error('[cloned-voice-status] Delivery email failed (non-fatal):', e);
     }

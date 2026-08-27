@@ -323,6 +323,9 @@ export default function VoiceRecorder({
   const streamRef = useRef(null);
   const recStreamRef = useRef(null);
   const rafRef = useRef(null);
+  // Guide-melody <audio> element — paused automatically when recording
+  // starts so the guide never bleeds into the voice sample.
+  const guideAudioRef = useRef(null);
 
   useEffect(() => () => cleanup(), []);
 
@@ -352,6 +355,10 @@ export default function VoiceRecorder({
     setPendingBlob(null);
     setPendingDurationMs(0);
     setVerdict(null);
+    // Stop the guide melody — through speakers it would bleed straight
+    // into the sample and pollute the clone. (Headphone users can restart
+    // it manually; the card copy explains that.)
+    try { guideAudioRef.current?.pause(); } catch { /* non-fatal */ }
     try {
       // CRITICAL for voice cloning: turn OFF browser audio processing.
       //
@@ -507,6 +514,9 @@ export default function VoiceRecorder({
   return (
     <div className="space-y-5">
       {showScript && (
+        <GuideMelodyPlayer language={language} audioElRef={guideAudioRef} />
+      )}
+      {showScript && (
         <ReadingScriptPanel
           readingScript={READING_SCRIPT}
           hummingInstruction={HUMMING_INSTRUCTION}
@@ -625,6 +635,82 @@ export default function VoiceRecorder({
 // ===========================================================================
 // Sub-components
 // ===========================================================================
+
+/**
+ * Guide melody play-along (2026-08-27). Most people can't invent a melody
+ * on the spot — that's the root cause of flat takes. We give them ONE
+ * simple, original (house-generated, copyright-safe) melody per language
+ * to imitate, in a male and a female voice. Files live in
+ * public/clonamivoz/guide-<lang>-<m|f>.mp3; the card hides itself if the
+ * files aren't deployed yet.
+ */
+function GuideMelodyPlayer({ language, audioElRef }) {
+  const [gender, setGender] = useState('f');
+  const [available, setAvailable] = useState(false);
+  const isEn = language === 'en';
+  const src = `/clonamivoz/guide-${isEn ? 'en' : 'es'}-${gender}.mp3`;
+
+  useEffect(() => {
+    let alive = true;
+    fetch(`/clonamivoz/guide-${isEn ? 'en' : 'es'}-f.mp3`, { method: 'HEAD' })
+      .then((r) => {
+        // Vite/Vercel SPA fallback returns index.html (200, text/html) for
+        // missing files — require an audio-ish content type.
+        const ct = r.headers.get('content-type') || '';
+        if (alive) setAvailable(r.ok && !ct.includes('text/html'));
+      })
+      .catch(() => { if (alive) setAvailable(false); });
+    return () => { alive = false; };
+  }, [isEn]);
+
+  if (!available) return null;
+
+  return (
+    <div className="rounded-2xl bg-bougainvillea/10 border-2 border-bougainvillea/40 p-4 sm:p-5 space-y-3">
+      <div className="flex items-start gap-2">
+        <span className="material-symbols-outlined text-bougainvillea text-2xl">headphones</span>
+        <div>
+          <div className="font-bold text-white text-base">
+            {isEn ? 'Listen to the example melody first' : 'Primero escucha la melodía de ejemplo'}
+          </div>
+          <div className="text-xs text-white/70 mt-0.5">
+            {isEn
+              ? 'Hear it once or twice, then sing the lyric with THIS melody (or your own). With headphones you can even sing along while it plays.'
+              : 'Escúchala una o dos veces y luego canta la letra con ESTA melodía (o la tuya). Con audífonos puedes cantar encima mientras suena.'}
+          </div>
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        <div className="inline-flex rounded-full bg-white/5 border border-white/10 p-0.5">
+          <button
+            type="button"
+            onClick={() => setGender('f')}
+            className={`px-3 py-1 rounded-full text-xs font-semibold transition ${
+              gender === 'f' ? 'bg-bougainvillea text-white' : 'text-white/60 hover:text-white'
+            }`}
+          >
+            {isEn ? 'Female voice' : 'Voz de mujer'}
+          </button>
+          <button
+            type="button"
+            onClick={() => setGender('m')}
+            className={`px-3 py-1 rounded-full text-xs font-semibold transition ${
+              gender === 'm' ? 'bg-bougainvillea text-white' : 'text-white/60 hover:text-white'
+            }`}
+          >
+            {isEn ? 'Male voice' : 'Voz de hombre'}
+          </button>
+        </div>
+      </div>
+      <audio ref={audioElRef} key={src} controls preload="none" src={src} className="w-full" />
+      <p className="text-xs text-white/50">
+        {isEn
+          ? '⏸ The melody pauses automatically when you start recording (so it doesn’t leak into your sample). Sing it in whatever key feels comfortable.'
+          : '⏸ La melodía se pausa sola cuando empiezas a grabar (para que no se cuele en tu muestra). Cántala en el tono que te acomode.'}
+      </p>
+    </div>
+  );
+}
 
 function ReadingScriptPanel({ readingScript, hummingInstruction, melodyCoach }) {
   // Accept the language-specific script + humming copy as props so this

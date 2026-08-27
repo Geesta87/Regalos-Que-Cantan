@@ -1387,7 +1387,13 @@ export default function ClonaMiVoz() {
         )}
 
         {stage === STAGES.DONE && (
-          <SongResult title={finalTitle} audioUrls={audioUrls} onCreateAnother={resetAll} />
+          <SongResult
+            title={finalTitle}
+            audioUrls={audioUrls}
+            onCreateAnother={resetAll}
+            songId={clonedVoiceSongId}
+            recipientName={storyContext?.recipientName}
+          />
         )}
 
         {stage === STAGES.ERROR && error && (
@@ -1436,6 +1442,63 @@ function PageHeader() {
   );
 }
 
+/**
+ * Before/after demo (2026-08-27): nothing sells voice cloning like HEARING
+ * it. Renders only when both demo files are deployed at
+ * public/clonamivoz/demo-raw.mp3 (a snippet of the raw recording) and
+ * public/clonamivoz/demo-song.mp3 (a snippet of the finished song) — drop
+ * the files in and the section appears on the next deploy, no code change.
+ */
+function BeforeAfterDemo() {
+  const [available, setAvailable] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    Promise.all(
+      ['/clonamivoz/demo-raw.mp3', '/clonamivoz/demo-song.mp3'].map((u) =>
+        fetch(u, { method: 'HEAD' })
+          .then((r) => r.ok && !(r.headers.get('content-type') || '').includes('text/html'))
+          .catch(() => false)
+      )
+    ).then(([raw, song]) => {
+      if (alive) setAvailable(raw && song);
+    });
+    return () => { alive = false; };
+  }, []);
+
+  if (!available) return null;
+
+  return (
+    <section className="rounded-3xl bg-white/[0.06] backdrop-blur-md border border-bougainvillea/30 p-6 sm:p-8 space-y-5">
+      <div className="text-center">
+        <h2 className="font-display text-2xl sm:text-3xl font-bold text-white">
+          Escucha la diferencia
+        </h2>
+        <p className="text-sm text-white/60 mt-1.5">
+          Una grabación casera de unos segundos se convierte en una canción completa —
+          cantada con la misma voz.
+        </p>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="rounded-2xl bg-landing-bg/50 border border-white/10 p-4 space-y-2">
+          <div className="text-xs uppercase tracking-widest text-white/50 font-semibold flex items-center gap-1.5">
+            <span className="material-symbols-outlined text-base">mic</span>
+            1 · Así se grabó
+          </div>
+          <audio controls preload="none" src="/clonamivoz/demo-raw.mp3" className="w-full" />
+        </div>
+        <div className="rounded-2xl bg-bougainvillea/10 border border-bougainvillea/40 p-4 space-y-2">
+          <div className="text-xs uppercase tracking-widest text-bougainvillea font-semibold flex items-center gap-1.5">
+            <span className="material-symbols-outlined text-base">music_note</span>
+            2 · Así quedó la canción
+          </div>
+          <audio controls preload="none" src="/clonamivoz/demo-song.mp3" className="w-full" />
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function IntroSection({ onStart }) {
   return (
     <div className="space-y-12 sm:space-y-16">
@@ -1468,6 +1531,8 @@ function IntroSection({ onStart }) {
           Prueba gratis · Solo pagas si te gusta · {PRICE_USD} USD
         </div>
       </section>
+
+      <BeforeAfterDemo />
 
       <section className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
         {HOW_IT_WORKS.map((s) => (

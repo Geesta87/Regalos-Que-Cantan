@@ -8,11 +8,30 @@
 // many came back (1 or 2) and degrade gracefully if zero (the parent's
 // polling loop should already have surfaced an error in that case).
 
-import React from 'react';
+import React, { useState } from 'react';
 
-export default function SongResult({ title, audioUrls = [], onCreateAnother }) {
+export default function SongResult({ title, audioUrls = [], onCreateAnother, songId, recipientName }) {
+  const [copied, setCopied] = useState(false);
+
   if (!audioUrls || audioUrls.length === 0) {
     return null;
+  }
+
+  // Gift page (2026-08-27): the shareable recipient-facing version of this
+  // song. Sharing THIS link (not the raw MP3) is what turns every delivery
+  // into marketing — the page ends in a "create one with MY voice" CTA.
+  const giftUrl = songId ? `${window.location.origin}/regalo?id=${songId}` : null;
+  const shareText = giftUrl
+    ? `🎁🎶 Una canción hecha especialmente para ${recipientName || 'ti'} — escúchala aquí: ${giftUrl}`
+    : '';
+
+  function copyGiftLink() {
+    if (!giftUrl) return;
+    try {
+      navigator.clipboard.writeText(giftUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch { /* non-fatal */ }
   }
 
   return (
@@ -62,6 +81,36 @@ export default function SongResult({ title, audioUrls = [], onCreateAnother }) {
           <audio controls src={url} className="w-full" />
         </div>
       ))}
+
+      {giftUrl && (
+        <div className="rounded-2xl bg-gradient-to-br from-bougainvillea/10 to-[#d40b6e]/10 border border-bougainvillea/30 p-5 space-y-3">
+          <div className="font-display text-lg font-bold text-white flex items-center gap-2">
+            <span className="material-symbols-outlined text-bougainvillea">redeem</span>
+            Entrégala como regalo
+          </div>
+          <p className="text-sm text-white/70">
+            Comparte la página del regalo — con portada, dedicatoria y la letra — en vez de
+            mandar solo el audio.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <a
+              href={`https://wa.me/?text=${encodeURIComponent(shareText)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex-1 text-center rounded-xl bg-[#25D366]/90 hover:bg-[#25D366] text-white font-bold py-3 transition"
+            >
+              Enviar por WhatsApp
+            </a>
+            <button
+              type="button"
+              onClick={copyGiftLink}
+              className="flex-1 rounded-xl bg-white/10 hover:bg-white/20 text-white font-semibold py-3 transition"
+            >
+              {copied ? '✓ Enlace copiado' : 'Copiar enlace del regalo'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {onCreateAnother && (
         <button

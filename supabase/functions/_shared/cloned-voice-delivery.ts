@@ -137,6 +137,16 @@ export function extractSunoUrls(kieData: RecordInfoResponse['data']): string[] {
     .filter((u): u is string => typeof u === 'string' && u.length > 0);
 }
 
+/** Per-variant durations (seconds) from a Kie SUCCESS payload — used for the
+ *  delivery sanity check (a 40s "full song" or a 7-minute one is worth a
+ *  human listen before the customer complains). */
+export function extractSunoDurations(kieData: RecordInfoResponse['data']): number[] {
+  const songs: SunoSong[] = kieData?.response?.sunoData || kieData?.sunoData || [];
+  return songs
+    .map((s) => s.duration)
+    .filter((d): d is number => typeof d === 'number' && d > 0);
+}
+
 // ---------------------------------------------------------------------------
 // Permanent storage
 // ---------------------------------------------------------------------------
@@ -336,12 +346,63 @@ export function songPageUrl(clonedVoiceSongId: string): string {
   return `${BASE_URL}/clonamivoz?paid=1&song_id=${clonedVoiceSongId}`;
 }
 
+/** Recipient-facing gift page — cover, dedication, players, share buttons. */
+export function giftPageUrl(clonedVoiceSongId: string): string {
+  return `${BASE_URL}/regalo?id=${clonedVoiceSongId}`;
+}
+
+/**
+ * Lightweight delivery QA (2026-08-27): ping the owner on EVERY paid
+ * delivery so a human ear can check the take before the customer complains
+ * (matches the ears-before-release culture at current volume; the full
+ * Whisper transcript gate can replace this once volume justifies it).
+ * Includes a duration warning when a variant is suspiciously short/long.
+ * Fire-and-forget — never blocks or fails a delivery.
+ */
+async function notifyOwnerDelivery(row: any, audioUrls: string[], durationsS?: number[]): Promise<void> {
+  const TW_SID = Deno.env.get('TWILIO_ACCOUNT_SID');
+  const TW_TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN');
+  const TW_FROM = Deno.env.get('TWILIO_WHATSAPP_FROM');
+  const TW_TO = Deno.env.get('ALERT_WHATSAPP_TO');
+
+  let durNote = '';
+  if (durationsS && durationsS.length > 0) {
+    const mins = durationsS.map((d) => `${Math.floor(d / 60)}:${String(Math.round(d % 60)).padStart(2, '0')}`).join(' / ');
+    const suspicious = durationsS.every((d) => d < 60) || durationsS.some((d) => d > 400);
+    durNote = `\nDuración: ${mins}${suspicious ? ' ⚠ FUERA DE RANGO — escúchala YA' : ''}`;
+  }
+
+  const body =
+    `💰🎤 Clona Mi Voz ENTREGADA ($69)\n` +
+    `Para: ${row.recipient_name || '?'} (${genreLabel(row.genre_slug)})\n` +
+    `Cliente: ${row.customer_email || 'sin email'}${durNote}\n` +
+    `Escuchar: ${audioUrls[0] || giftPageUrl(row.id)}\n` +
+    `Regalo: ${giftPageUrl(row.id)}`;
+
+  try {
+    if (TW_SID && TW_TOKEN && TW_FROM && TW_TO) {
+      const auth = btoa(`${TW_SID}:${TW_TOKEN}`);
+      await fetch(`https://api.twilio.com/2010-04-01/Accounts/${TW_SID}/Messages.json`, {
+        method: 'POST',
+        headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ From: TW_FROM, To: TW_TO, Body: body }).toString(),
+      });
+    }
+  } catch (e) {
+    console.error('[cloned-voice-delivery] Owner delivery ping failed (non-fatal):', e);
+  }
+}
+
 /**
  * "Tu cancion esta lista" — sent exactly once, when a PAID full song reaches
  * 'success'. Row needs: id, customer_email, recipient_name, title,
  * genre_slug, permanent_audio_urls, suno_audio_urls.
  */
-export async function sendClonedVoiceDeliveryEmail(supabase: any, row: any): Promise<boolean> {
+export async function sendClonedVoiceDeliveryEmail(
+  supabase: any,
+  row: any,
+  opts: { durationsS?: number[] } = {}
+): Promise<boolean> {
   const to = (row.customer_email || '').trim();
   if (!to || !to.includes('@')) return false;
 
@@ -373,9 +434,9 @@ export async function sendClonedVoiceDeliveryEmail(supabase: any, row: any): Pro
     ],
     ctaText: '&#9654;&nbsp;&nbsp;Escuchar mi canci&oacute;n&nbsp;&nbsp;&#8594;',
     ctaHref: songPageUrl(row.id),
-    subcopy: downloadLinks
-      ? `Descarga directa: ${downloadLinks}`
-      : 'Guarda este correo — el enlace a tu canción es permanente.',
+    subcopy:
+      `&#127873; Para entregarla: <a href="${giftPageUrl(row.id)}" style="color:#a8d6c2;text-decoration:underline;">p&aacute;gina de regalo para compartir</a>` +
+      (downloadLinks ? ` &middot; Descarga directa: ${downloadLinks}` : ''),
   });
 
   const ok = await sendGridSend(
@@ -385,8 +446,13 @@ export async function sendClonedVoiceDeliveryEmail(supabase: any, row: any): Pro
     'clonamivoz_delivery',
     'Tu canción cantada con tu propia voz ya está lista.'
   );
-  if (!ok) await releaseEmailColumn(supabase, row.id, 'delivery_email_sent_at');
-  return ok;
+  if (!ok) {
+    await releaseEmailColumn(supabase, row.id, 'delivery_email_sent_at');
+    return false;
+  }
+  // Owner QA ping — after the customer email so a send failure retries first.
+  await notifyOwnerDelivery(row, urls, opts.durationsS);
+  return true;
 }
 
 /**

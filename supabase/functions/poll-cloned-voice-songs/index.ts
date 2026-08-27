@@ -44,6 +44,7 @@ import {
   pollKieTask,
   mapKieTerminal,
   extractSunoUrls,
+  extractSunoDurations,
   copyToPermanentStorage,
   finalizeFullSongSuccess,
   sendClonedVoiceDeliveryEmail,
@@ -300,11 +301,15 @@ async function sweepActiveRows(supabase: any, summary: Record<string, number>): 
         const { permanentUrls } = await finalizeFullSongSuccess(supabase, row.id, sunoUrls);
         summary.songsFinished++;
         if (row.paid) {
-          const emailed = await sendClonedVoiceDeliveryEmail(supabase, {
-            ...row,
-            permanent_audio_urls: permanentUrls.length > 0 ? permanentUrls : null,
-            suno_audio_urls: sunoUrls,
-          });
+          const emailed = await sendClonedVoiceDeliveryEmail(
+            supabase,
+            {
+              ...row,
+              permanent_audio_urls: permanentUrls.length > 0 ? permanentUrls : null,
+              suno_audio_urls: sunoUrls,
+            },
+            { durationsS: extractSunoDurations(kieData) }
+          );
           if (emailed) summary.deliveryEmails++;
         }
       }

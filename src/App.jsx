@@ -56,6 +56,7 @@ import SmsConsentMarketingPreview from './pages/SmsConsentMarketingPreview';
 import AffiliateLanding from './pages/AffiliateLanding';
 import AffiliateVSL from './pages/AffiliateVSL';
 import ClonaMiVoz from './pages/ClonaMiVoz';
+import ClonaMiVozRegalo from './pages/ClonaMiVozRegalo';
 import StorePage from './pages/StorePage';
 import PackReadyPage from './pages/PackReadyPage';
 import AnimadoUpsell from './pages/AnimadoUpsell';
@@ -125,6 +126,7 @@ const pathToPage = {
   '/sms-consent-preview': 'smsConsentPreview',
   '/sms-consent-marketing-preview': 'smsConsentMarketingPreview',
   '/clonamivoz': 'clonamivoz',
+  '/regalo': 'clonamivozRegalo',
   '/tienda': 'store',
   '/paquete': 'paquete',
   '/paquete/checkout': 'paqueteCheckout',
@@ -379,6 +381,7 @@ export default function App() {
       smsConsentPreview: '/sms-consent-preview',
       smsConsentMarketingPreview: '/sms-consent-marketing-preview',
       clonamivoz: '/clonamivoz',
+      clonamivozRegalo: '/regalo',
       store: '/tienda',
       paquete: '/paquete',
       paqueteCheckout: '/paquete/checkout',
@@ -480,6 +483,9 @@ export default function App() {
               generate-cloned-voice-lyrics, generate-cloned-voice-song,
               cloned-voice-status). Beta — no Stripe wiring yet. */}
           {currentPage === 'clonamivoz' && <ClonaMiVoz />}
+
+          {/* Recipient-facing gift page for a finished Clone Mi Voz song */}
+          {currentPage === 'clonamivozRegalo' && <ClonaMiVozRegalo />}
 
           {/* Store — e-commerce catalog of the song + all upsells (/tienda) */}
           {currentPage === 'store' && <StorePage />}
