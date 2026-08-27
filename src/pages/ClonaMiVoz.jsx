@@ -651,7 +651,7 @@ export default function ClonaMiVoz() {
         <title>Clona Mi Voz · RegalosQueCantan</title>
         <meta
           name="description"
-          content="Graba tu voz y recibe una canción personalizada cantada por ti. Romántico, balada, banda, corrido, ranchera o mariachi."
+          content="Graba tu voz y recibe una canción personalizada cantada por ti. Romántico, balada, banda, corrido, ranchera, mariachi, cumbia, norteño, bolero o cristiana."
         />
         <meta name="robots" content="noindex, nofollow" />
       </Helmet>

@@ -8,9 +8,10 @@
 // language is picked separately in StoryForm but defaults to the genre's
 // language for sensible UX.
 //
-// Style strings live server-side in supabase/functions/generate-cloned-voice-song
-// (GENRE_STYLES map) and generate-cloned-voice-preview. Any NEW slug added
-// below must also be added there or generation will reject the request.
+// Style strings + lyric hints live server-side in the SINGLE shared catalog
+// supabase/functions/_shared/clonamivoz-genres.ts (used by the song, preview,
+// and lyrics functions). Any NEW slug added below must also be added there or
+// generation will reject the request with invalid_genre.
 
 export const GENRES = [
   // ---------------- Spanish-language genres ----------------
@@ -60,6 +61,41 @@ export const GENRES = [
     labelEn: 'Mariachi',
     description: 'Mariachi clásico con trompetas y violines',
     emoji: '🎻',
+    language: 'es',
+  },
+  // Added 2026-08-27 — the four genres customers most buy in the main
+  // funnel that were missing here. Slugs MUST exist in
+  // supabase/functions/_shared/clonamivoz-genres.ts (they do).
+  {
+    slug: 'cumbia',
+    labelEs: 'Cumbia',
+    labelEn: 'Cumbia',
+    description: 'Cumbia alegre para bailar, con güiro y teclados',
+    emoji: '💃',
+    language: 'es',
+  },
+  {
+    slug: 'norteno',
+    labelEs: 'Norteño',
+    labelEn: 'Norteño',
+    description: 'Norteño romántico con acordeón y bajo sexto',
+    emoji: '🌵',
+    language: 'es',
+  },
+  {
+    slug: 'bolero',
+    labelEs: 'Bolero',
+    labelEn: 'Bolero',
+    description: 'Bolero clásico de trío, romance de otra época',
+    emoji: '🌹',
+    language: 'es',
+  },
+  {
+    slug: 'cristiana',
+    labelEs: 'Cristiana',
+    labelEn: 'Christian',
+    description: 'Alabanza y adoración con piano y guitarra',
+    emoji: '🙏',
     language: 'es',
   },
 
