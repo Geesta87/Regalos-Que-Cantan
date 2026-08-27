@@ -307,7 +307,12 @@ Reply with STRICT JSON only:
       if (!prompt) throw new Error('prompt is required');
       const format = String(body.format || 'custom');
       const duration = Math.min(Math.max(Number(body.duration) || 30, 4), 30);
-      const resolution = String(body.resolution || '720p');
+      // 720p ONLY. Atlas outputs H.264 at 720p but 10-bit HEVC at 1080p
+      // (verified by ffprobe 2026-08-26) — HEVC renders as BLACK VIDEO with
+      // audio in Chrome and Windows players. The two 1080p clips from launch
+      // day had to be hand-transcoded. Do not re-add 1080p unless the output
+      // is transcoded to H.264 first (e.g. via the renderer finish pass).
+      const resolution = '720p';
       const ratio = String(body.aspectRatio || '9:16');
       const generate_audio = body.generateAudio !== false;
       const model = body.model ? String(body.model) : VIDEO_MODEL_T2V;

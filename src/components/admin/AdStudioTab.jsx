@@ -89,7 +89,8 @@ export default function AdStudioTab({ accessToken, showToast }) {
   const [label, setLabel] = useState('');
   const [duration, setDuration] = useState(30);
   const [aspect, setAspect] = useState('9:16');
-  const [resolution, setResolution] = useState('720p');
+  // 720p is pinned: Atlas emits H.264 at 720p but 10-bit HEVC at 1080p, and
+  // HEVC plays as black video + audio in Chrome/Windows (2026-08-26 bug).
   const [audio, setAudio] = useState(true);
   const [finish, setFinish] = useState(true);
   const [count, setCount] = useState(1);
@@ -149,7 +150,7 @@ export default function AdStudioTab({ accessToken, showToast }) {
     try {
       await call('generate', {
         prompt, format, brief, label, duration, count,
-        aspectRatio: aspect, resolution,
+        aspectRatio: aspect, resolution: '720p',
         generateAudio: audio, finish: finish ? 'standard' : 'off',
       });
       showToast?.(`Generating ${count} take${count > 1 ? 's' : ''} — ~$${(duration * COST_PER_SEC * count).toFixed(2)}`, 'success');
@@ -275,10 +276,7 @@ export default function AdStudioTab({ accessToken, showToast }) {
           </div>
           <div>
             <Label>Resolution</Label>
-            <select value={resolution} onChange={(e) => setResolution(e.target.value)} className={field}>
-              <option value="720p" className="bg-[#0f1419]">720p</option>
-              <option value="1080p" className="bg-[#0f1419]">1080p</option>
-            </select>
+            <div className={`${field} text-gray-400 cursor-default`} title="1080p disabled: Atlas outputs HEVC at 1080p, which plays as black video in browsers">720p (H.264)</div>
           </div>
           <div>
             <Label>Takes</Label>
