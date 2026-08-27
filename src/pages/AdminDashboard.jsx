@@ -149,6 +149,21 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await freshAdminToken(accessToken)}`, apikey: ANON },
     body: JSON.stringify(body),
   }).then((r) => r.json());
+  // NETWORK-TOLERANT VARIANT (2026-08-27, Carlos c0530edf): a single gateway
+  // 502 (43ms, never reached the function) threw "Failed to fetch" out of one
+  // status poll and aborted a whole fix run — whose Kie job then finished fine
+  // with two takes nobody was listening for. Reads (polls, transcribes) are
+  // idempotent, so they get retries here; submits stay un-retried (a retried
+  // submit could create a duplicate Kie job).
+  const postFnSafe = async (body, tries = 3) => {
+    for (let a = 1; ; a++) {
+      try { return await postFn(body); }
+      catch (e) {
+        if (a >= tries) return { ok: false, status: 'NETWORK_ERROR', error: `red: ${e?.message || e}` };
+        await new Promise((r) => setTimeout(r, 4000));
+      }
+    }
+  };
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const mmss = (s) => `${Math.floor((s || 0) / 60)}:${String(Math.floor((s || 0) % 60)).padStart(2, '0')}`;
 
@@ -563,7 +578,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
       // that survive (234-337s observed), and the old 6-min budget threw away
       // finished takes as "timed out".
       for (let i = 1; i <= 100; i++) {
-        const d = await postFn({ action: 'diag', taskId: fixTaskId });
+        const d = await postFnSafe({ action: 'diag', taskId: fixTaskId });
         onMsg?.(`Generating the corrected vocal… (${round}.${i})`);
         if (d.status === 'SUCCESS') { takeList = (d.trackList || []).filter((t) => t.audioUrl); break; }
         if (['SENSITIVE_WORD_ERROR', 'GENERATE_AUDIO_FAILED', 'CREATE_TASK_FAILED'].includes(d.status)) {
@@ -628,8 +643,8 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
         }
         // Same transient-Whisper protection as the ladder: retry once, and if
         // the transcription still fails say so instead of dropping the take.
-        let tr = await postFn({ action: 'transcribe', audioUrl: url });
-        if (!tr.ok) { await sleep(4000); tr = await postFn({ action: 'transcribe', audioUrl: url }); }
+        let tr = await postFnSafe({ action: 'transcribe', audioUrl: url });
+        if (!tr.ok) { await sleep(4000); tr = await postFnSafe({ action: 'transcribe', audioUrl: url }); }
         if (!tr.ok) {
           lastReason = `no se pudo transcribir la toma${tr?.error ? `: ${String(tr.error).slice(0, 70)}` : ''}`;
           lastTakesSeen.push({ url, text: '(sin transcripción — no es culpa de la toma)', reason: lastReason });
@@ -1360,7 +1375,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
       let takeList = [];
       let infraFail = false;   // Kie's servers died — NOT a verdict on this take
       for (let i = 1; i <= 100; i++) {
-        const d = await postFn({ action: 'diag', taskId: sub.fixTaskId });
+        const d = await postFnSafe({ action: 'diag', taskId: sub.fixTaskId });
         onMsg?.(`Generando la voz corregida… (paso ${submits}.${i})`);
         if (d.status === 'SUCCESS') { takeList = (d.trackList || []).filter((t) => t.audioUrl); break; }
         if (['SENSITIVE_WORD_ERROR', 'GENERATE_AUDIO_FAILED', 'CREATE_TASK_FAILED'].includes(d.status)) {
@@ -1448,8 +1463,8 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
         // Rafael 9dd5efe4: an in-band take singing both "Jehová" spots vanished
         // this way while the error blamed a 6:01 take). Whisper hiccups are
         // transient, so retry once and, if it still fails, say so out loud.
-        let tr = await postFn({ action: 'transcribe', audioUrl: t.audioUrl });
-        if (!tr.ok) { await sleep(4000); tr = await postFn({ action: 'transcribe', audioUrl: t.audioUrl }); }
+        let tr = await postFnSafe({ action: 'transcribe', audioUrl: t.audioUrl });
+        if (!tr.ok) { await sleep(4000); tr = await postFnSafe({ action: 'transcribe', audioUrl: t.audioUrl }); }
         if (!tr.ok) {
           lastReason = `no se pudo transcribir la toma${tr?.error ? `: ${String(tr.error).slice(0, 70)}` : ''}`;
           lastTakesSeen.push({ url: t.audioUrl, text: '(sin transcripción — no es culpa de la toma)', reason: lastReason });
@@ -1852,7 +1867,11 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
         : '⚠️ New voice (original recording no longer on Kie — persona unavailable)';
       let tracks = [];
       for (let i = 1; i <= 100; i++) {
-        const d = await post({ action: 'diag', taskId: fixTaskId });
+        // A status poll is an idempotent read — one transient network/gateway
+        // blip must not abort a paid re-roll (2026-08-27, Carlos c0530edf).
+        let d;
+        try { d = await post({ action: 'diag', taskId: fixTaskId }); }
+        catch { await new Promise((r) => setTimeout(r, 9000)); continue; }
         const pm = `Re-recording the full song… ${voiceNote} (${i})`;
         setSurgicalMsg(pm); fixSessionPatch(sess, { msg: pm });
         if (d.status === 'SUCCESS') { tracks = (d.trackList || []).filter((t) => t.audioUrl); break; }
