@@ -130,6 +130,62 @@ async function runFinishVideo(spec) {
   }
 }
 
+// HOOK TRIM — cut the dead air before the first spoken word so the hook lands
+// ~1s in (Seedance buries the first line 2-4s deep; measured on the 2026-08-19
+// Atlas batch). The caller picks the trim point from Whisper word timings and
+// this just executes it at high quality.
+async function runTrimVideo(spec) {
+  const id = `trim-${Date.now()}-${Math.floor(process.hrtime()[1] % 1e6)}`;
+  const dir = path.join(os.tmpdir(), id);
+  fs.mkdirSync(dir, { recursive: true });
+  try {
+    const src = path.join(dir, 'src.mp4');
+    await download(spec.video_url, src);
+    const out = path.join(dir, 'out.mp4');
+    const ss = Math.max(0, Number(spec.trim_start) || 0);
+    execFileSync('ffmpeg', ['-y', '-hide_banner', '-loglevel', 'error',
+      '-ss', ss.toFixed(3), '-i', src,
+      '-c:v', 'libx264', '-crf', '18', '-preset', 'medium',
+      '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', out],
+      { stdio: ['ignore', 'ignore', 'inherit'] });
+    const url = await uploadToSupabase(out, spec.object_path, { bucket: spec.bucket || 'ad-studio' });
+    return { url };
+  } finally {
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
+  }
+}
+
+// URL BURN — REAL text over the last N seconds (video models garble rendered
+// text, so the site/CTA is always burned on in post; same recipe as the
+// 2026-08-19 Atlas batch). Text is sanitized to a safe charset so it cannot
+// break out of the drawtext filter expression.
+async function runBurnUrl(spec) {
+  const id = `burn-${Date.now()}-${Math.floor(process.hrtime()[1] % 1e6)}`;
+  const dir = path.join(os.tmpdir(), id);
+  fs.mkdirSync(dir, { recursive: true });
+  try {
+    const src = path.join(dir, 'src.mp4');
+    await download(spec.video_url, src);
+    const out = path.join(dir, 'out.mp4');
+    const text = String(spec.text || 'regalosquecantan.com').replace(/[^A-Za-z0-9 ._/-]/g, '').slice(0, 60) || 'regalosquecantan.com';
+    const secs = Math.min(Math.max(Number(spec.seconds_from_end) || 7, 2), 30);
+    const dur = parseFloat(execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration',
+      '-of', 'csv=p=0', src]).toString().trim()) || 0;
+    const start = Math.max(0, dur - secs);
+    const font = path.join(__dirname, 'assets', 'fonts', 'Poppins-Bold.ttf');
+    const vf = `drawtext=fontfile=${font}:text='${text}':fontcolor=white:fontsize=h/26:` +
+      `box=1:boxcolor=black@0.55:boxborderw=18:x=(w-text_w)/2:y=h-h*0.16:enable='gte(t,${start.toFixed(2)})'`;
+    execFileSync('ffmpeg', ['-y', '-hide_banner', '-loglevel', 'error', '-i', src,
+      '-vf', vf, '-c:v', 'libx264', '-crf', '18', '-preset', 'medium',
+      '-c:a', 'copy', '-movflags', '+faststart', out],
+      { stdio: ['ignore', 'ignore', 'inherit'] });
+    const url = await uploadToSupabase(out, spec.object_path, { bucket: spec.bucket || 'ad-studio' });
+    return { url };
+  } finally {
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
+  }
+}
+
 // Run one surgical splice (line or section) end-to-end: download the two inputs,
 // stitch with the seamless recipe, encode MP3, upload, return the public URL.
 async function runSplice(spec) {
@@ -449,6 +505,27 @@ const server = http.createServer(async (req, res) => {
       return send(200, { success: true, url: out.url });
     } catch (err) {
       console.error('[finish] error:', err.message);
+      return send(500, { success: false, error: err.message });
+    }
+  }
+
+  // Ad Studio hook trim + URL burn — SYNCHRONOUS (seconds, like /finish-video).
+  // /trim-video: { video_url, trim_start, bucket?, object_path }
+  // /burn-url:   { video_url, text?, seconds_from_end?, bucket?, object_path }
+  if (req.method === 'POST' && (req.url === '/trim-video' || req.url === '/burn-url')) {
+    if (RENDER_TOKEN && req.headers['x-render-token'] !== RENDER_TOKEN) return send(401, { error: 'unauthorized' });
+    let spec;
+    try {
+      spec = JSON.parse(await readBody(req));
+      if (!spec.video_url || !spec.object_path) throw new Error('missing video_url or object_path');
+    } catch (err) {
+      return send(400, { success: false, error: err.message });
+    }
+    try {
+      const out = req.url === '/trim-video' ? await runTrimVideo(spec) : await runBurnUrl(spec);
+      return send(200, { success: true, url: out.url });
+    } catch (err) {
+      console.error('[transform] error:', err.message);
       return send(500, { success: false, error: err.message });
     }
   }

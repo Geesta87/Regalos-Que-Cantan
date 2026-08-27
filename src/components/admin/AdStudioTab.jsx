@@ -12,6 +12,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Clapperboard, RefreshCw, Loader2, Trash2, Sparkles, Film, AlertTriangle,
   Download, Send, Mic2, MapPin, Heart, Palette, Volume2, VolumeX, Wand2,
+  Link2, Subtitles, Scissors,
 } from 'lucide-react';
 
 const FN = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ad-studio`;
@@ -44,7 +45,7 @@ const btnPrimary = 'inline-flex items-center justify-center gap-2 px-4 py-2.5 te
 const btnGhost = 'inline-flex items-center justify-center gap-2 px-3.5 py-2.5 text-sm font-medium rounded-xl text-gray-300 bg-white/[0.06] border border-white/10 hover:bg-white/10 hover:text-white disabled:opacity-40 transition-all';
 const panel = 'bg-white/[0.04] border border-white/10 rounded-2xl';
 
-function Chip({ tone = 'gray', children, className = '' }) {
+function Chip({ tone = 'gray', children, className = '', title }) {
   const tones = {
     gray: 'bg-white/10 text-gray-300',
     indigo: 'bg-indigo-500/20 text-indigo-300 border border-indigo-400/20',
@@ -52,7 +53,7 @@ function Chip({ tone = 'gray', children, className = '' }) {
     green: 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/20',
     red: 'bg-red-500/20 text-red-300 border border-red-400/20',
   };
-  return <span className={`inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full ${tones[tone]} ${className}`}>{children}</span>;
+  return <span title={title} className={`inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full ${tones[tone]} ${className}`}>{children}</span>;
 }
 
 function Label({ children }) {
@@ -131,8 +132,9 @@ export default function AdStudioTab({ accessToken, showToast }) {
 
   useEffect(() => { refresh(); }, [refresh]);
 
-  // Poll while anything is generating.
-  const anyGenerating = generations.some((g) => g.status === 'generating');
+  // Poll while anything is generating OR still post-processing (hook trim +
+  // grainy twin arrive a little after the card first turns ready).
+  const anyGenerating = generations.some((g) => g.status === 'generating' || g.meta?.post === 'pending');
   useEffect(() => {
     clearInterval(pollRef.current);
     if (anyGenerating) pollRef.current = setInterval(() => refresh(true), 8000);
@@ -205,6 +207,33 @@ export default function AdStudioTab({ accessToken, showToast }) {
     try {
       const j = await call('send-to-creative', { generationId: gen.id, variant });
       showToast?.(j.already ? 'Already in the Creative Studio queue' : 'Sent to Creative Studio for approval', 'success');
+      refresh(true);
+    } catch (e) {
+      showToast?.(e.message, 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const burnUrl = async (gen, variant) => {
+    setBusy(true);
+    try {
+      await call('burn-url', { generationId: gen.id, variant });
+      showToast?.('URL burned onto the last 7 seconds — see the "URL" version', 'success');
+      setVariantSel((s) => ({ ...s, [gen.id]: 'burned' }));
+      refresh(true);
+    } catch (e) {
+      showToast?.(e.message, 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const sendToClipStudio = async (gen, variant) => {
+    setBusy(true);
+    try {
+      await call('send-to-clipstudio', { generationId: gen.id, variant });
+      showToast?.('Sent — open the Clip Studio tab; it\'s transcribing, then pick a caption style', 'success');
       refresh(true);
     } catch (e) {
       showToast?.(e.message, 'error');
@@ -389,11 +418,16 @@ export default function AdStudioTab({ accessToken, showToast }) {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {generations.map((g) => {
-            // Both versions exist when the finish pass ran — the owner picks
-            // which one to watch, download, or send. media_url = original.
+            // Up to three versions per render — the owner picks which one to
+            // watch, download, or send. media_url = untouched original.
             const hasFinished = Boolean(g.meta?.finishedUrl);
-            const sel = variantSel[g.id] || 'original';
-            const activeUrl = sel === 'finished' && hasFinished ? g.meta.finishedUrl : g.media_url;
+            const hasBurned = Boolean(g.meta?.burnedUrl);
+            const variants = [['original', 'Original']];
+            if (hasFinished) variants.push(['finished', 'Grainy']);
+            if (hasBurned) variants.push(['burned', 'URL']);
+            const sel = variantSel[g.id] && variants.some(([v]) => v === variantSel[g.id]) ? variantSel[g.id] : 'original';
+            const activeUrl = sel === 'finished' ? g.meta.finishedUrl : sel === 'burned' ? g.meta.burnedUrl : g.media_url;
+            const postPending = g.meta?.post === 'pending';
             return (
             <div key={g.id} className={`${panel} overflow-hidden flex flex-col`}>
               <div className={`relative bg-black/40 ${g.aspect_ratio === '16:9' ? 'aspect-video' : g.aspect_ratio === '1:1' ? 'aspect-square' : 'aspect-[9/16] max-h-[420px]'}`}>
@@ -407,9 +441,9 @@ export default function AdStudioTab({ accessToken, showToast }) {
                 ) : (
                   <video key={activeUrl} src={activeUrl} controls preload="metadata" className="absolute inset-0 w-full h-full object-contain" />
                 )}
-                {g.status === 'ready' && hasFinished && (
+                {g.status === 'ready' && variants.length > 1 && (
                   <div className="absolute top-2 left-1/2 -translate-x-1/2 flex rounded-full bg-black/60 backdrop-blur-sm p-0.5">
-                    {[['original', 'Original'], ['finished', 'Grainy']].map(([v, name]) => (
+                    {variants.map(([v, name]) => (
                       <button key={v} onClick={() => setVariantSel((s) => ({ ...s, [g.id]: v }))}
                         className={`text-[11px] font-semibold px-2.5 py-1 rounded-full transition ${sel === v ? 'bg-white text-black' : 'text-gray-300 hover:text-white'}`}>
                         {name}
@@ -424,19 +458,31 @@ export default function AdStudioTab({ accessToken, showToast }) {
                   {g.duration ? <Chip>{g.duration}s</Chip> : null}
                   {g.meta?.estCostUsd ? <Chip>${Number(g.meta.estCostUsd).toFixed(2)}</Chip> : null}
                   {g.meta?.take ? <Chip tone="amber">take {g.meta.take}</Chip> : null}
-                  {hasFinished ? <Chip tone={sel === 'finished' ? 'amber' : 'gray'}>{sel === 'finished' ? 'grainy' : 'original'}</Chip> : null}
+                  {postPending ? <Chip tone="indigo"><Loader2 size={10} className="animate-spin" /> polishing</Chip> : null}
+                  {g.meta?.hookTrimSec ? <Chip title="Dead air before the first spoken word was trimmed so the hook lands fast"><Scissors size={10} /> hook −{g.meta.hookTrimSec}s</Chip> : null}
+                  {g.meta?.clipProjectId ? <Chip tone="indigo"><Subtitles size={10} /> in Clip Studio</Chip> : null}
                   {g.meta?.sentToCreative ? <Chip tone="green">Sent</Chip> : null}
                 </div>
                 <p className="text-xs text-gray-300 line-clamp-2" title={g.prompt}>
                   {g.meta?.label || g.brief || g.prompt}
                 </p>
                 {g.status === 'ready' && (
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1.5 flex-wrap">
                     <a href={activeUrl} download target="_blank" rel="noreferrer" className={`${btnGhost} !px-2.5 !py-1.5 text-xs`}>
                       <Download size={13} /> Download
                     </a>
+                    <button onClick={() => burnUrl(g, sel === 'burned' ? (g.meta?.burnedFrom || 'original') : sel)} disabled={busy}
+                      className={`${btnGhost} !px-2.5 !py-1.5 text-xs`}
+                      title="Burns regalosquecantan.com onto the last 7 seconds (real text — the model can't)">
+                      <Link2 size={13} /> Burn URL
+                    </button>
+                    <button onClick={() => sendToClipStudio(g, sel)} disabled={busy || g.meta?.clipProjectId}
+                      className={`${btnGhost} !px-2.5 !py-1.5 text-xs`}
+                      title="Sends this version to Clip Studio for word-by-word caption styling">
+                      <Subtitles size={13} /> Captions
+                    </button>
                     <button onClick={() => sendToCreative(g, sel)} disabled={busy || g.meta?.sentToCreative} className={`${btnGhost} !px-2.5 !py-1.5 text-xs`}
-                      title={hasFinished ? `Sends the ${sel === 'finished' ? 'grainy' : 'original'} version` : undefined}>
+                      title={variants.length > 1 ? `Sends the ${sel} version` : undefined}>
                       <Send size={13} /> Creative Studio
                     </button>
                     <button onClick={() => deleteGen(g)} disabled={busy} className={`${btnGhost} !px-2 !py-1.5 text-xs text-red-300 hover:text-red-200 ml-auto`}>

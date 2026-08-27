@@ -137,21 +137,17 @@ async function finalize(admin: any) {
         const up = await admin.storage.from(BUCKET).upload(path, bytes, { contentType: 'video/mp4', upsert: true });
         if (up.error) throw up.error;
         const { data: pub } = admin.storage.from(BUCKET).getPublicUrl(path);
-        // Keep BOTH versions: media_url is always the untouched ORIGINAL; the
-        // grainy finish-pass version (when it succeeds) lands in
-        // meta.finishedUrl so the gallery can offer an Original / Grainy
-        // choice per render (owner request 2026-08-27).
-        const finishMeta: Record<string, unknown> = {};
-        if ((row.meta?.finish ?? 'standard') !== 'off') {
-          const finished = await finishVideo(pub.publicUrl, String(row.meta?.finish || 'standard'), row.id);
-          if (finished) { finishMeta.finishedUrl = finished; finishMeta.finished = true; }
-          else finishMeta.finished = false;
-        }
+        // Mark ready with the raw original NOW (media_url is always the
+        // original), then hook-trim + finish-pass in the background — the UI
+        // polls and picks up meta.finishedUrl / hookTrimSec when done.
         await admin.from('ad_studio_generations').update({
           status: 'ready', media_url: pub.publicUrl,
-          meta: { ...(row.meta || {}), ...finishMeta },
+          meta: { ...(row.meta || {}), post: 'pending' },
           updated_at: new Date().toISOString(),
         }).eq('id', row.id);
+        const pp = postProcess(admin, row.id, row.meta || {});
+        const runtime = (globalThis as any).EdgeRuntime;
+        if (runtime?.waitUntil) runtime.waitUntil(pp); else await pp;
       } else if (st === 'failed') {
         await admin.from('ad_studio_generations').update({
           status: 'failed', error: String(d?.error || 'atlas fail').slice(0, 400),
@@ -170,25 +166,72 @@ async function finalize(admin: any) {
   }
 }
 
-// Finish pass ("de-slop") on the Cloud Run renderer — pre-ages the clip so it
-// reads like real footage. Best-effort: a finish failure must never lose the
-// render, so the caller keeps the original URL when this returns null.
-async function finishVideo(rawUrl: string, strength: string, genId: string): Promise<string | null> {
+// Synchronous Cloud Run renderer call (finish pass / trim / URL burn). All
+// best-effort: a failure must never lose the render, so callers treat null as
+// "keep what we have".
+async function rendererJson(path: string, payload: Record<string, unknown>): Promise<string | null> {
   if (!RENDERER_URL || !RENDER_TOKEN) return null;
   try {
-    const r = await fetch(`${RENDERER_URL.replace(/\/$/, '')}/finish-video`, {
+    const r = await fetch(`${RENDERER_URL.replace(/\/$/, '')}${path}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-render-token': RENDER_TOKEN },
-      body: JSON.stringify({
-        video_url: rawUrl, strength, bucket: BUCKET,
-        object_path: `${genId}-finished.mp4`,
-      }),
+      body: JSON.stringify(payload),
     });
     const j = await r.json().catch(() => ({}));
     return j?.success && j?.url ? String(j.url) : null;
   } catch (_) {
     return null;
   }
+}
+
+// Post-processing once a render is READY — runs in the background (waitUntil)
+// so 'list' stays fast; the UI keeps polling and picks up the results.
+//   1. HOOK TRIM: Seedance buries the first spoken line 2-4s in (measured on
+//      the 08-19 batch). Whisper finds the first word; if it lands past 2.0s
+//      the head is cut so the hook hits at ~1.2s. Trims IN PLACE (same URL) so
+//      original and grainy stay an apples-to-apples pair.
+//   2. FINISH PASS: the grainy de-slop twin into meta.finishedUrl.
+async function postProcess(admin: any, rowId: string, meta: Record<string, unknown>) {
+  const patch: Record<string, unknown> = { post: 'done' };
+  try {
+    const { data: pub } = admin.storage.from(BUCKET).getPublicUrl(`${rowId}.mp4`);
+    const mainUrl = pub.publicUrl;
+    let fetchUrl = mainUrl;
+    try {
+      const t = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-song`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SERVICE_ROLE}` },
+        body: JSON.stringify({ audioUrl: mainUrl }),
+      });
+      const tj = await t.json().catch(() => ({}));
+      const first = Number(tj?.words?.[0]?.start);
+      if (tj?.success && Number.isFinite(first) && first > 2.0) {
+        const trimStart = Math.min(first - 1.2, 8);
+        const trimmed = await rendererJson('/trim-video', {
+          video_url: mainUrl, trim_start: trimStart, bucket: BUCKET, object_path: `${rowId}.mp4`,
+        });
+        if (trimmed) {
+          patch.hookTrimSec = Math.round(trimStart * 10) / 10;
+          // cache-bust so the finish pass downloads the TRIMMED file, not a
+          // CDN-cached copy of the pre-trim upload at the same path
+          fetchUrl = `${mainUrl}?v=${Date.now()}`;
+        }
+      }
+    } catch (_) { /* trim is best-effort */ }
+    if ((meta?.finish ?? 'standard') !== 'off') {
+      const finished = await rendererJson('/finish-video', {
+        video_url: fetchUrl, strength: String(meta?.finish || 'standard'),
+        bucket: BUCKET, object_path: `${rowId}-finished.mp4`,
+      });
+      if (finished) { patch.finishedUrl = finished; patch.finished = true; }
+      else patch.finished = false;
+    }
+  } catch (_) { /* never fail the row */ }
+  const { data: row } = await admin.from('ad_studio_generations').select('meta').eq('id', rowId).single();
+  await admin.from('ad_studio_generations').update({
+    meta: { ...(row?.meta || {}), ...patch },
+    updated_at: new Date().toISOString(),
+  }).eq('id', rowId);
 }
 
 // Claude writes the Spanish social copy for a render headed to Creative
@@ -383,9 +426,11 @@ Write the Seedance prompt for this ad.`;
       const { data: gen } = await admin.from('ad_studio_generations').select('*')
         .eq('id', String(body.generationId)).eq('status', 'ready').single();
       if (!gen?.media_url) throw new Error('That render is not ready');
-      // The owner picks WHICH version ships: 'finished' (grainy) or 'original'.
-      const wantFinished = body.variant === 'finished';
-      const mediaUrl = wantFinished && gen.meta?.finishedUrl ? String(gen.meta.finishedUrl) : String(gen.media_url);
+      // The owner picks WHICH version ships: 'burned' (URL on), 'finished'
+      // (grainy) or 'original'.
+      const mediaUrl = body.variant === 'burned' && gen.meta?.burnedUrl ? String(gen.meta.burnedUrl)
+        : body.variant === 'finished' && gen.meta?.finishedUrl ? String(gen.meta.finishedUrl)
+        : String(gen.media_url);
       const { data: dupe } = await admin.from('creative_queue').select('id').eq('media_url', mediaUrl).limit(1);
       if (dupe?.length) return json({ success: true, already: true });
       const label = gen.meta?.label || gen.brief || gen.prompt.slice(0, 100);
@@ -406,12 +451,86 @@ Write the Seedance prompt for this ad.`;
       return json({ success: true });
     }
 
+    // -- burn-url: real ffmpeg text over the last 7s of the chosen version -----
+    // (the model garbles rendered text — CTAs are always burned in post).
+    if (action === 'burn-url') {
+      const { data: gen } = await admin.from('ad_studio_generations').select('*')
+        .eq('id', String(body.generationId)).eq('status', 'ready').single();
+      if (!gen?.media_url) throw new Error('That render is not ready');
+      const fromFinished = body.variant === 'finished' && gen.meta?.finishedUrl;
+      const srcUrl = fromFinished ? String(gen.meta.finishedUrl) : String(gen.media_url);
+      const text = body.text ? String(body.text) : 'regalosquecantan.com';
+      const burned = await rendererJson('/burn-url', {
+        video_url: srcUrl, text, seconds_from_end: 7,
+        bucket: BUCKET, object_path: `${gen.id}-burned.mp4`,
+      });
+      if (!burned) throw new Error('URL burn failed on the renderer — try again');
+      // cache-bust: a re-burn overwrites the same path
+      const burnedUrl = `${burned}?v=${Date.now()}`;
+      await admin.from('ad_studio_generations').update({
+        meta: { ...(gen.meta || {}), burnedUrl, burnedFrom: fromFinished ? 'finished' : 'original', burnedText: text },
+        updated_at: new Date().toISOString(),
+      }).eq('id', gen.id);
+      return json({ success: true, burnedUrl });
+    }
+
+    // -- send-to-clipstudio: hand the chosen version to Clip Studio for --------
+    // word-by-word caption styling. Mirrors clip-studio's own upload→ingest
+    // flow (copy into the clip-studio bucket, dispatch /clip-prepare, Whisper
+    // transcript arrives via clip-studio-callback) so the whole Clip Studio
+    // pipeline treats it like any normal upload.
+    if (action === 'send-to-clipstudio') {
+      const { data: gen } = await admin.from('ad_studio_generations').select('*')
+        .eq('id', String(body.generationId)).eq('status', 'ready').single();
+      if (!gen?.media_url) throw new Error('That render is not ready');
+      if (!RENDERER_URL || !RENDER_TOKEN) throw new Error('Renderer not configured');
+      const srcUrl = body.variant === 'burned' && gen.meta?.burnedUrl ? String(gen.meta.burnedUrl)
+        : body.variant === 'finished' && gen.meta?.finishedUrl ? String(gen.meta.finishedUrl)
+        : String(gen.media_url);
+      const title = `Ad — ${String(gen.meta?.label || gen.brief || 'Ad Studio clip')}`.slice(0, 120);
+      const { data: proj, error: pe } = await admin.from('clip_projects')
+        .insert({ title, status: 'uploaded', auto_pilot: false }).select().single();
+      if (pe) throw pe;
+      const media = await fetch(srcUrl);
+      if (!media.ok) throw new Error(`source fetch ${media.status}`);
+      const bytes = new Uint8Array(await media.arrayBuffer());
+      const sourcePath = `${proj.id}/source.mp4`;
+      const up = await admin.storage.from('clip-studio').upload(sourcePath, bytes, { contentType: 'video/mp4', upsert: true });
+      if (up.error) throw up.error;
+      const source_url = admin.storage.from('clip-studio').getPublicUrl(sourcePath).data.publicUrl;
+      await admin.from('clip_projects').update({
+        source_path: sourcePath, source_url, status: 'preparing', updated_at: new Date().toISOString(),
+      }).eq('id', proj.id);
+      const audioPath = `${proj.id}/audio.mp3`;
+      const { data: sa, error: sae } = await admin.storage.from('clip-studio').createSignedUploadUrl(audioPath, { upsert: true });
+      if (sae) throw sae;
+      const previewPath = `${proj.id}/preview.mp4`;
+      const { data: sp } = await admin.storage.from('clip-studio').createSignedUploadUrl(previewPath, { upsert: true });
+      const r = await fetch(`${RENDERER_URL.replace(/\/$/, '')}/clip-prepare`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-render-token': RENDER_TOKEN },
+        body: JSON.stringify({
+          project_id: proj.id, source_url, bucket: 'clip-studio',
+          callback_url: `${SUPABASE_URL}/functions/v1/clip-studio-callback`,
+          audio_upload_url: sa.signedUrl, audio_path: audioPath,
+          audio_public_url: admin.storage.from('clip-studio').getPublicUrl(audioPath).data.publicUrl,
+          preview_upload_url: sp?.signedUrl || null, preview_path: previewPath,
+          preview_public_url: admin.storage.from('clip-studio').getPublicUrl(previewPath).data.publicUrl,
+        }),
+      });
+      if (r.status !== 202) throw new Error(`clip-prepare replied ${r.status}`);
+      await admin.from('ad_studio_generations').update({
+        meta: { ...(gen.meta || {}), clipProjectId: proj.id }, updated_at: new Date().toISOString(),
+      }).eq('id', gen.id);
+      return json({ success: true, clipProjectId: proj.id });
+    }
+
     // -- delete-generation -----------------------------------------------------
     if (action === 'delete-generation') {
       const { data: gen } = await admin.from('ad_studio_generations').select('id, media_url')
         .eq('id', String(body.generationId)).single();
       if (gen) {
-        await admin.storage.from(BUCKET).remove([`${gen.id}.mp4`, `${gen.id}-finished.mp4`]).catch(() => {});
+        await admin.storage.from(BUCKET).remove([`${gen.id}.mp4`, `${gen.id}-finished.mp4`, `${gen.id}-burned.mp4`]).catch(() => {});
         await admin.from('ad_studio_generations').delete().eq('id', gen.id);
       }
       return json({ success: true });
