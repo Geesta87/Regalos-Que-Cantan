@@ -56,6 +56,108 @@ const STRIPE_WEBHOOK_SECRET = Deno.env.get('STRIPE_CLONAMIVOZ_WEBHOOK_SECRET')!;
 // Where to call generate-cloned-voice-song from (server-to-server).
 const GENERATE_SONG_URL = `${SUPABASE_URL}/functions/v1/generate-cloned-voice-song`;
 
+// Meta CAPI (2026-08-27): $69 Clona Mi Voz purchases were invisible to ad
+// optimization — the main funnel's CAPI lives in stripe-webhook only.
+// Same env conventions as stripe-webhook; missing config = safe no-op.
+const META_PIXEL_ID = Deno.env.get('META_PIXEL_ID') || '';
+const META_CAPI_ACCESS_TOKEN =
+  Deno.env.get('META_CAPI_ACCESS_TOKEN') ||
+  Deno.env.get('META_ACCESS_TOKEN') ||
+  Deno.env.get('META_CONVERSIONS_API_TOKEN') ||
+  '';
+const META_TEST_EVENT_CODE = Deno.env.get('META_TEST_EVENT_CODE') || '';
+
+async function metaHash(value: string): Promise<string> {
+  const normalized = (value || '').trim().toLowerCase();
+  if (!normalized) return '';
+  const bytes = new TextEncoder().encode(normalized);
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+// Server-side Purchase event for a Clona Mi Voz sale. NEVER throws — a
+// tracking failure must not 4xx the webhook. event_id = Stripe session id
+// so a future browser pixel event dedupes cleanly (the /clonamivoz page
+// fires no Purchase pixel today, so this is the only source).
+async function sendClonamivozCAPIPurchase(args: {
+  sessionId: string;
+  email: string | null | undefined;
+  buyerName?: string | null;
+  amountUsd: number;
+  clonedVoiceSongId: string;
+  recipientName?: string | null;
+}): Promise<void> {
+  if (!META_PIXEL_ID || !META_CAPI_ACCESS_TOKEN) {
+    console.log('[clonamivoz-capi] skipped — META_PIXEL_ID or token not set');
+    return;
+  }
+  try {
+    const userData: Record<string, unknown> = {};
+    if (args.email) {
+      const emHash = await metaHash(args.email);
+      userData.em = [emHash];
+      userData.external_id = [emHash];
+    }
+    const nameParts = (args.buyerName || '').trim().split(/\s+/).filter(Boolean);
+    if (nameParts.length) {
+      userData.fn = [await metaHash(nameParts[0])];
+      if (nameParts.length > 1) userData.ln = [await metaHash(nameParts[nameParts.length - 1])];
+    }
+
+    const payload: Record<string, unknown> = {
+      data: [{
+        event_name: 'Purchase',
+        event_time: Math.floor(Date.now() / 1000),
+        event_id: args.sessionId,
+        action_source: 'website',
+        event_source_url: 'https://regalosquecantan.com/clonamivoz',
+        user_data: userData,
+        custom_data: {
+          currency: 'USD',
+          value: args.amountUsd,
+          content_type: 'product',
+          content_ids: [args.clonedVoiceSongId],
+          num_items: 1,
+          content_name: args.recipientName
+            ? `Clona Mi Voz para ${args.recipientName}`
+            : 'Clona Mi Voz',
+        },
+      }],
+    };
+    if (META_TEST_EVENT_CODE) (payload as any).test_event_code = META_TEST_EVENT_CODE;
+
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 5000);
+    let resp: Response;
+    try {
+      resp = await fetch(
+        `https://graph.facebook.com/v19.0/${META_PIXEL_ID}/events?access_token=${encodeURIComponent(META_CAPI_ACCESS_TOKEN)}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+          signal: ctrl.signal,
+        }
+      );
+    } finally {
+      clearTimeout(t);
+    }
+    if (!resp.ok) {
+      const errText = await resp.text().catch(() => '');
+      console.error(`[clonamivoz-capi] non-2xx ${resp.status}: ${errText.slice(0, 300)}`);
+      return;
+    }
+    const json = await resp.json().catch(() => ({}));
+    console.log(
+      `[clonamivoz-capi] Purchase sent — session=${args.sessionId} value=${args.amountUsd} events_received=${(json as any)?.events_received ?? '?'}`
+    );
+  } catch (err) {
+    console.error('[clonamivoz-capi] threw:', err instanceof Error ? err.message : err);
+  }
+}
+
 serve(async (req) => {
   if (req.method !== 'POST') {
     return new Response('Method not allowed', { status: 405 });
@@ -217,6 +319,16 @@ serve(async (req) => {
   } catch (e) {
     console.error('[clonamivoz-stripe-webhook] Paid email failed (non-fatal):', e);
   }
+
+  // ---------------- Meta CAPI Purchase (fire-and-forget) ----------------
+  await sendClonamivozCAPIPurchase({
+    sessionId: session.id,
+    email: session.customer_email || row.customer_email,
+    buyerName: session.customer_details?.name || null,
+    amountUsd: (session.amount_total ?? 6900) / 100,
+    clonedVoiceSongId,
+    recipientName: row.recipient_name,
+  });
 
   // ---------------- trigger full song generation ----------------
   // Server-to-server call into generate-cloned-voice-song. Use the

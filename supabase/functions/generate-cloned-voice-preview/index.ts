@@ -309,6 +309,40 @@ serve(async (req) => {
   }
   const voicePublicUrl = signed.data.signedUrl;
 
+  // ---------------- free-preview rate limit (2026-08-27) ----------------
+  // Every preview burns real Kie credits and the endpoint is reachable with
+  // the public anon key. Cap NEW preview orders per voice sample and per
+  // email over 24h. The retry path (cloned_voice_song_id present) is exempt
+  // — it reuses an existing order row and is bounded by the same caps that
+  // created it.
+  if (!body.cloned_voice_song_id) {
+    const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const { count: sampleCount } = await supabase
+      .from('cloned_voice_songs')
+      .select('id', { count: 'exact', head: true })
+      .eq('voice_sample_id', voiceRow.id)
+      .gt('created_at', dayAgo);
+    let emailCount = 0;
+    if (body.customer_email) {
+      const { count } = await supabase
+        .from('cloned_voice_songs')
+        .select('id', { count: 'exact', head: true })
+        .eq('customer_email', body.customer_email)
+        .gt('created_at', dayAgo);
+      emailCount = count || 0;
+    }
+    if ((sampleCount || 0) >= 5 || emailCount >= 8) {
+      return new Response(
+        JSON.stringify({
+          error: 'preview_limit_reached',
+          message:
+            'Ya creaste varias pruebas hoy. Espera un poco o escríbenos a hola@regalosquecantan.com si necesitas ayuda.',
+        }),
+        { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+  }
+
   // ---------------- upsert cloned_voice_songs row ----------------
   // If frontend passed a cloned_voice_song_id, update that row (retry path).
   // Otherwise insert a fresh row. Either way we end up with one row in

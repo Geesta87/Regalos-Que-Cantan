@@ -124,6 +124,14 @@ function clearPendingOrder() {
 export default function ClonaMiVoz() {
   const [stage, setStage] = useState(STAGES.INTRO);
 
+  // Internal test mode (?test=1): shows the no-payment bypass button. The
+  // server-side CLONAMIVOZ_BYPASS_ENABLED secret is the real gate — this
+  // only keeps the button out of customers' sight. Read once on mount;
+  // the Stripe-return effect strips other params but leaves ?test alone.
+  const [isTestMode] = useState(
+    () => new URLSearchParams(window.location.search).get('test') === '1'
+  );
+
   // Voice + upload
   const [audioBlob, setAudioBlob] = useState(null);
   const [audioDurationMs, setAudioDurationMs] = useState(0);
@@ -1080,35 +1088,45 @@ export default function ClonaMiVoz() {
                 />
               </div>
 
-              {/* TESTING MODE banner — make it impossible to miss that
-                  this is a no-payment dev path. Remove this block (and
-                  the bypass button below) when launching the paid tier. */}
-              <div className="rounded-xl bg-amber-500/10 border border-amber-400/40 px-3 py-2 text-xs text-amber-200 text-center">
-                🧪 Modo prueba: el pago está desactivado mientras probamos
-                la calidad. Vamos directo a generar la canción.
-              </div>
-
+              {/* PRIMARY CTA — real Stripe payment. Until 2026-08-27 the
+                  hierarchy was inverted: the free test-bypass was the big
+                  button and Stripe was a footnote link, so the page could
+                  never take a real customer. */}
               <button
                 type="button"
-                onClick={bypassPayNow}
+                onClick={payNow}
                 disabled={!customerEmail || !customerEmail.includes('@')}
                 className="w-full rounded-2xl bg-gradient-to-br from-bougainvillea to-[#d40b6e] hover:brightness-110 text-white font-bold text-lg py-4 pink-glow transition active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
-                <span className="material-symbols-outlined">music_note</span>
-                Generar canción completa (gratis – modo prueba)
+                <span className="material-symbols-outlined">lock</span>
+                Comprar mi canción · {PRICE_USD}
                 <span className="material-symbols-outlined">arrow_forward</span>
               </button>
+              <p className="text-xs text-white/40 text-center">
+                Pago seguro con Stripe · Recibes tu canción en 3-5 minutos por email
+              </p>
 
-              <div className="text-center">
-                <button
-                  type="button"
-                  onClick={payNow}
-                  disabled={!customerEmail || !customerEmail.includes('@')}
-                  className="text-xs text-white/40 hover:text-white/70 underline disabled:opacity-30 disabled:cursor-not-allowed"
-                >
-                  O pagar $69 con Stripe (modo producción)
-                </button>
-              </div>
+              {/* TEST MODE — only visible with ?test=1 in the URL. The
+                  server still gates the endpoint via the
+                  CLONAMIVOZ_BYPASS_ENABLED secret; this flag only hides
+                  the button from customers. */}
+              {isTestMode && (
+                <>
+                  <div className="rounded-xl bg-amber-500/10 border border-amber-400/40 px-3 py-2 text-xs text-amber-200 text-center">
+                    🧪 Modo prueba interno: generar sin pagar (requiere
+                    CLONAMIVOZ_BYPASS_ENABLED en el servidor).
+                  </div>
+                  <button
+                    type="button"
+                    onClick={bypassPayNow}
+                    disabled={!customerEmail || !customerEmail.includes('@')}
+                    className="w-full rounded-2xl bg-white/10 border border-amber-400/40 hover:bg-white/15 text-amber-200 font-bold py-3 transition active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  >
+                    <span className="material-symbols-outlined">science</span>
+                    Generar canción completa (gratis – modo prueba)
+                  </button>
+                </>
+              )}
             </div>
 
             <div className="text-center">
