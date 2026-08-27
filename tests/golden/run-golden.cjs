@@ -29,8 +29,8 @@ let src = fs.readFileSync(path.join(ROOT, 'src', 'utils', 'audioSplice.js'), 'ut
 src = src.replace(/^import .*$/gm, '').replace(/^export /gm, '');
 const ctx = { console };
 vm.createContext(ctx);
-vm.runInNewContext(src + '\nthis.__api = { timelineDamage, findCleanLine, buildTokenGroups, parseTimed, validateTake };', ctx);
-const { timelineDamage, findCleanLine, buildTokenGroups } = ctx.__api;
+vm.runInNewContext(src + '\nthis.__api = { timelineDamage, findCleanLine, buildTokenGroups, parseTimed, validateTake, findLastLineEnd };', ctx);
+const { timelineDamage, findCleanLine, buildTokenGroups, findLastLineEnd } = ctx.__api;
 
 let pass = 0, fail = 0, skip = 0;
 const check = (name, ok, detail) => {
@@ -53,6 +53,16 @@ console.log('golden exam · synthetic cases');
   const words2 = sung2.map((w, i) => ({ word: w, start: 10 + i * 0.5, end: 10.4 + i * 0.5 }));
   check('number canonicalization: lyric "trece" finds sung "13"',
     !!findCleanLine(words2, buildTokenGroups('el trece de agosto llegaste')));
+}
+
+// Closing-line trim anchor must tolerate Whisper respelling a name by one
+// edit (2026-08-26, Victoria 94fdd93e: sheet "Tory", Whisper "Tori" — every
+// over-long take died with no trim point).
+{
+  const sung = 'guardando cada uno de tus sueños siempre mi luna mi Tori'.split(' ');
+  const words = sung.map((w, i) => ({ word: w, start: 190 + i * 1.5, end: 190.8 + i * 1.5 }));
+  const e = findLastLineEnd(words, 'Siempre mi luna, mi Tory', 210);
+  check('findLastLineEnd: respelled name in closing line still anchors', e != null && e > 200);
 }
 
 // Timeline gate on synthetic songs. Vocabulary must be 3+ chars (gate drops

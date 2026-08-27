@@ -589,7 +589,23 @@ export function findLastLineEnd(words, sectionText, nearS = null) {
   const tokens = lines[lines.length - 1].split(/\s+/).map(norm).filter((t) => t.length > 1);
   if (!tokens.length) return null;
   const atoms = words.map((w) => ({ n: norm(w.word), end: w.end }));
-  const eq = (a, b) => a === b || (a.length > 3 && b.length > 3 && (a.startsWith(b) || b.startsWith(a)));
+  // NAME-TOLERANT (2026-08-26, Victoria 94fdd93e): the closing line ended in
+  // the nickname "Tory" and Whisper wrote "Tori" every time — exact/prefix
+  // matching never found the song's real ending and every over-long take died
+  // unrescued. One edit is allowed on tokens of 4+ characters.
+  const ed1 = (a, b) => {
+    if (Math.abs(a.length - b.length) > 1) return false;
+    let i = 0, j = 0, edits = 0;
+    while (i < a.length && j < b.length) {
+      if (a[i] === b[j]) { i++; j++; continue; }
+      if (++edits > 1) return false;
+      if (a.length > b.length) i++;
+      else if (b.length > a.length) j++;
+      else { i++; j++; }
+    }
+    return edits + (a.length - i) + (b.length - j) <= 1;
+  };
+  const eq = (a, b) => a === b || (a.length > 3 && b.length > 3 && (a.startsWith(b) || b.startsWith(a) || ed1(a, b)));
   // pick: nearest-to-nearS when the hint is given; otherwise legacy behavior
   // (first full match / last single-word match) to stay byte-identical for any
   // caller that doesn't pass a hint.

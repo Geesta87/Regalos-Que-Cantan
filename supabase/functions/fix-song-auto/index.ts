@@ -236,7 +236,7 @@ function findLastLineEnd(words: W[], lyricsText: string, nearS: number, maxS?: n
   const tokens = lines[lines.length - 1].split(/\s+/).map(norm).filter((t) => t.length > 1);
   if (!tokens.length) return null;
   const atoms = words.map((w) => ({ n: norm(w.word), end: w.end }));
-  const eq = (a: string, b: string) => a === b || (a.length > 3 && b.length > 3 && (a.startsWith(b) || b.startsWith(a)));
+  const eq = (a: string, b: string) => a === b || (a.length > 3 && b.length > 3 && (a.startsWith(b) || b.startsWith(a) || ed1Tok(a, b)));
   const fulls: number[] = [];
   for (let i = 0; i + tokens.length <= atoms.length; i++) {
     let ok = true;
@@ -260,13 +260,29 @@ function findLastLineEnd(words: W[], lyricsText: string, nearS: number, maxS?: n
 
 // ALL closing-line occurrence end-times (ascending order of position) — the
 // earliest-complete trim anchor iterates these. Same matching as findLastLineEnd.
+// One-edit token equality (2026-08-26, Victoria 94fdd93e): Whisper respells
+// names ("Tory" -> "Tori"); closing-line anchors must tolerate one edit on
+// tokens of 4+ chars or over-long takes die with no trim point.
+function ed1Tok(a: string, b: string): boolean {
+  if (Math.abs(a.length - b.length) > 1) return false;
+  let i = 0, j = 0, edits = 0;
+  while (i < a.length && j < b.length) {
+    if (a[i] === b[j]) { i++; j++; continue; }
+    if (++edits > 1) return false;
+    if (a.length > b.length) i++;
+    else if (b.length > a.length) j++;
+    else { i++; j++; }
+  }
+  return edits + (a.length - i) + (b.length - j) <= 1;
+}
+
 function findLastLineEnds(words: W[], lyricsText: string): number[] {
   const lines = String(lyricsText || '').split('\n').map((s) => s.trim()).filter((l) => l && !/^\[.*\]$/.test(l));
   if (!lines.length || !words.length) return [];
   const tokens = lines[lines.length - 1].split(/\s+/).map(norm).filter((t) => t.length > 1);
   if (!tokens.length) return [];
   const atoms = words.map((w) => ({ n: norm(w.word), end: w.end }));
-  const eq = (a: string, b: string) => a === b || (a.length > 3 && b.length > 3 && (a.startsWith(b) || b.startsWith(a)));
+  const eq = (a: string, b: string) => a === b || (a.length > 3 && b.length > 3 && (a.startsWith(b) || b.startsWith(a) || ed1Tok(a, b)));
   const fulls: number[] = [];
   for (let i = 0; i + tokens.length <= atoms.length; i++) {
     let ok = true;
