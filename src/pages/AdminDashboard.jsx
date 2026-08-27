@@ -24,7 +24,8 @@ import AffiliateRecruiterTab from '../components/admin/AffiliateRecruiterTab';
 import ActionInboxTab, {
   loadHidden as loadInboxHidden, isHiddenNow as isInboxHiddenNow, INBOX_COUNT_EVENT,
 } from '../components/admin/ActionInboxTab';
-import { Package, Send, Flame, MessageSquare, Users, Search, Mic, Music, X, Wrench, Film, Video, Sparkles, Newspaper, Compass, UserPlus, Scissors, Target, Inbox, Contact, BookOpen, QrCode, Gift, Clapperboard } from 'lucide-react';
+import OpsAgentTab from '../components/admin/OpsAgentTab';
+import { Package, Send, Flame, MessageSquare, Users, Search, Mic, Music, X, Wrench, Film, Video, Sparkles, Newspaper, Compass, UserPlus, Scissors, Target, Inbox, Contact, BookOpen, QrCode, Gift, Clapperboard, Headset } from 'lucide-react';
 import { spliceIntoOriginal, spliceLineReplace, trimTake, parseTimed, findLastLineEnd, findCleanLine, validateTake, buildTokenGroups, lastSungWordEnd, findAnchorEnd, timelineDamage } from '../utils/audioSplice';
 
 // Debounce hook for search inputs
@@ -3190,7 +3191,7 @@ export default function AdminDashboard() {
     const tab = new URLSearchParams(window.location.search).get('tab');
     // Keep in sync with the nav (sidebar + mobile pills). Every tab that has a
     // content branch must be listed here so push/bookmark deep-links can reach it.
-    const valid = ['inbox', 'orders', 'pendingsend', 'hotleads', 'sms', 'training', 'fixsong', 'affiliates', 'recruit', 'lookup', 'clonamivoz', 'animado', 'videos', 'chiefofstaff', 'dailybriefing', 'creativestudio', 'clipstudio', 'characterstudio', 'adstudio', 'cuento'];
+    const valid = ['inbox', 'opsagent', 'orders', 'pendingsend', 'hotleads', 'sms', 'training', 'fixsong', 'affiliates', 'recruit', 'lookup', 'clonamivoz', 'animado', 'videos', 'chiefofstaff', 'dailybriefing', 'creativestudio', 'clipstudio', 'characterstudio', 'adstudio', 'cuento'];
     // The Action Inbox is the admin home: one ranked queue of everything
     // waiting on the owner. Assistants get bounced to Orders (effect below).
     return valid.includes(tab) ? tab : 'inbox';
@@ -5486,6 +5487,11 @@ export default function AdminDashboard() {
           {inboxCriticalCount > 0 && <span className="bg-red-500 text-white text-[10px] font-bold rounded-full min-w-5 h-5 px-1 flex items-center justify-center">{inboxCriticalCount}</span>}
         </button>
         )}
+        {userRole === 'admin' && (
+        <button onClick={() => setActiveTab('opsagent')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'opsagent' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
+          <Headset size={18} className={`flex-shrink-0 ${activeTab === 'opsagent' ? 'text-amber-400' : ''}`} /> Ops Agent
+        </button>
+        )}
         <button onClick={() => setActiveTab('orders')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'orders' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
           <Package size={18} className={`flex-shrink-0 ${activeTab === 'orders' ? 'text-amber-400' : ''}`} /> Orders
         </button>
@@ -6203,6 +6209,18 @@ export default function AdminDashboard() {
                   )}
                 </button>
               )}
+              {userRole === 'admin' && (
+                <button
+                  onClick={() => setActiveTab('opsagent')}
+                  className={`px-5 py-2.5 rounded-xl font-medium transition ${
+                    activeTab === 'opsagent'
+                      ? 'bg-indigo-500 text-white'
+                      : 'bg-white/5 text-gray-400 hover:bg-white/10'
+                  }`}
+                >
+                  🎧 Ops Agent
+                </button>
+              )}
               <button
                 onClick={() => setActiveTab('orders')}
                 className={`px-5 py-2.5 rounded-xl font-medium transition ${
@@ -6497,6 +6515,15 @@ export default function AdminDashboard() {
              admin server-side. Approvals dispatch to the SAME endpoints the
              per-agent tabs use — no new write paths. */
           <ActionInboxTab accessToken={accessToken} showToast={showToast} onNavigate={setActiveTab} />
+        ) : (activeTab === 'opsagent' && userRole === 'admin') ? (
+          /* Ops Agent — customer-support & operations chat console. Order and
+             payment lookups, storage-verified video status, payment audits,
+             SMS/WhatsApp history reads, bulk problem-finding, Spanish message
+             drafts. Writes are staged in ops_pending_actions and only run on
+             the owner's Confirm tap; executors reuse the existing endpoints
+             (admin-videos retry, recover-song send, test-karaoke,
+             song-fix-queue create-intake). ops-agent edge fn enforces admin. */
+          <OpsAgentTab accessToken={accessToken} showToast={showToast} />
         ) : activeTab === 'orders' ? (
           <>
             {/* Filters */}

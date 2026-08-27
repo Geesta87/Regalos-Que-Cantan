@@ -1085,3 +1085,13 @@ verify_jwt = true
 # access; it only forwards deduped pixel events to Meta's Graph API with the
 # client IP/UA. Must stay verify_jwt = false or every beacon 401s.
 verify_jwt = false
+
+[functions.ops-agent]
+# Ops Agent — the admin dashboard's customer-support & operations chat console
+# (order/payment lookups, storage-verified video status, payment audits, SMS
+# history reads, bulk problem-finding, and approval-gated fixes staged in
+# ops_pending_actions). Called ONLY from our own frontend with the owner's
+# Supabase Auth JWT; the handler re-checks admin_users role='admin' (same as
+# business-analyst / cos-assistant). No external webhook or pg_cron caller
+# exists → default gate stays ON.
+verify_jwt = true
