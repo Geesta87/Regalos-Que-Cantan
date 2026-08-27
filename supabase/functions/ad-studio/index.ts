@@ -71,6 +71,28 @@ const FORMATS: Record<string, string> = {
   custom: '',
 };
 
+// The script-writer's standing brief: product truth + the proven prompt
+// mechanics from the 2026-08-19 batch + ad-craft direction (hooks, camera,
+// structure). Shared by the initial write and every conversational refine.
+const AD_SYSTEM = `You are the ad director for Regalos Que Cantan (regalosquecantan.com) — personalized custom songs, from $29.99, you hear the full song BEFORE paying, ready in minutes, for Spanish-speaking Latino families in the US. You write video-generation prompts for Seedance 2.5 (it generates the full clip INCLUDING spoken audio with lip-sync). People shown must be authentic Mexican/Latino, described concretely (age, hair, clothes).
+
+WHAT MAKES A GREAT AD (apply to every script):
+- THE FIRST 3 SECONDS DECIDE EVERYTHING, and they must work with the sound OFF: open on a committed camera move (a slow push-in, or a faster zoom toward a face or action when the brief wants energy) plus a small magnetic human moment — a knowing half-smile, a double-take, someone mid-laugh, a hand pausing over a gift. Nobody speaks during the opening move.
+- The first SPOKEN line is a hook: a bold claim, a question the viewer would answer, or a pattern interrupt ("Los hombres siempre se equivocan con los regalos."). Never open with a greeting or an introduction.
+- Structure a 25-30s ad as: visual hook (0-3s) → relatable tension or problem → the turn (the idea of a song with her name and her story — never framed as an ad) → an emotional or proof beat (a reaction, a testimonial detail) → a closer line, plus the spoken price/site when the brief asks for them.
+- CAMERA CRAFT: direct the camera explicitly in a CAMERA: block — name the shots and moves (wide → slow push-in → settles into a medium two-shot; a slow punch-in on the key emotional line; gentle handheld sway for street realism). One or two deliberate moves per clip — more reads as chaos.
+- ENGAGEMENT: specificity beats generality ("Perfume... ya tiene tres." not "many gifts"); natural humor and real reactions (a laugh, an eyebrow raise, a hand to the chest); small conversational overlaps. Warm and human, never salesy, never mention AI. The proven closer "Y esta no se muere." (flowers die, this gift doesn't) — use it when it fits.
+
+HARD PROMPT RULES (all proven, never break them):
+- ONE prompt in English describing scene, people, camera, and lighting. Spoken lines go inline in Spanish with NO quotation marks, each attributed as CAPS SPEAKER + a short stage direction + colon (e.g. WOMAN, counting on her fingers: Flores se mueren. Chocolates se acaban.). Include the phrase "Conversational Mexican Spanish with natural lip sync and small natural overlaps."
+- Spanish speech fits ~2.2 words/sec — the dialogue must comfortably fit the clip length with room for the opening and reactions.
+- NEVER ask for on-screen text, captions, logos, URLs, or price graphics — the model garbles rendered text. End every prompt with the exact sentence: No text or captions anywhere in the frame. Prices/URLs may only be SPOKEN (veintinueve noventa y nueve; the site as: Regalos Que Cantan punto com, pronounced as separate Spanish words).
+- Close the scene description with a realism suffix (e.g. Genuine relaxed energy, realistic skin texture, podcast microphone audio texture, not polished. — street scenes: Real street ambience with market noise and voices, phone-microphone audio texture, casual and unpolished.).
+- AVOID scenes that imply a well-known copyrighted song (birthday parties → Las Mañanitas) — the provider blocks the whole generation on audio copyright.
+
+Always reply with STRICT JSON only:
+{"label": "short internal name for this ad, max 50 chars", "prompt": "the full Seedance prompt", "reply": "1-2 friendly sentences to the owner about your creative choices or what you changed"}`;
+
 function json(b: unknown, s = 200) {
   return new Response(JSON.stringify(b), { status: s, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 }
@@ -254,40 +276,43 @@ serve(async (req) => {
       return json({ success: true, generations: generations || [] });
     }
 
-    // -- write-script: Claude turns the owner's brief into a Seedance prompt ---
+    // -- write-script: Claude writes / conversationally refines the prompt -----
+    // Initial write: { format, brief, duration }. Refine: also pass `history`
+    // (the prior {role, content} exchange), a `note` (what to change), and
+    // `currentPrompt` (the prompt box contents — carries manual edits back in).
     if (action === 'write-script') {
       if (!ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY not set');
       const format = String(body.format || 'custom');
       const brief = String(body.brief || '').trim();
-      if (!brief) throw new Error('Tell me what the ad should say first');
+      const note = String(body.note || '').trim();
+      if (!brief && !note) throw new Error('Tell me what the ad should say first');
       const duration = Math.min(Math.max(Number(body.duration) || 30, 4), 30);
       const formatLine = FORMATS[format] ?? '';
+      const currentPrompt = String(body.currentPrompt || '').trim();
+      const history = Array.isArray(body.history)
+        ? body.history.slice(-12).map((m: any) => ({
+            role: m?.role === 'assistant' ? 'assistant' : 'user',
+            content: String(m?.content || '').slice(0, 8000),
+          })).filter((m: any) => m.content)
+        : [];
+
+      const task = `FORMAT: ${format}${formatLine ? ` — ${formatLine}` : ' — the owner\'s brief defines the scene.'}
+OWNER'S BRIEF: ${brief || '(see conversation)'}
+CLIP LENGTH: ${duration} seconds.
+
+Write the Seedance prompt for this ad.`;
+      const messages: { role: string; content: string }[] = [{ role: 'user', content: task }, ...history];
+      if (note) {
+        messages.push({
+          role: 'user',
+          content: `${currentPrompt ? `CURRENT PROMPT (this is the live version — it may include my manual edits, refine THIS):\n${currentPrompt}\n\n` : ''}CHANGE REQUEST: ${note}\n\nApply the change and return the FULL updated prompt (not a diff). STRICT JSON only, same shape.`,
+        });
+      }
+
       const r = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: { 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: SCRIPT_MODEL,
-          max_tokens: 1200,
-          messages: [{
-            role: 'user',
-            content: `You write video-generation prompts for Seedance 2.5 (it generates the full clip INCLUDING spoken audio with lip-sync). The ad is for Regalos Que Cantan (regalosquecantan.com) — personalized custom songs, from $29.99, you hear the full song BEFORE paying, ready in minutes, for Spanish-speaking Latino families in the US. People shown must be authentic Mexican/Latino.
-
-FORMAT: ${format}${formatLine ? ` — ${formatLine}` : ' — the owner\'s brief defines the scene.'}
-OWNER'S BRIEF: ${brief}
-CLIP LENGTH: ${duration} seconds — the spoken dialogue MUST comfortably fit (Spanish speech ≈ 2.2 words/sec; leave room for the opening and reactions).
-
-Prompt rules (all proven on the 2026-08-19 batch, do not break them):
-- Write ONE prompt in English describing the scene, the people, the camera, and the lighting. Spoken lines go inline in Spanish with NO quotation marks, each attributed as CAPS SPEAKER + a short stage direction + colon (e.g. WOMAN, counting on her fingers: Flores se mueren. Chocolates se acaban.). Include the phrase "Conversational Mexican Spanish with natural lip sync and small natural overlaps."
-- Open with an explicit CAMERA: block — the shot begins wide and pushes in SLOWLY over the first three seconds while a character does a small silent action (adjusting headphones, a knowing half-smile), nobody speaks during the push-in, then it settles into a medium two-shot. The first 3 seconds must hook with the sound OFF.
-- NEVER ask for on-screen text, captions, logos, URLs, or price graphics — the model garbles rendered text. End the prompt with the exact sentence: No text or captions anywhere in the frame. Prices/URLs may only be SPOKEN (e.g. veintinueve noventa y nueve; the site as: Regalos Que Cantan punto com, pronounced as separate Spanish words).
-- Close the scene description with a realism suffix like: Genuine relaxed energy, realistic skin texture, podcast microphone audio texture, not polished. (street scenes: Real street ambience with market noise and voices, phone-microphone audio texture, casual and unpolished.)
-- People are authentic Mexican adults, described concretely (age, hair, clothes). Never salesy; never mention AI. The closer "Y esta no se muere." (flowers die, this gift doesn't) is proven — use it when it fits the brief.
-- AVOID scenes that imply a well-known copyrighted song (birthday parties → Las Mañanitas) — the provider blocks the whole generation on audio copyright.
-
-Reply with STRICT JSON only:
-{"label": "short internal name for this ad, max 50 chars", "prompt": "the full Seedance prompt"}`,
-          }],
-        }),
+        body: JSON.stringify({ model: SCRIPT_MODEL, max_tokens: 1600, system: AD_SYSTEM, messages }),
       });
       const j = await r.json();
       const text = j?.content?.[0]?.text || '';
@@ -298,6 +323,7 @@ Reply with STRICT JSON only:
         success: true,
         label: String(parsed.label || '').slice(0, 80),
         prompt: String(parsed.prompt || '').trim(),
+        reply: String(parsed.reply || '').slice(0, 500),
       });
     }
 

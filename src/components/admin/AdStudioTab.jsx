@@ -80,7 +80,15 @@ export default function AdStudioTab({ accessToken, showToast }) {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [writing, setWriting] = useState(false);
+  // Conversational refine: `chat` is what the owner sees, `history` is the
+  // raw exchange replayed to the script-writer so it keeps full context.
+  const [chat, setChat] = useState([]);
+  const [history, setHistory] = useState([]);
+  const [chatInput, setChatInput] = useState('');
+  const [refining, setRefining] = useState(false);
   const pollRef = useRef(null);
+  const chatEndRef = useRef(null);
+  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }, [chat]);
 
   // Composer state
   const [format, setFormat] = useState('podcast');
@@ -136,11 +144,39 @@ export default function AdStudioTab({ accessToken, showToast }) {
       const j = await call('write-script', { format, brief, duration });
       setPrompt(j.prompt || '');
       if (j.label) setLabel(j.label);
-      showToast?.('Script ready — review it, then generate', 'success');
+      setChat([{ role: 'assistant', text: j.reply || 'Script ready — tell me what to change and I\'ll rewrite it.' }]);
+      setHistory([{ role: 'assistant', content: JSON.stringify({ label: j.label, prompt: j.prompt }) }]);
+      showToast?.('Script ready — review it, refine it below, then generate', 'success');
     } catch (e) {
       showToast?.(e.message, 'error');
     } finally {
       setWriting(false);
+    }
+  };
+
+  const refineScript = async () => {
+    const note = chatInput.trim();
+    if (!note) return;
+    if (!prompt.trim() && !brief.trim()) { showToast?.('Write a brief or a script first', 'error'); return; }
+    setChat((c) => [...c, { role: 'user', text: note }]);
+    setChatInput('');
+    setRefining(true);
+    try {
+      const j = await call('write-script', {
+        format, brief, duration, note, history, currentPrompt: prompt,
+      });
+      setPrompt(j.prompt || prompt);
+      if (j.label) setLabel(j.label);
+      setChat((c) => [...c, { role: 'assistant', text: j.reply || 'Done — the prompt above is updated.' }]);
+      setHistory((h) => [
+        ...h,
+        { role: 'user', content: `CHANGE REQUEST: ${note}` },
+        { role: 'assistant', content: JSON.stringify({ label: j.label, prompt: j.prompt }) },
+      ]);
+    } catch (e) {
+      setChat((c) => [...c, { role: 'assistant', text: `That didn't work: ${e.message}` }]);
+    } finally {
+      setRefining(false);
     }
   };
 
@@ -255,6 +291,39 @@ export default function AdStudioTab({ accessToken, showToast }) {
         <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={6}
           placeholder="The full scene + dialogue prompt lands here — edit anything before generating"
           className={`${field} font-mono text-[12.5px] leading-relaxed`} />
+
+        {/* Conversational refine — talk to the ad director, it rewrites the
+            prompt above (manual edits in the box are carried into each turn). */}
+        <div className="mt-3 rounded-xl border border-white/10 bg-white/[0.03] p-3">
+          <div className="flex items-center gap-1.5 mb-2">
+            <Sparkles size={13} className="text-indigo-300" />
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">Refine with the AI</span>
+          </div>
+          {chat.length > 0 && (
+            <div className="max-h-44 overflow-y-auto flex flex-col gap-1.5 mb-2.5 pr-1">
+              {chat.map((m, i) => (
+                <div key={i} className={`text-xs leading-relaxed rounded-lg px-2.5 py-1.5 max-w-[85%] ${m.role === 'user' ? 'self-end bg-indigo-500/20 text-indigo-100' : 'self-start bg-white/[0.06] text-gray-300'}`}>
+                  {m.text}
+                </div>
+              ))}
+              {refining && (
+                <div className="self-start flex items-center gap-1.5 text-xs text-gray-400 px-2.5 py-1.5">
+                  <Loader2 size={12} className="animate-spin" /> rewriting…
+                </div>
+              )}
+              <div ref={chatEndRef} />
+            </div>
+          )}
+          <div className="flex items-center gap-2">
+            <input value={chatInput} onChange={(e) => setChatInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); refineScript(); } }}
+              placeholder='e.g. "stronger hook", "zoom in on her face on the last line", "make it funnier", "add the price"'
+              className={field} disabled={refining} />
+            <button onClick={refineScript} disabled={refining || !chatInput.trim()} className={`${btnGhost} !px-3`}>
+              {refining ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
+            </button>
+          </div>
+        </div>
 
         {/* Knobs */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mt-4">
