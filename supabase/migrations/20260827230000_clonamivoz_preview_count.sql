@@ -12,3 +12,14 @@ ALTER TABLE public.cloned_voice_songs
 
 COMMENT ON COLUMN public.cloned_voice_songs.preview_generation_count IS
   'How many Kie preview generations this row has submitted (first + retries + genre A/B). Capped at 8 in generate-cloned-voice-preview.';
+
+-- vocal_gender ('m' | 'f' | NULL): the Suno vocal-gender hint. Was only ever
+-- passed to the PREVIEW request and never persisted, so the paid full song
+-- (triggered by the webhook from row data) silently lost it and preview/full
+-- could come out with different perceived voices. Now stored at preview time
+-- and passed through webhook + sweeper re-trigger. Frontend also auto-infers
+-- it from the recording's median pitch when the customer leaves "Detección
+-- automática" selected.
+ALTER TABLE public.cloned_voice_songs
+  ADD COLUMN IF NOT EXISTS vocal_gender TEXT
+  CHECK (vocal_gender IN ('m', 'f') OR vocal_gender IS NULL);

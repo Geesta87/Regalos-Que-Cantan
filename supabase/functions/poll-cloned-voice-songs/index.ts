@@ -322,7 +322,7 @@ async function rescuePaidRows(supabase: any, summary: Record<string, number>): P
   const cutoff = new Date(Date.now() - 10 * 60 * 1000).toISOString();
   const { data: rows, error } = await supabase
     .from('cloned_voice_songs')
-    .select(ROW_COLUMNS + ', voice_sample_id, occasion, relationship, story, language, lyrics, emotional_modifiers, lyrics_model_used')
+    .select(ROW_COLUMNS + ', voice_sample_id, occasion, relationship, story, language, lyrics, emotional_modifiers, lyrics_model_used, vocal_gender')
     .eq('status', 'paid')
     .lt('paid_at', cutoff)
     .limit(5);
@@ -371,6 +371,7 @@ async function rescuePaidRows(supabase: any, summary: Record<string, number>): P
           emotional_modifiers: row.emotional_modifiers,
           lyrics_model_used: row.lyrics_model_used,
           customer_email: row.customer_email,
+          vocal_gender: row.vocal_gender || undefined,
         }),
       });
       if (genResp.ok) {

@@ -308,6 +308,8 @@ serve(async (req) => {
     // Only set when explicitly provided — an UPDATE must never wipe the
     // voice_task_id the preview stored on the row.
     ...(body.voice_task_id ? { voice_task_id: body.voice_task_id } : {}),
+    // Same rule for the gender hint the preview stored.
+    ...(vocalGender ? { vocal_gender: vocalGender } : {}),
   };
 
   let clonedVoiceSongId: string;

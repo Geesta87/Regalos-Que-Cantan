@@ -102,6 +102,14 @@ export async function analyzeMelody(blob) {
     const p90 = sorted[Math.floor(sorted.length * 0.90)];
     const rangeSemitones = p90 - p10;
 
+    // Median pitch → vocal-gender hint for Suno (2026-08-27). Typical
+    // medians: male singing ~100-150 Hz, female ~180-260 Hz. The band
+    // between is left undecided ('null') — a wrong hint is worse than
+    // none, so only call it when it's clear.
+    const medianSemi = sorted[Math.floor(sorted.length / 2)];
+    const medianHz = 55 * Math.pow(2, medianSemi / 12);
+    const inferredGender = medianHz < 155 ? 'm' : medianHz > 185 ? 'f' : null;
+
     // Singing (even casual singing) spans 5+ semitones p10–p90. Flat
     // reading sits around 2-3. Threshold 4 = conservative: warns on clear
     // monotone, lets borderline takes through.
@@ -110,6 +118,8 @@ export async function analyzeMelody(blob) {
       monotone: rangeSemitones < 4,
       rangeSemitones: Math.round(rangeSemitones * 10) / 10,
       voicedSeconds: Math.round(voicedSeconds),
+      medianHz: Math.round(medianHz),
+      inferredGender,
     };
   } catch (e) {
     console.warn('[clonamivoz/melody] analysis failed (fail-open):', e);

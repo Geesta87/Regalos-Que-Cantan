@@ -246,7 +246,7 @@ serve(async (req) => {
   const { data: row, error: loadError } = await supabase
     .from('cloned_voice_songs')
     .select(
-      'id, status, paid, voice_sample_id, recipient_name, occasion, relationship, story, genre_slug, language, title, lyrics, emotional_modifiers, lyrics_model_used, customer_email'
+      'id, status, paid, voice_sample_id, recipient_name, occasion, relationship, story, genre_slug, language, title, lyrics, emotional_modifiers, lyrics_model_used, customer_email, vocal_gender'
     )
     .eq('id', clonedVoiceSongId)
     .maybeSingle();
@@ -360,6 +360,7 @@ serve(async (req) => {
         emotional_modifiers: row.emotional_modifiers,
         lyrics_model_used: row.lyrics_model_used,
         customer_email: row.customer_email,
+        vocal_gender: row.vocal_gender || undefined,
       }),
     });
 

@@ -244,6 +244,13 @@ export default function ClonaMiVoz() {
 
   // Melodic-range verdict for the last main recording (null = not analyzed).
   const [melodyInfo, setMelodyInfo] = useState(null);
+  // Gender inferred from the recording's median pitch ('m'|'f'|null). Used
+  // as the Suno hint whenever the customer leaves "Detección automática".
+  const [autoGender, setAutoGender] = useState(null);
+
+  // What we actually send to Suno: an explicit choice always wins; the
+  // pitch-derived inference fills in when the customer left it on auto.
+  const effectiveVocalGender = vocalGender || autoGender || '';
 
   async function handleRecordingComplete(blob, durationMs) {
     setAudioBlob(blob);
@@ -253,6 +260,9 @@ export default function ClonaMiVoz() {
     // quota. Fail-open — any analysis problem proceeds as normal.
     try {
       const verdict = await analyzeMelody(blob);
+      if (verdict.ok && verdict.inferredGender) {
+        setAutoGender(verdict.inferredGender);
+      }
       if (verdict.ok && verdict.monotone) {
         setMelodyInfo(verdict);
         setStage(STAGES.MELODY_WARNING);
@@ -464,7 +474,7 @@ export default function ClonaMiVoz() {
       occasion: storyContext?.occasion,
       story: storyContext?.story,
       customerEmail: customerEmail || undefined,
-      vocalGender,
+      vocalGender: effectiveVocalGender,
       emotionalModifiers,
       lyricsModelUsed,
       language: storyContext?.language || 'es',
@@ -628,7 +638,7 @@ export default function ClonaMiVoz() {
       occasion: storyContext?.occasion,
       story: storyContext?.story,
       customerEmail: customerEmail || undefined,
-      vocalGender,
+      vocalGender: effectiveVocalGender,
       emotionalModifiers,
       lyricsModelUsed,
       language: storyContext?.language || 'es',
@@ -749,6 +759,7 @@ export default function ClonaMiVoz() {
     setPreviewCache({});
     setSwitchError(null);
     setMelodyInfo(null);
+    setAutoGender(null);
     setAudioUrls([]);
     setFinalTitle('');
     setError(null);
@@ -1137,7 +1148,13 @@ export default function ClonaMiVoz() {
                     onChange={(e) => setVocalGender(e.target.value)}
                     className="w-full rounded-lg bg-landing-bg/60 border border-white/10 focus:border-bougainvillea/50 focus:outline-none p-2.5 text-sm text-white"
                   >
-                    <option value="">Detección automática</option>
+                    <option value="">
+                      {autoGender === 'm'
+                        ? 'Detección automática (voz masculina detectada)'
+                        : autoGender === 'f'
+                        ? 'Detección automática (voz femenina detectada)'
+                        : 'Detección automática'}
+                    </option>
                     <option value="m">Masculino</option>
                     <option value="f">Femenino</option>
                   </select>

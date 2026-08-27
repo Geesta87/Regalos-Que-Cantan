@@ -132,6 +132,28 @@ assertStyleLengths('generate-cloned-voice-preview');
  * lyric — not the default Spanish one. Spanglish gets a code-switched
  * version.
  */
+/**
+ * Prefer the customer's REAL chorus for the preview (2026-08-27). By the
+ * time the preview runs, the full Claude lyrics already exist — hearing
+ * your own voice sing YOUR song's hook converts far better than the
+ * generic 4-liner (which stays as the fallback for lyric-less calls or
+ * unparseable sheets). Grabs the first [Coro]/[Chorus] section; bracket
+ * must close immediately, so [Coro Final] and [Pre-Coro] never match.
+ */
+function extractChorusForPreview(fullLyrics: string | null | undefined): string | null {
+  if (!fullLyrics) return null;
+  const m = fullLyrics.match(/\[(?:Coro|Chorus)\]\s*\n([\s\S]*?)(?=\n\s*\[|$)/i);
+  if (!m) return null;
+  const lines = m[1]
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean);
+  if (lines.length < 2) return null;
+  const chorus = lines.slice(0, 6).join('\n');
+  if (chorus.length < 20 || chorus.length > 500) return null;
+  return `[Chorus]\n${chorus}`;
+}
+
 function buildPreviewLyric(recipientName: string, language: string): string {
   const lang = (language || 'es').toLowerCase();
   const rawName = (recipientName || '').trim();
@@ -410,6 +432,9 @@ serve(async (req) => {
     // Persist which engine this order runs on so the paid full-song path
     // (stripe webhook → generate-cloned-voice-song) reuses the same voice.
     voice_task_id: body.voice_task_id || null,
+    // Persist the gender hint so the paid song matches the preview (it was
+    // preview-only before 2026-08-27 — the full song silently lost it).
+    vocal_gender: vocalGender || null,
   };
 
   let clonedVoiceSongId: string;
@@ -484,7 +509,8 @@ serve(async (req) => {
   // configured. Previously the preview lyric was always Spanish even when
   // an English genre / language was selected, which made the preview
   // sound off-language from the customer's recording + lyrics.
-  const previewLyric = buildPreviewLyric(body.recipient_name!, language);
+  const previewLyric =
+    extractChorusForPreview(body.lyrics) || buildPreviewLyric(body.recipient_name!, language);
   const previewTitle = `preview-${clonedVoiceSongId.slice(0, 8)}`;
 
   // Engine switch (2026-08-08): enrolled Suno Voice (personaId = the Kie
