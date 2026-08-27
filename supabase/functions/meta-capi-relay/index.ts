@@ -12,10 +12,22 @@
 // unauthenticated, it is deliberately dumb: whitelisted event names, hard size
 // caps, no DB access, no secrets echoed, always returns fast.
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+// sendBeacon sends credentialed requests, and a credentialed CORS exchange
+// forbids Access-Control-Allow-Origin '*' — the preflight validates only when
+// we echo the caller's origin and allow credentials (observed live 2026-08-27:
+// 142 OPTIONS, zero POSTs, until this was fixed). The frontend also posts
+// text/plain to avoid preflights entirely; this covers any path that still
+// preflights.
+function corsHeaders(req: Request): Record<string, string> {
+  const origin = req.headers.get('origin') || '*';
+  return {
+    'Access-Control-Allow-Origin': origin,
+    'Access-Control-Allow-Credentials': 'true',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Vary': 'Origin',
+  };
+}
 
 const META_PIXEL_ID = Deno.env.get('META_PIXEL_ID') || '';
 const META_CAPI_ACCESS_TOKEN = Deno.env.get('META_CAPI_ACCESS_TOKEN') || '';
@@ -50,14 +62,14 @@ function sanitizeParams(raw: unknown): Record<string, string | number | boolean>
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return new Response('ok', { headers: corsHeaders(req) });
   }
   if (req.method !== 'POST') {
-    return new Response('method not allowed', { status: 405, headers: corsHeaders });
+    return new Response('method not allowed', { status: 405, headers: corsHeaders(req) });
   }
   if (!META_PIXEL_ID || !META_CAPI_ACCESS_TOKEN) {
     // Misconfiguration is server-side; tell the beacon nothing interesting.
-    return new Response(JSON.stringify({ ok: false }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    return new Response(JSON.stringify({ ok: false }), { status: 200, headers: { ...corsHeaders(req), 'Content-Type': 'application/json' } });
   }
 
   let events: any[] = [];
@@ -65,7 +77,7 @@ Deno.serve(async (req) => {
     const body = await req.json();
     events = Array.isArray(body?.events) ? body.events.slice(0, 10) : [];
   } catch {
-    return new Response(JSON.stringify({ ok: false }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    return new Response(JSON.stringify({ ok: false }), { status: 200, headers: { ...corsHeaders(req), 'Content-Type': 'application/json' } });
   }
 
   const xfwd = req.headers.get('x-forwarded-for') || '';
@@ -103,7 +115,7 @@ Deno.serve(async (req) => {
   }
 
   if (data.length === 0) {
-    return new Response(JSON.stringify({ ok: true, sent: 0 }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    return new Response(JSON.stringify({ ok: true, sent: 0 }), { status: 200, headers: { ...corsHeaders(req), 'Content-Type': 'application/json' } });
   }
 
   const payload: Record<string, any> = { data };
@@ -146,5 +158,5 @@ Deno.serve(async (req) => {
   if (rt && typeof rt.waitUntil === 'function') rt.waitUntil(send);
   else await send;
 
-  return new Response(JSON.stringify({ ok: true, sent: data.length }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+  return new Response(JSON.stringify({ ok: true, sent: data.length }), { status: 200, headers: { ...corsHeaders(req), 'Content-Type': 'application/json' } });
 });

@@ -210,15 +210,26 @@ const relayMetaEvent = (name, params, eventId) => {
       }],
     });
     // sendBeacon can't carry headers — meta-capi-relay is verify_jwt=false
-    // (pinned in supabase/config.toml) for exactly this reason.
+    // (pinned in supabase/config.toml) for exactly this reason. The Blob MUST
+    // be text/plain: an application/json beacon forces a CORS preflight that
+    // browsers then fail (beacons send credentials, which forbids ACAO '*') —
+    // observed live 2026-08-27 as 142 OPTIONS with zero POSTs. text/plain is
+    // a "simple" type: no preflight, always delivered; the relay parses the
+    // JSON body regardless of content-type. sendBeacon also returns false
+    // when the browser refuses to queue — fall back to fetch in that case.
+    let queued = false;
     if (navigator.sendBeacon) {
-      navigator.sendBeacon(CAPI_RELAY_URL, new Blob([payload], { type: 'application/json' }));
-    } else {
+      try {
+        queued = navigator.sendBeacon(CAPI_RELAY_URL, new Blob([payload], { type: 'text/plain' }));
+      } catch { queued = false; }
+    }
+    if (!queued) {
       fetch(CAPI_RELAY_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'text/plain' },
         body: payload,
         keepalive: true,
+        credentials: 'omit',
       }).catch(() => {});
     }
   } catch { /* tracking must never break the page */ }
