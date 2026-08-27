@@ -891,6 +891,79 @@ Deno.serve(async (req: Request) => {
       return json({ success: true, reply: reply || '(no comment)', memo, ideas, brief });
     }
 
+    // ---- The SUBJECT COACH — hook options for the line that decides the open ----
+    // Returns 3-5 subject candidates, each built on a DIFFERENT proven hook
+    // archetype, so the owner can pick one and A/B a second in two clicks.
+    // Grounded in what this list actually opened and bought from.
+    if (action === 'suggest_subjects') {
+      const brief = (body.brief || '').toString().slice(0, 4000);
+      const subject = (body.subject || '').toString().slice(0, 200);
+      if (!brief && !subject) return json({ success: false, error: 'Write a brief (or generate an email) first' }, 400);
+
+      // What we've already sent — so the coach doesn't repeat a used line.
+      const { data: sent } = await admin.from('email_queue')
+        .select('subject').in('status', ['sent', 'sending'])
+        .order('created_at', { ascending: false }).limit(10);
+      const sentLines = (sent || []).map((r: any) => `- "${r.subject}"`).join('\n') || '- (none yet)';
+
+      const SUBJECTS_TOOL = {
+        name: 'emit_subjects',
+        description: 'Emit the subject line candidates.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            subjects: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  text: { type: 'string', description: 'The subject line, <=55 chars.' },
+                  hook: { type: 'string', description: 'Which archetype this uses, 2-4 words (e.g. "reaction promise").' },
+                  preview_text: { type: 'string', description: 'Matching preheader, <=100 chars, complements (never repeats) the subject.' },
+                },
+                required: ['text', 'hook', 'preview_text'],
+              },
+            },
+          },
+          required: ['subjects'],
+        },
+      };
+      const res = await callAnthropic({
+        model: MODEL, max_tokens: 1200,
+        system: `You write subject lines for Regalos Que Cantan — personalized Spanish songs ($29.99) gifted between US-Hispanic family members. Audience: past buyers + warm leads, read on phones, mostly WhatsApp-first Spanish speakers.
+
+Write 4 subject candidates for the email described. Each MUST use a DIFFERENT hook archetype:
+1. NAME THE RECIPIENT — the specific person the reader would gift ("El que más trabaja…", "Abuelita…", "Para el que nunca descansa").
+2. REACTION PROMISE — the emotional payoff, not the product ("…y todos lloran", "la va a escuchar en repeat").
+3. CURIOSITY / QUESTION — an itch they must open to scratch ("¿Y si su canción ya existiera?").
+4. OCCASION / URGENCY — the date and the deadline, only if the brief names an occasion; otherwise use a self-gift or "un martes cualquiera" surprise angle.
+
+Rules: Spanish (English ONLY if the brief targets giftsthatsing.com). <=55 characters. At most ONE emoji, never two. Never ALL-CAPS words, never "GRATIS!!" spam energy — the free-listen proof belongs in the preview_text ("Escúchala completa gratis antes de pagar"). Prices only when the brief centers a deal, and then the CORRECT price from the brief. Don't reuse or lightly rework any recently-sent line. Each candidate gets a preview_text that adds the missing half (proof, price, or deadline — whatever the subject didn't say).
+
+Recently sent (do not repeat):
+${sentLines}
+
+What has actually worked on this list: specific person + milestone + emotional imperative ("Se va a la universidad… dale algo que nunca olvide" — 16 orders, the best send by 5x). Generic product lines underperform.`,
+        tools: [SUBJECTS_TOOL],
+        tool_choice: { type: 'tool', name: 'emit_subjects' },
+        messages: [{
+          role: 'user',
+          content: `THE EMAIL:\n${brief ? `Brief: ${brief}` : ''}${subject ? `\nCurrent subject (beat it, don't echo it): ${subject}` : ''}`,
+        }],
+      });
+      const tu = (res.content || []).find((c: any) => c.type === 'tool_use' && c.name === 'emit_subjects');
+      const subjects = (tu?.input?.subjects || [])
+        .filter((s: any) => (s?.text || '').toString().trim())
+        .slice(0, 5)
+        .map((s: any) => ({
+          text: s.text.toString().slice(0, 80),
+          hook: (s.hook || '').toString().slice(0, 40),
+          preview_text: (s.preview_text || '').toString().slice(0, 140),
+        }));
+      if (!subjects.length) return json({ success: false, error: 'No subjects came back — try again' }, 502);
+      return json({ success: true, subjects });
+    }
+
     if (action === 'generate') {
       const brief = (body.brief || '').toString().trim();
       if (!brief) return json({ success: false, error: 'Brief is required' }, 400);

@@ -8,6 +8,7 @@ import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
   Palette, Loader2, Sparkles, Wand2, Send, Inbox, Copy, Download, Check,
   Monitor, Smartphone, Image as ImageIcon, X, Code, Eye, History, Layers, Images,
+  ChevronDown, ChevronUp,
 } from 'lucide-react';
 import { Card, Badge, SectionLabel, btn } from './ui';
 import EmailBrainstormPanel from './EmailBrainstormPanel';
@@ -113,6 +114,16 @@ const loadSaved = () => {
 };
 const EMPTY_BH = { headline: '', kicker: '', accent: '', sub: '', cta: '', align: 'center', prompt: '' };
 
+// The three real stages of making a campaign, numbered because they ARE a
+// sequence: idea -> design -> review & send.
+const StepLabel = ({ n, title, hint }) => (
+  <div className="flex items-center gap-2 pt-1">
+    <span className="w-5 h-5 rounded-full bg-indigo-600 text-white text-[11px] font-semibold flex items-center justify-center flex-shrink-0">{n}</span>
+    <span className="text-sm font-semibold text-gray-800">{title}</span>
+    {hint && <span className="text-[11px] text-gray-400 truncate">{hint}</span>}
+  </div>
+);
+
 // Platform-level failures (a wall-clock kill, a gateway error) come back as
 // {code, message} with no `error` field. Without this the UI showed a generic
 // "failed" and hid the one detail that explains what happened.
@@ -144,6 +155,13 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
   const [segment, setSegment] = useState(saved?.segment || 'all');
   const [abTest, setAbTest] = useState(saved?.abTest ?? false);
   const [subjectB, setSubjectB] = useState(saved?.subjectB || '');
+  const [subjOpts, setSubjOpts] = useState([]); // subject-coach candidates
+  const [subjBusy, setSubjBusy] = useState(false);
+  // The art tools (hero / banner / posters / tiles) fold away until needed —
+  // open by default only when something is already staged.
+  const [showArt, setShowArt] = useState(
+    !!(saved?.imageUrl || saved?.bannerUrl || (saved?.posters || []).length || (saved?.gallery || []).length)
+  );
 
   const [imageUrl, setImageUrl] = useState(saved?.imageUrl || '');
   const [imagePrompt, setImagePrompt] = useState('');
@@ -247,6 +265,19 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
     setCtaUrl(p.ctaUrl);
     setSegment(p.segment || 'all');
     setPosters(p.posters || []);
+    if (p.posters?.length) setShowArt(true); // staged posters shouldn't hide in a folded panel
+  };
+
+  // Hook options for the subject line — pick one as A, one more click A/Bs it.
+  const suggestSubjects = async () => {
+    if (!brief.trim() && !subject.trim()) { showToast?.('Write a brief or generate the email first'); return; }
+    setSubjBusy(true);
+    try {
+      const r = await call({ action: 'suggest_subjects', brief, subject });
+      if (!r.success) throw new Error(errOf(r, 'Could not suggest subjects'));
+      setSubjOpts(r.subjects || []);
+    } catch (e) { showToast?.(`Error: ${e.message}`); }
+    finally { setSubjBusy(false); }
   };
 
   // The strategist agreed a brief — drop it into the form. Nothing generates or
@@ -262,7 +293,9 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
     setPlan(null);
     // If the agreed idea is the Animado bundle, stage the real customer stills
     // so the email actually SHOWS the thing it's selling.
-    setPosters(/animado/i.test(`${b.label || ''} ${b.brief || ''}`) ? ANIMADO_POSTERS : []);
+    const wantPosters = /animado/i.test(`${b.label || ''} ${b.brief || ''}`);
+    setPosters(wantPosters ? ANIMADO_POSTERS : []);
+    if (wantPosters) setShowArt(true);
   }, []);
 
   const pushHistory = (h, subj) => {
@@ -596,6 +629,7 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
     a.click();
   };
 
+  const artCount = (imageUrl ? 1 : 0) + (bannerUrl ? 1 : 0) + posters.length + gallery.length;
   const generating = stage === 'design' || stage === 'polish' || stage === 'auto' || stage === 'art';
   const stageLabel = stage === 'auto' ? 'Choosing the style, photo & headline…'
     : stage === 'art' ? 'Making the banner & tiles…'
@@ -626,6 +660,7 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
         {/* ---- LEFT: controls ---- */}
         <div className="lg:col-span-2 space-y-4">
+          <StepLabel n={1} title="The idea" hint="what you're selling & the angle" />
           <Card className="p-4">
             <SectionLabel className="mb-2">Quick start — pick an offering</SectionLabel>
             <div className="grid grid-cols-3 gap-1.5">
@@ -653,8 +688,11 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
               placeholder="What is this email selling, to whom, with what angle? Pick a preset above or write your own — the brand facts, prices and proof points are always built in."
               className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 text-gray-700 bg-white focus:outline-none focus:border-indigo-400 resize-y" />
             <p className="text-[11px] text-gray-400 mt-1.5">Your "This week's push" (top of Creative Studio) is factored in automatically.</p>
+          </Card>
 
-            <SectionLabel className="mt-3 mb-2">Visual style</SectionLabel>
+          <StepLabel n={2} title="The look" hint="style, colors & photos" />
+          <Card className="p-4">
+            <SectionLabel className="mb-2">Visual style</SectionLabel>
             <select value={styleId} onChange={(e) => setStyleId(e.target.value)}
               className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 text-gray-700 bg-white focus:outline-none focus:border-indigo-400">
               {STYLES.map((s) => <option key={s.id} value={s.id}>{s.label} — {s.blurb}</option>)}
@@ -676,6 +714,11 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
             </label>
           </Card>
 
+          <button onClick={() => setShowArt((v) => !v)} className={btn.ghost + ' w-full'}>
+            {showArt ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+            Photos &amp; banner{artCount ? ` · ${artCount} staged` : ' (optional)'}
+          </button>
+          {showArt && (<>
           <Card className="p-4">
             <SectionLabel className="mb-2">Hero image (optional)</SectionLabel>
             {imageUrl ? (
@@ -888,6 +931,7 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
               )}
             </Card>
           )}
+          </>)}
 
           <div className="space-y-2">
             <button onClick={() => autoDesign()} disabled={!!stage || !brief.trim()} className={btn.accent + ' w-full !py-3'}>
@@ -942,6 +986,7 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
         <div className="lg:col-span-3 space-y-3">
           {html ? (
             <>
+              <StepLabel n={3} title="Review & send" hint="subject, test, audience" />
               {editingId && (
                 <div className="flex items-center gap-2 text-xs text-indigo-700 bg-indigo-50 border border-indigo-100 rounded-lg px-3 py-2">
                   <Palette size={13} /> Editing a queued draft — "Save changes" updates it in the Emails queue.
@@ -972,6 +1017,34 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
                       className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-1.5 text-gray-800 bg-white focus:outline-none focus:border-indigo-400" />
                   </div>
                 )}
+
+                {/* The subject coach: 4 hook archetypes, grounded in what this
+                    list has actually opened and bought from. "Use" sets A;
+                    "Test as B" fills B and turns the A/B on. */}
+                <div className="mt-2">
+                  <button onClick={suggestSubjects} disabled={subjBusy} className={btn.ghost + ' !px-3 !py-1.5 !text-xs'}>
+                    {subjBusy ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+                    {subjOpts.length ? 'Suggest different subjects' : 'Suggest subject lines'}
+                  </button>
+                  {subjOpts.length > 0 && (
+                    <div className="mt-2 space-y-1.5">
+                      {subjOpts.map((s) => (
+                        <div key={s.text} className="flex items-start gap-2.5 text-xs bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-2">
+                          <div className="flex-1 min-w-0">
+                            <span className="block text-gray-800">{s.text}</span>
+                            <span className="block text-[10px] text-gray-400 mt-0.5">
+                              {s.hook}{s.preview_text ? ` — ${s.preview_text}` : ''}
+                            </span>
+                          </div>
+                          <button onClick={() => { setSubject(s.text); if (s.preview_text) setPreviewText(s.preview_text); }}
+                            className="text-indigo-600 hover:text-indigo-800 font-medium whitespace-nowrap mt-0.5">Use</button>
+                          <button onClick={() => { setSubjectB(s.text); setAbTest(true); }}
+                            className="text-gray-500 hover:text-gray-800 font-medium whitespace-nowrap mt-0.5" title="Half the list gets this as subject B">Test as B</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </Card>
 
               <div className="flex flex-wrap items-center gap-2">
@@ -1043,6 +1116,11 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
                 </button>
                 <span className="text-[11px] text-gray-400">Nothing goes to your list until you approve it in the Emails section.</span>
               </div>
+              {segment === 'all' && (
+                <p className="text-[11px] text-gray-400">
+                  Tip: your best campaign went to <span className="font-medium text-gray-500">Everyone incl. non-buyers</span> — for occasion pushes, wider usually wins.
+                </p>
+              )}
             </>
           ) : (
             <div className="flex flex-col items-center justify-center text-center border border-dashed border-gray-200 rounded-xl py-24 px-8">
