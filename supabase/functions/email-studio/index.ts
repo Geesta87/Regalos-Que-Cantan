@@ -555,6 +555,17 @@ function finalizeHtml(rawHtml: string, style: Style): string {
     html = html.replace(/<\/body>/i, `${complianceFooter(style)}</body>`);
     if (!html.includes('{{UNSUB_URL}}')) html += complianceFooter(style);
   }
+  // Lock the designed palette. The model's generated dark-mode CSS is
+  // unreliable — it flips section backgrounds dark but its text overrides lose
+  // to the inline styles, so in ANY dark-mode context (the studio preview on a
+  // dark OS, Apple Mail dark mode, forced-dark browser extensions) the email
+  // renders dark-on-dark. Neutralize the media query (unknown value → never
+  // matches) and declare light-only so clients keep the email exactly as
+  // designed. Premium DTC brands ship light-locked emails for this reason.
+  html = html.replace(/prefers-color-scheme\s*:\s*dark/gi, 'prefers-color-scheme: locked-light');
+  if (!/name="color-scheme"/i.test(html)) {
+    html = html.replace(/<head([^>]*)>/i, '<head$1><meta name="color-scheme" content="only light"><meta name="supported-color-schemes" content="light"><meta name="darkreader-lock">');
+  }
   return html;
 }
 

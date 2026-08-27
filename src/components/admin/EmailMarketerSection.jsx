@@ -5,6 +5,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Mail, RefreshCw, Loader2, ArrowLeft, Check, X, Send, Users, Palette, FlaskConical } from 'lucide-react';
 import { Badge, Stat, btn } from './ui';
+import { previewDoc } from './EmailStudioSection';
 
 const FN = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/email-marketer-admin`;
 
@@ -128,7 +129,7 @@ export default function EmailMarketerSection({ accessToken, showToast, onEditInS
         <h2 className="text-lg font-semibold text-gray-900 mb-1">{sel.subject}</h2>
         {sel.preview_text && <p className="text-sm text-gray-500 mb-3">{sel.preview_text}</p>}
 
-        <iframe title="preview" srcDoc={(sel.body_html || '').replace(/\{\{UNSUB_URL\}\}/g, '#')}
+        <iframe title="preview" srcDoc={previewDoc(sel.body_html)}
           className="w-full border border-gray-200 rounded-xl bg-white" style={{ height: 560 }} />
 
         {sel.status === 'sending' || sel.status === 'sent' ? (

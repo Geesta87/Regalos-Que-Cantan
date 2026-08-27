@@ -114,6 +114,16 @@ const loadSaved = () => {
 };
 const EMPTY_BH = { headline: '', kicker: '', accent: '', sub: '', cta: '', align: 'center', prompt: '' };
 
+// Preview an email in its DESIGNED palette. Generated emails carry a
+// half-broken dark-mode stylesheet (backgrounds flip dark, text overrides lose
+// to inline styles → dark-on-dark on a dark OS); the server now neutralizes it
+// at finalize, and this does the same for anything older, plus opts the iframe
+// out of browser auto-darkening.
+export const previewDoc = (h) => (h || '')
+  .replace(/\{\{UNSUB_URL\}\}/g, '#')
+  .replace(/prefers-color-scheme\s*:\s*dark/gi, 'prefers-color-scheme: locked-light')
+  .replace(/<head([^>]*)>/i, '<head$1><meta name="color-scheme" content="only light"><meta name="darkreader-lock">');
+
 // The three real stages of making a campaign, numbered because they ARE a
 // sequence: idea -> design -> review & send.
 const StepLabel = ({ n, title, hint }) => (
@@ -1105,7 +1115,7 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
                       <span className="flex items-center gap-2 text-sm text-gray-600"><Loader2 size={16} className="animate-spin" /> {stageLabel}</span>
                     </div>
                   )}
-                  <iframe title="email preview" srcDoc={html.replace(/\{\{UNSUB_URL\}\}/g, '#')}
+                  <iframe title="email preview" srcDoc={previewDoc(html)}
                     className="bg-white border border-gray-200 rounded-lg transition-all"
                     style={{ width: DEVICE_WIDTHS[device], maxWidth: '100%', height: 620 }} />
                 </div>
