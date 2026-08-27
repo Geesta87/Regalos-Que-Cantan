@@ -345,6 +345,22 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
     finally { setStage(''); }
   };
 
+  // Same concept, different look. Picking a new style while an email is on
+  // screen used to do nothing (the dropdown only fed the NEXT generate, and
+  // "Design it for me" even overrode it) — now it re-skins the current email:
+  // copy, photos and links stay identical, only the visual system changes.
+  const restyleEmail = async (newStyleId) => {
+    const s = STYLES.find((x) => x.id === newStyleId);
+    setError(''); setStage('restyle');
+    try {
+      const r = await call({ action: 'restyle', html, style_id: newStyleId, style_note: styleNote || undefined });
+      if (!r.success) throw new Error(errOf(r, 'Restyle failed'));
+      setHtml(r.html); pushHistory(r.html, subject);
+      showToast?.(`Restyled to ${s?.label || newStyleId} — flip back anytime in Recent versions.`);
+    } catch (e) { setError(e.message); showToast?.(`Error: ${e.message}`); }
+    finally { setStage(''); }
+  };
+
   const sendTestToMe = async () => {
     setBusy(true);
     try {
@@ -635,6 +651,7 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
     : stage === 'art' ? 'Making the banner & tiles…'
     : stage === 'design' ? 'Designing…'
     : stage === 'polish' ? 'Art-director polish…'
+    : stage === 'restyle' ? 'Re-styling — same email, new look…'
     : stage === 'refine' ? 'Applying your change…' : '';
 
   return (
@@ -693,10 +710,16 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
           <StepLabel n={2} title="The look" hint="style, colors & photos" />
           <Card className="p-4">
             <SectionLabel className="mb-2">Visual style</SectionLabel>
-            <select value={styleId} onChange={(e) => setStyleId(e.target.value)}
-              className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 text-gray-700 bg-white focus:outline-none focus:border-indigo-400">
+            <select value={styleId} disabled={!!stage}
+              onChange={(e) => { const v = e.target.value; setStyleId(v); if (html) restyleEmail(v); }}
+              className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 text-gray-700 bg-white focus:outline-none focus:border-indigo-400 disabled:opacity-50">
               {STYLES.map((s) => <option key={s.id} value={s.id}>{s.label} — {s.blurb}</option>)}
             </select>
+            {html && (
+              <p className="text-[11px] text-gray-400 mt-1.5">
+                Picking a different style re-skins the email on screen — same copy &amp; photos, new look. Undo via Recent versions.
+              </p>
+            )}
 
             <SectionLabel className="mt-3 mb-2">Color / theme override (optional)</SectionLabel>
             <input value={styleNote} onChange={(e) => setStyleNote(e.target.value)}

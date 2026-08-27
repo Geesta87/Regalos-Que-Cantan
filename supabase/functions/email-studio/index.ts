@@ -1155,6 +1155,43 @@ ${catalogText}`,
       return json({ success: true, html: finalizeHtml(tu.input.html, style) });
     }
 
+    // ---- RESTYLE — same concept, different visual style ----
+    // The owner picks another style from the dropdown while an email exists:
+    // re-skin the CURRENT email into the new style's visual system without
+    // touching the concept. Copy, images, links and section order are sacred.
+    if (action === 'restyle') {
+      const html = (body.html || '').toString();
+      if (!html) return json({ success: false, error: 'No email to restyle — generate one first' }, 400);
+      const data = await callAnthropic({
+        model: MODEL, max_tokens: 9000,
+        system: `You are the art director for Regalos Que Cantan's email studio. Your ONLY job: re-skin the given marketing email into a different visual style.
+
+${styleBrief(style)}${styleNoteBlock(body.style_note)}
+
+KEEP IDENTICAL — this is the same email, only re-dressed:
+- Every word of copy (headlines, body, CTA labels, legal footer, {{UNSUB_URL}}).
+- Every image: same <img> src URLs, same order, same role (a full-bleed banner stays a full-bleed banner).
+- Every link href.
+- The section order and overall structure.
+
+CHANGE to the new style above:
+- The full color story: backgrounds, surfaces, text colors, accent — every section re-mapped to the new palette (alternate section backgrounds like the original did, using the new palette's colors).
+- Typography: the new style's heading + body font families and its Google Fonts <link> in <head> (replace the old one).
+- Decorative treatments: borders, dividers, button shape/colors, badge/pill styling — whatever the new style's craft calls for.
+- Keep everything email-safe: table layout, inline styles, MSO/VML button fallbacks, 600px width, dark-mode classes if present.
+
+Emit the COMPLETE updated HTML document.`,
+        tools: [EMIT_HTML_TOOL], tool_choice: { type: 'tool', name: 'emit_email_html' },
+        messages: [{
+          role: 'user',
+          content: `Re-skin this email into the "${style.name}" style. Same email, new visual system:\n\n${html}`,
+        }],
+      });
+      const tu2 = (data.content || []).find((c: any) => c.type === 'tool_use');
+      if (!tu2?.input?.html) return json({ success: false, error: 'Model returned no HTML' }, 502);
+      return json({ success: true, html: finalizeHtml(tu2.input.html, style), style_name: style.name });
+    }
+
     if (action === 'send_test') {
       const html = (body.html || '').toString();
       const subject = (body.subject || 'Email Studio draft').toString();
