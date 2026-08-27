@@ -58,7 +58,7 @@ const STYLES = [
 const PRESETS = [
   {
     id: 'song', label: 'Personalized song', desc: 'The core $29.99 offer', styleId: 'dark_luxury', ctaUrl: SITE,
-    brief: `Promo email for the core product: a personalized Spanish song ($29.99) written for ONE specific person, in their favorite genre (corrido, banda, norteño, bachata, mariachi, cumbia). Evergreen angle — "sorpréndelo/a un día cualquiera, sin razón". Lean hard on "Escúchala completa GRATIS antes de pagar" and "lista en ~3 minutos". CTA: create their song now.`,
+    brief: `Promo email for the core product: a personalized Spanish song ($29.99) written for ONE specific person, in their favorite genre (corrido, banda, norteño, bachata, mariachi, cumbia). Evergreen angle — "sorpréndelo/a un día cualquiera, sin razón". Lean hard on "Escúchala GRATIS antes de pagar" and "lista en ~3 minutos". CTA: create their song now.`,
   },
   {
     id: 'two_pack', label: '2-Pack', desc: '$39.99 — two songs', styleId: 'warm_editorial', ctaUrl: SITE,
@@ -71,7 +71,7 @@ const PRESETS = [
   {
     id: 'animado', label: 'Canción + Animado', desc: '$59.99 — película animada', styleId: 'midnight_serenade', ctaUrl: SITE,
     posters: ANIMADO_POSTERS,
-    brief: `Promo email for the CANCIÓN + ANIMADO bundle ($59.99) — our most emotional offer, sold as ONE gift instead of an add-on. What it is: we take a real photo of the person, turn them into an animated character, and build a short animated MOVIE of their story set to their own personalized song. Angle: "no solo va a escuchar su canción — se va a VER en ella". Lead with the reveal moment: the face when they recognize themselves on screen. Use the poster row of real customer stills as the proof that this is real. Anchor the price: the song alone is $29.99, so the movie is the part that turns a gift into a keepsake. Keep the proof points — escúchala completa GRATIS antes de pagar, lista en ~3 minutos. CTA: create the song and add the animated movie.`,
+    brief: `Promo email for the CANCIÓN + ANIMADO bundle ($59.99) — our most emotional offer, sold as ONE gift instead of an add-on. What it is: we take a real photo of the person, turn them into an animated character, and build a short animated MOVIE of their story set to their own personalized song. Angle: "no solo va a escuchar su canción — se va a VER en ella". Lead with the reveal moment: the face when they recognize themselves on screen. Use the poster row of real customer stills as the proof that this is real. Anchor the price: the song alone is $29.99, so the movie is the part that turns a gift into a keepsake. Keep the proof points — escúchala GRATIS antes de pagar, lista en ~3 minutos. CTA: create the song and add the animated movie.`,
   },
   {
     id: 'video_addon', label: 'Video con foto', desc: '$9.99 — top add-on', styleId: 'romantico_calido', ctaUrl: SITE, segment: 'no_video',

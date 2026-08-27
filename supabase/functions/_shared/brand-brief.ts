@@ -50,7 +50,7 @@ export const BRAND_BRIEF = `THE BUSINESS — this is a REAL product with REAL ad
 WHAT WE SELL: a personalized, studio-quality Spanish song written for ONE specific person and occasion, in the genre they love (corrido, banda, norteño, bachata, mariachi, cumbia…). Ordered online at ${OFFERS.site}.
 
 PROOF POINTS — pair the EMOTION with ONE of these in each creative (emotion hooks the scroll, the proof point closes the sale — never lead cold with a feature, but don't leave it out either):
-- "Escúchala GRATIS antes de pagar" — you hear the COMPLETE finished song first, then decide. This is our #1 objection-killer; almost no competitor can say it. Lean on it often.
+- "Escúchala GRATIS antes de pagar" — you listen first, then decide. This is our #1 objection-killer; almost no competitor can say it. Lean on it often. NEVER write "completa" (customers hear a free sample before paying, not the complete song — the full 3-4 min song unlocks at purchase).
 - "Lista en ~3 minutos" — not days of waiting. An instant, last-minute-proof gift.
 - "Tuya para siempre" — yours to keep, download and replay forever.
 - "Hecha solo para esa persona" — their name, their story, their genre. One of a kind.

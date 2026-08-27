@@ -54,7 +54,7 @@ PLATFORMS
 - giftsthatsing.com — the English platform, from $24.99. Pitched IN SPANISH to our list as "for your English-speaking family".
 
 PROOF POINTS (the sale closers — pair the emotion with exactly ONE)
-- "Escúchala completa GRATIS antes de pagar" — our #1 objection killer. Almost no competitor can say it.
+- "Escúchala GRATIS antes de pagar" — our #1 objection killer. Almost no competitor can say it. (Never "completa": customers hear a free sample, not the complete song.)
 - "Lista en ~3 minutos" — an instant, last-minute-proof gift.
 - "Hecha solo para esa persona" — their name, their story, their genre.
 - "Tuya para siempre" — download it and keep it.
@@ -143,7 +143,7 @@ THE PRODUCT ANGLE
 THE PROOF ANGLE
 - A real customer's story, told with their permission. Real reactions, real songs.
 - "The story box is the whole product" — teach them to write a better story and their song gets better. Genuinely useful, and it fixes the 15-20% of orders that arrive with an empty story box.
-- The objection email: "¿y si no me gusta?" → escúchala completa gratis antes de pagar.
+- The objection email: "¿y si no me gusta?" → escúchala gratis antes de pagar.
 
 THE LIST-MECHANICS ANGLE
 - Win-back for buyers who went quiet — no discount, pure warmth, name the next person to surprise.

@@ -173,7 +173,7 @@ const BLUEPRINT = `STRUCTURE — build a HIGH-CONVERTING product email (a great 
 1. Hidden preheader (preview text + &nbsp;‌ spacer entities).
 2. HEADER: the "Regalos Que Cantan" wordmark, understated (small, a tiny ♪ or short rule) — not a loud banner.
 3. HERO: an optional tiny eyebrow/kicker (uppercase, letter-spaced, accent); a LARGE emotional headline (~38–46px) with ONE italic/accent emphasis line; ONE short subhead line that turns the emotion into the offer. That's the whole hook — no paragraphs here.
-4. PRIMARY CTA, HIGH (above the fold): a bold bulletproof pill button (solid color + subtle 2-tone gradient + soft shadow, generous padding), with a small risk-reversal line right under it: "Escúchala completa GRATIS antes de pagar."
+4. PRIMARY CTA, HIGH (above the fold): a bold bulletproof pill button (solid color + subtle 2-tone gradient + soft shadow, generous padding), with a small risk-reversal line right under it: "Escúchala GRATIS antes de pagar."
 5. OFFER / BENEFITS: 3 ultra-short benefits (≤6 words each) as a scannable row or tight list with SMALL tasteful markers (a dot/rule, not a big emoji each) — what they get. Minimal words.
 6. TRUST strip: the real proof points as small badges — "GRATIS antes de pagar · Lista en ~3 min · Tuya para siempre". NO invented review counts, stars or testimonials.
 7. PRICE: state it clearly and confidently as part of the value (e.g. "Desde $29.99" or the offer's price) — impossible to miss.
@@ -300,7 +300,7 @@ COPY CRAFT — write like a top DTC direct-response marketer, in natural US-Hisp
 - BODY: 1-2 SHORT punchy lines only (≤35 words total). Sell the emotion and the angle, then get out of the way. NO story paragraphs — the reader is deciding to BUY, not to read.
 - BENEFITS: exactly 3 ultra-short scannable benefits (≤6 words each). Concrete and truthful.
 - URGENCY: a short line tied to the date when there is one ("Solo faltan 9 días para el Día del Padre"); empty for evergreen sends.
-- RISK-REVERSAL is the hero proof point: lean on "Escúchala completa GRATIS antes de pagar" near the CTA.
+- RISK-REVERSAL is the hero proof point: lean on "Escúchala GRATIS antes de pagar" near the CTA. NEVER say "completa" — customers hear a free sample before paying, not the complete song.
 - TRUTHFUL ONLY: use the real proof points (escúchala gratis antes de pagar / lista en ~3 min / hecha solo para esa persona / tuya para siempre). NEVER invent review counts, star ratings, testimonials or customer numbers.
 - CTA: action + outcome ("Crear su canción", "Escuchar un ejemplo gratis"). Assume they're one tap from buying.
 

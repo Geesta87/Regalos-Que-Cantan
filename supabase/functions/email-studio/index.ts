@@ -279,7 +279,7 @@ const COMPONENT_LIBRARY = `PREMIUM COMPONENT REFERENCE LIBRARY — structural pa
 <tr><td style="padding:0 28px 26px;"><table role="presentation" width="100%"><tr>
   <td style="border-left:4px solid #ACCENT;padding:16px 20px;background:#ACCENT0F;border-radius:0 10px 10px 0;">
     <p style="margin:0 0 5px;font-size:12px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#ACCENT;">SIN RIESGO</p>
-    <p style="margin:0;font-size:15px;line-height:1.65;color:#INK;">Escúchala completa GRATIS antes de pagar.</p>
+    <p style="margin:0;font-size:15px;line-height:1.65;color:#INK;">Escúchala GRATIS antes de pagar.</p>
   </td>
 </tr></table></td></tr>
 
@@ -346,15 +346,17 @@ Outlook shows only the FIRST frame of a GIF — that frame must stand alone.
   <p style="margin:12px 0 0;font-size:13px;color:#SUB;">Escucha un ejemplo de 30 segundos</p>
 </td></tr>
 
-── NOW-PLAYING CARD (our product IS a song — this is the closest thing we have to a product shot; use it often) ──
+── NOW-PLAYING CARD (our product IS a song — this is the closest thing we have to a product shot; use it often.
+   Email cannot play audio, so the card is a TEASER: the play glyph AND the title MUST be <a> links to the main CTA URL —
+   a tap anywhere that looks playable opens the site. Never ship the card without those links) ──
 <tr><td style="padding:6px 24px 30px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0">
   <tr><td bgcolor="#SURFACE" style="border:1px solid #ACCENT33;border-radius:16px;padding:20px 22px;">
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
       <td width="46" valign="middle">
-        <table role="presentation" cellpadding="0" cellspacing="0"><tr><td width="42" height="42" align="center" valign="middle" bgcolor="#ACCENT" style="border-radius:21px;font-size:16px;color:#INK_ON_ACCENT;">&#9654;</td></tr></table>
+        <table role="presentation" cellpadding="0" cellspacing="0"><tr><td width="42" height="42" align="center" valign="middle" bgcolor="#ACCENT" style="border-radius:21px;font-size:16px;"><a href="BUTTON_URL" style="display:block;color:#INK_ON_ACCENT;text-decoration:none;">&#9654;</a></td></tr></table>
       </td>
       <td valign="middle" style="padding-left:14px;">
-        <p style="margin:0;font-size:15px;font-weight:700;color:#INK;">Para mi mamá, Rosa</p>
+        <p style="margin:0;font-size:15px;font-weight:700;"><a href="BUTTON_URL" style="color:#INK;text-decoration:none;">Para mi mamá, Rosa</a></p>
         <p style="margin:3px 0 0;font-size:12px;color:#SUB;">Corrido · 2:58</p>
       </td>
       <td align="right" valign="middle" style="font-size:0;line-height:0;">
@@ -949,7 +951,7 @@ Write 4 subject candidates for the email described. Each MUST use a DIFFERENT ho
 3. CURIOSITY / QUESTION — an itch they must open to scratch ("¿Y si su canción ya existiera?").
 4. OCCASION / URGENCY — the date and the deadline, only if the brief names an occasion; otherwise use a self-gift or "un martes cualquiera" surprise angle.
 
-Rules: Spanish (English ONLY if the brief targets giftsthatsing.com). <=55 characters. At most ONE emoji, never two. Never ALL-CAPS words, never "GRATIS!!" spam energy — the free-listen proof belongs in the preview_text ("Escúchala completa gratis antes de pagar"). Prices only when the brief centers a deal, and then the CORRECT price from the brief. Don't reuse or lightly rework any recently-sent line. Each candidate gets a preview_text that adds the missing half (proof, price, or deadline — whatever the subject didn't say).
+Rules: Spanish (English ONLY if the brief targets giftsthatsing.com). <=55 characters. At most ONE emoji, never two. Never ALL-CAPS words, never "GRATIS!!" spam energy — the free-listen proof belongs in the preview_text ("Escúchala gratis antes de pagar" — NEVER claim they can hear the COMPLETE song free; "completa" is banned). Prices only when the brief centers a deal, and then the CORRECT price from the brief. Don't reuse or lightly rework any recently-sent line. Each candidate gets a preview_text that adds the missing half (proof, price, or deadline — whatever the subject didn't say).
 
 Recently sent (do not repeat):
 ${sentLines}
