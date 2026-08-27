@@ -175,6 +175,64 @@ export const getStoredFbc = () => {
   return '';
 };
 
+// ─── Meta CAPI relay (Phase B, 2026-08-26) ──────────────────────────────────
+// Every pixel event we fire also gets beaconed to the meta-capi-relay edge
+// function with the SAME eventID, so Meta receives a server-side copy that
+// survives ad blockers / ITP and dedupes against the browser one. Purchase and
+// InitiateCheckout are NOT relayed here — stripe-webhook and create-checkout
+// already send those server-side with richer match data.
+const CAPI_RELAY_URL = `${SUPABASE_URL}/functions/v1/meta-capi-relay`;
+
+const readCookie = (name) => {
+  try {
+    const m = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
+    return m ? decodeURIComponent(m[1]) : '';
+  } catch { return ''; }
+};
+
+const mintEventId = () => {
+  try {
+    if (self.crypto && crypto.randomUUID) return crypto.randomUUID();
+  } catch { /* ignore */ }
+  return 'ev_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+};
+
+const relayMetaEvent = (name, params, eventId) => {
+  try {
+    const payload = JSON.stringify({
+      events: [{
+        name,
+        id: eventId,
+        url: window.location.href,
+        params: params || {},
+        fbp: readCookie('_fbp'),
+        fbc: readCookie('_fbc') || getStoredFbc(),
+      }],
+    });
+    // sendBeacon can't carry headers — meta-capi-relay is verify_jwt=false
+    // (pinned in supabase/config.toml) for exactly this reason.
+    if (navigator.sendBeacon) {
+      navigator.sendBeacon(CAPI_RELAY_URL, new Blob([payload], { type: 'application/json' }));
+    } else {
+      fetch(CAPI_RELAY_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: payload,
+        keepalive: true,
+      }).catch(() => {});
+    }
+  } catch { /* tracking must never break the page */ }
+};
+
+// Relay the landing PageView the inline pixel snippet fired (index.html mints
+// the id into window.__rqcPV before the app bundle loads). Once only.
+try {
+  if (typeof window !== 'undefined' && window.__rqcPV && window.__rqcPV.id && !window.__rqcPV.relayed) {
+    window.__rqcPV.relayed = true;
+    relayMetaEvent('PageView', {}, window.__rqcPV.id);
+  }
+} catch { /* ignore */ }
+
 // ─── TikTok click-ID (ttclid) capture ───────────────────────────────────────
 // TikTok's equivalent of fbclid. It lands on the URL (?ttclid=...) when a user
 // clicks a TikTok ad, and is what the server-side Events API needs to attribute
@@ -423,27 +481,30 @@ export const trackStep = async (step, metadata = {}) => {
       };
       
       const pixelData = pixelEventMap[step];
+      // Every event carries a minted eventID so the server-side copy (the
+      // meta-capi-relay beacon below, or create-checkout's InitiateCheckout)
+      // dedupes against the browser one in Events Manager.
+      const evId = mintEventId();
       if (pixelData) {
-        // checkout_clicked: mint a dedup id shared with the server-side CAPI
-        // InitiateCheckout (create-checkout). api.js reads it back from
-        // sessionStorage and passes it as icEventId, so browser + server
-        // copies of this event count once in Events Manager.
-        let fbqOpts;
         if (step === 'checkout_clicked') {
+          // Persist the id for api.js → create-checkout, which sends the
+          // server-side InitiateCheckout with the same event_id.
           try {
-            const icId = crypto.randomUUID();
-            sessionStorage.setItem('rqc_ic_event_id', JSON.stringify({ id: icId, expiresAt: Date.now() + 30 * 60 * 1000 }));
-            fbqOpts = { eventID: icId };
+            sessionStorage.setItem('rqc_ic_event_id', JSON.stringify({ id: evId, expiresAt: Date.now() + 30 * 60 * 1000 }));
           } catch { /* ignore — event still fires, just without dedup */ }
         }
-        window.fbq('track', pixelData.event, {
-          ...pixelData.params,
-          ...metadata
-        }, fbqOpts);
+        const mergedParams = { ...pixelData.params, ...metadata };
+        window.fbq('track', pixelData.event, mergedParams, { eventID: evId });
+        // InitiateCheckout's server copy comes from create-checkout (with
+        // hashed email etc.) — don't relay it a second time from here.
+        if (pixelData.event !== 'InitiateCheckout') {
+          relayMetaEvent(pixelData.event, mergedParams, evId);
+        }
         console.log(`[Meta Pixel] ${pixelData.event}:`, step);
       } else {
         // Custom event for unmapped steps
-        window.fbq('trackCustom', 'FunnelStep', { step: step, ...metadata });
+        window.fbq('trackCustom', 'FunnelStep', { step: step, ...metadata }, { eventID: evId });
+        relayMetaEvent('FunnelStep', { step: step, ...metadata }, evId);
       }
     }
     // ========== END META PIXEL ==========

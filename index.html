@@ -84,7 +84,11 @@
       s.parentNode.insertBefore(t,s)}(window, document,'script',
       'https://connect.facebook.net/en_US/fbevents.js');
       fbq('init', '1296066869001492');
-      fbq('track', 'PageView');
+      // Mint a dedup id for the landing PageView and stash it — tracking.js
+      // relays the same event server-side (meta-capi-relay) with this id, so
+      // browser + server copies count once in Events Manager.
+      window.__rqcPV = { id: (self.crypto && crypto.randomUUID) ? crypto.randomUUID() : 'pv_' + Date.now() + '_' + Math.random().toString(36).slice(2) };
+      fbq('track', 'PageView', {}, { eventID: window.__rqcPV.id });
     </script>
     <!-- End Meta Pixel Code -->
 

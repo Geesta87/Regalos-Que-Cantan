@@ -1065,3 +1065,12 @@ verify_jwt = true
 # old server-side and writes only sms_notify_phone/_requested_at with the
 # service role. Frontend-only caller → default gate stays ON.
 verify_jwt = true
+
+[functions.meta-capi-relay]
+# Web-only Conversions API relay (Week-0 measurement, Phase B 2026-08-26).
+# Fired from public customer pages via navigator.sendBeacon, which cannot
+# attach any header — same pattern as track-song-access. Endpoint is
+# deliberately dumb: whitelisted Meta event names, hard size caps, no DB
+# access; it only forwards deduped pixel events to Meta's Graph API with the
+# client IP/UA. Must stay verify_jwt = false or every beacon 401s.
+verify_jwt = false
