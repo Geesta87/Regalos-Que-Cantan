@@ -36,16 +36,21 @@ import {
   findCustomerVoices,
   uploadCustomerVoice,
   generateClonedVoicePreview,
+  setPreviewGenre,
   createClonamivozCheckout,
   bypassClonamivozPayment,
   getClonedVoiceStatus,
   enrollVoice,
 } from '../services/clonamivoz';
 import { blobToWav } from '../components/clonamivoz/wav';
+import { analyzeMelody } from '../components/clonamivoz/melody';
 
 const STAGES = {
   INTRO: 'intro',
   RECORD: 'record',
+  // Monotone check (2026-08-27): a flat take produces a monotone clone, so
+  // we measure melodic range before enrolling and offer a re-record.
+  MELODY_WARNING: 'melody_warning',
   // Suno Voice enrollment (2026-08-08): real voice cloning between the
   // sample recording and the story/configure step. See startEnrollment().
   ENROLL_UPLOADING: 'enroll_uploading',
@@ -162,6 +167,10 @@ export default function ClonaMiVoz() {
   // Generation outputs
   const [clonedVoiceSongId, setClonedVoiceSongId] = useState(null);
   const [previewAudioUrl, setPreviewAudioUrl] = useState(null);
+  // Genre A/B (2026-08-27): previews already generated this session, keyed
+  // by genre slug — replayable instantly while comparing genres.
+  const [previewCache, setPreviewCache] = useState({});
+  const [switchError, setSwitchError] = useState(null);
   const [audioUrls, setAudioUrls] = useState([]);
   const [finalTitle, setFinalTitle] = useState('');
 
@@ -233,10 +242,33 @@ export default function ClonaMiVoz() {
     };
   }, []);
 
-  function handleRecordingComplete(blob, durationMs) {
+  // Melodic-range verdict for the last main recording (null = not analyzed).
+  const [melodyInfo, setMelodyInfo] = useState(null);
+
+  async function handleRecordingComplete(blob, durationMs) {
     setAudioBlob(blob);
     setAudioDurationMs(durationMs);
+
+    // Monotone gate: measure melodic range BEFORE spending enrollment/Kie
+    // quota. Fail-open — any analysis problem proceeds as normal.
+    try {
+      const verdict = await analyzeMelody(blob);
+      if (verdict.ok && verdict.monotone) {
+        setMelodyInfo(verdict);
+        setStage(STAGES.MELODY_WARNING);
+        return;
+      }
+    } catch {
+      /* fail-open */
+    }
+    setMelodyInfo(null);
     startEnrollment(blob, durationMs);
+  }
+
+  /** Customer chose to keep the flat take anyway. */
+  function continueDespiteMonotone() {
+    setMelodyInfo(null);
+    startEnrollment(audioBlob, audioDurationMs);
   }
 
   // -------------------------------------------------------------------
@@ -547,9 +579,79 @@ export default function ClonaMiVoz() {
   }
 
   // -------------------------------------------------------------------
+  // Genre A/B on the preview screen (2026-08-27, owner request): compare
+  // how the same cloned voice sounds across genres before paying.
+  // Cached genres replay instantly (a set-genre call keeps the row's
+  // genre honest for the paid song); new genres re-render the preview.
+  // -------------------------------------------------------------------
+  async function switchPreviewGenre(slug) {
+    if (slug === genreSlug || stage !== STAGES.PREVIEW_READY) return;
+    setSwitchError(null);
+    const prevSlug = genreSlug;
+    setGenreSlug(slug);
+
+    if (previewCache[slug]) {
+      // Already rendered this session — flip the row's genre (no Kie call)
+      // and replay the cached audio.
+      const res = await setPreviewGenre({ clonedVoiceSongId, genreSlug: slug });
+      if (!res.ok) {
+        setGenreSlug(prevSlug);
+        setSwitchError(res.message || 'No pudimos cambiar el género. Intenta otra vez.');
+        return;
+      }
+      setPreviewAudioUrl(previewCache[slug]);
+      savePendingOrder({
+        clonedVoiceSongId, title, lyrics, genreSlug: slug,
+        customerEmail, previewAudioUrl: previewCache[slug], storyContext,
+      });
+      return;
+    }
+
+    if (!voiceSampleId) {
+      // Session lost the voice reference (e.g. Stripe round-trip reload) —
+      // can't submit a new render without it.
+      setGenreSlug(prevSlug);
+      setSwitchError('Para probar un género nuevo, vuelve a empezar el proceso.');
+      return;
+    }
+
+    // New genre — re-render the preview on the SAME order row.
+    setStage(STAGES.SUBMITTING_PREVIEW);
+    const res = await generateClonedVoicePreview({
+      clonedVoiceSongId,
+      voiceSampleId,
+      lyrics: lyrics.trim(),
+      title: title || `cancion-${Date.now()}`,
+      genreSlug: slug,
+      recipientName: storyContext?.recipientName,
+      relationship: storyContext?.relationship,
+      occasion: storyContext?.occasion,
+      story: storyContext?.story,
+      customerEmail: customerEmail || undefined,
+      vocalGender,
+      emotionalModifiers,
+      lyricsModelUsed,
+      language: storyContext?.language || 'es',
+      voiceTaskId: voiceTaskId || undefined,
+    });
+    if (!res.ok) {
+      setGenreSlug(prevSlug);
+      setSwitchError(
+        res.error === 'preview_limit_reached'
+          ? (res.message || 'Alcanzaste el límite de pruebas por hoy.')
+          : `No pudimos crear la prueba: ${res.message || res.error}`
+      );
+      setStage(STAGES.PREVIEW_READY);
+      return;
+    }
+    setStage(STAGES.GENERATING_PREVIEW);
+    pollUntilDone(clonedVoiceSongId, false, slug);
+  }
+
+  // -------------------------------------------------------------------
   // Polling loop — handles both preview and full-song paths
   // -------------------------------------------------------------------
-  async function pollUntilDone(songId, expectingPayment) {
+  async function pollUntilDone(songId, expectingPayment, genreForCache = genreSlug) {
     pollAbortRef.current = false;
     let polls = 0;
     const maxPolls = expectingPayment ? MAX_SONG_POLLS : MAX_PREVIEW_POLLS;
@@ -569,13 +671,20 @@ export default function ClonaMiVoz() {
       // PREVIEW path — preview is ready, show the audio player + pay button
       if (statusRes.status === 'preview_ready') {
         setPreviewAudioUrl(statusRes.preview_audio_url || null);
+        // Remember which genre this render belongs to (genre A/B replay).
+        if (statusRes.preview_audio_url) {
+          setPreviewCache((p) => ({ ...p, [genreForCache]: statusRes.preview_audio_url }));
+        }
         setFinalTitle(statusRes.title || title);
         // Update saved pending so cancel-and-return knows the preview URL.
+        // genreForCache, not the genreSlug closure — a genre-A/B render
+        // starts polling in the same tick as setGenreSlug, so the state
+        // value here can still be the previous genre.
         savePendingOrder({
           clonedVoiceSongId: songId,
           title,
           lyrics,
-          genreSlug,
+          genreSlug: genreForCache,
           customerEmail,
           previewAudioUrl: statusRes.preview_audio_url || null,
           storyContext,
@@ -637,6 +746,9 @@ export default function ClonaMiVoz() {
     setVocalGender('');
     setClonedVoiceSongId(null);
     setPreviewAudioUrl(null);
+    setPreviewCache({});
+    setSwitchError(null);
+    setMelodyInfo(null);
     setAudioUrls([]);
     setFinalTitle('');
     setError(null);
@@ -724,6 +836,49 @@ export default function ClonaMiVoz() {
               language={recordingLanguage}
             />
             <CoachingPanel />
+          </section>
+        )}
+
+        {/* ---- Monotone warning (flat take = monotone clone) ---- */}
+        {stage === STAGES.MELODY_WARNING && (
+          <section className="rounded-3xl bg-white/[0.06] backdrop-blur-md border border-amber-400/40 p-8 sm:p-10 text-center space-y-5 animate-fadeIn">
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-amber-500/15 border border-amber-500/30">
+              <span className="material-symbols-outlined text-amber-300 text-4xl">graphic_eq</span>
+            </div>
+            <h2 className="font-display text-2xl sm:text-3xl font-bold text-white">
+              {recordingLanguage === 'en'
+                ? 'Your recording sounds a bit flat'
+                : 'Tu grabación suena un poco plana'}
+            </h2>
+            <p className="text-white/70 max-w-md mx-auto">
+              {recordingLanguage === 'en'
+                ? 'Your cloned voice copies the melody of this recording — a flat take makes every song sound monotone. Try again and EXAGGERATE: go high, go low, like singing in the shower. Off-key is totally fine.'
+                : 'Tu voz clonada copia la melodía de esta grabación — una toma plana hace que todas las canciones suenen monótonas. Intenta de nuevo y EXAGERA: sube alto, baja bajo, como cantando en la regadera. Desafinar no importa.'}
+            </p>
+            {melodyInfo?.rangeSemitones != null && (
+              <p className="text-xs text-white/40">
+                {recordingLanguage === 'en'
+                  ? `Detected melodic range: ~${melodyInfo.rangeSemitones} semitones — singing usually spans 5 or more.`
+                  : `Rango de melodía detectado: ~${melodyInfo.rangeSemitones} semitonos — cantar suele pasar de 5.`}
+              </p>
+            )}
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+              <button
+                type="button"
+                onClick={() => setStage(STAGES.RECORD)}
+                className="rounded-2xl bg-gradient-to-br from-bougainvillea to-[#d40b6e] hover:brightness-110 text-white font-bold px-8 py-3.5 pink-glow transition active:scale-95 flex items-center gap-2"
+              >
+                <span className="material-symbols-outlined">mic</span>
+                {recordingLanguage === 'en' ? 'Record again with more melody' : 'Volver a grabar con más melodía'}
+              </button>
+              <button
+                type="button"
+                onClick={continueDespiteMonotone}
+                className="text-sm text-white/50 hover:text-white/80 underline"
+              >
+                {recordingLanguage === 'en' ? 'Continue anyway' : 'Continuar así de todos modos'}
+              </button>
+            </div>
           </section>
         )}
 
@@ -1055,6 +1210,51 @@ export default function ClonaMiVoz() {
                 Esta es solo una prueba de 30 segundos. La canción completa tendrá 2-3 minutos
                 con tu historia, dos versiones, y descarga permanente.
               </p>
+            </div>
+
+            {/* Genre A/B — hear the same voice in other genres before paying */}
+            <div className="rounded-2xl bg-white/[0.06] backdrop-blur-md border border-white/15 p-4 sm:p-5 space-y-3">
+              <div className="text-sm font-semibold text-white/85 flex items-center gap-2">
+                <span className="material-symbols-outlined text-bougainvillea text-base">tune</span>
+                ¿Con cuál género suena mejor tu voz?
+              </div>
+              <p className="text-xs text-white/50">
+                Toca un género para escuchar tu voz en ese estilo. Los marcados con ✓ ya están
+                listos y suenan al instante; uno nuevo tarda 1-2 minutos. La canción completa se
+                hará con el género que dejes seleccionado.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {GENRES.map((g) => {
+                  const active = g.slug === genreSlug;
+                  const cached = !!previewCache[g.slug];
+                  return (
+                    <button
+                      key={g.slug}
+                      type="button"
+                      onClick={() => switchPreviewGenre(g.slug)}
+                      disabled={active}
+                      className={`rounded-full px-3.5 py-2 text-sm font-semibold transition active:scale-95 flex items-center gap-1.5 ${
+                        active
+                          ? 'bg-gradient-to-br from-bougainvillea to-[#d40b6e] text-white border border-bougainvillea cursor-default'
+                          : 'bg-white/5 border border-white/15 text-white/80 hover:border-bougainvillea/50 hover:text-white'
+                      }`}
+                    >
+                      <span>{g.emoji}</span>
+                      <span>{g.labelEs}</span>
+                      {!active && cached && <span className="text-emerald-300 text-xs">✓</span>}
+                      {!active && !cached && (
+                        <span className="material-symbols-outlined text-white/40 text-sm">schedule</span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+              {switchError && (
+                <div className="text-xs text-amber-300 flex items-start gap-1.5">
+                  <span className="material-symbols-outlined text-sm">warning</span>
+                  <span>{switchError}</span>
+                </div>
+              )}
             </div>
 
             {/* CTA — Pay $69. Email is required HERE (Stripe needs it). */}

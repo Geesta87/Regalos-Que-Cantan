@@ -365,3 +365,35 @@ export function assertStyleLengths(tag: string): void {
 export function validGenreSlugs(): string[] {
   return Object.keys(CLONAMIVOZ_GENRES);
 }
+
+// ---------------------------------------------------------------------------
+// Expressiveness + per-song emotion (2026-08-27, owner feedback: cloned
+// songs came out MONOTONE).
+//
+// The instrumentation-only rule above bans TIMBRE directives ("voz cálida",
+// "vibrato dramático") because they fight the cloned voice's character. But
+// PERFORMANCE-DYNAMICS direction — melody movement, pitch range, phrasing —
+// targets what the melody does, not what the voice sounds like, and without
+// it Suno leans on the (often flat) delivery of the customer's sample.
+//
+// Claude already writes per-song emotional modifiers at the lyrics step;
+// they were stored but never sent to Suno. This helper appends the
+// expressive-delivery cue plus those modifiers, truncating at a comma
+// boundary to respect Kie's 1000-char style cap (base style always wins,
+// then the expressive cue, then the modifiers).
+// ---------------------------------------------------------------------------
+const EXPRESSIVE_VOCAL_CUE =
+  'expressive melodic vocal delivery, wide pitch range, dynamic emotional phrasing';
+
+export function applyEmotionToStyle(style: string, emotionalModifiers?: string | null): string {
+  const parts = [style, EXPRESSIVE_VOCAL_CUE];
+  const mods = (emotionalModifiers || '').trim();
+  if (mods) parts.push(mods);
+  const combined = parts.join(', ');
+  if (combined.length <= KIE_STYLE_MAX) return combined;
+  const truncated = combined.slice(0, KIE_STYLE_MAX);
+  const lastComma = truncated.lastIndexOf(',');
+  // Never truncate into the base style itself — it is always < the cap.
+  const safe = lastComma > style.length ? truncated.slice(0, lastComma) : style;
+  return safe.trim();
+}

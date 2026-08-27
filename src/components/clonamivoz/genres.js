@@ -268,6 +268,36 @@ export function hummingInstructionFor(language = 'es') {
 }
 
 /**
+ * Melody coaching (2026-08-27). The clone learns PITCH CHARACTER from the
+ * sample: a flat, read-aloud take produces a monotone singing voice in
+ * every genre (owner confirmed this on their own test). The old tip even
+ * said "canta con tu voz natural, sin actuar" — which invites exactly the
+ * flat delivery we need to avoid. This block is shown prominently above
+ * the lyric and replaces that tip.
+ */
+export const MELODY_COACH_ES = {
+  title: '🎵 CANTA — no leas',
+  lines: [
+    'Inventa una melodía y EXAGERA: sube alto, baja bajo, como cantando en la regadera.',
+    'Si tu grabación suena plana, tu voz clonada cantará plana. Mientras más melodía le pongas, mejor suena tu clon.',
+    'No importa desafinar — solo importa que haya subidas y bajadas.',
+  ],
+};
+
+export const MELODY_COACH_EN = {
+  title: '🎵 SING it — don\'t read it',
+  lines: [
+    'Make up a melody and EXAGGERATE: go high, go low, like singing in the shower.',
+    'If your recording sounds flat, your cloned voice will sing flat. The more melody you put in, the better your clone sounds.',
+    'Off-key is fine — what matters is that the notes go up and down.',
+  ],
+};
+
+export function melodyCoachFor(language = 'es') {
+  return language === 'en' ? MELODY_COACH_EN : MELODY_COACH_ES;
+}
+
+/**
  * Look up a genre by slug and return its language. Defaults to 'es' if
  * the slug isn't found (back-compat for any caller passing an unknown
  * slug — they get the original Spanish flow).

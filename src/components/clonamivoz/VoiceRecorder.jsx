@@ -28,6 +28,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   readingScriptFor,
   hummingInstructionFor,
+  melodyCoachFor,
   zoneFor,
 } from './genres';
 
@@ -299,6 +300,7 @@ export default function VoiceRecorder({
   // Spanish if no language is passed (back-compat with earlier callers).
   const READING_SCRIPT = readingScriptFor(language);
   const HUMMING_INSTRUCTION = hummingInstructionFor(language);
+  const MELODY_COACH = melodyCoachFor(language);
 
   const [recording, setRecording] = useState(false);
   const [elapsedMs, setElapsedMs] = useState(0);
@@ -508,6 +510,7 @@ export default function VoiceRecorder({
         <ReadingScriptPanel
           readingScript={READING_SCRIPT}
           hummingInstruction={HUMMING_INSTRUCTION}
+          melodyCoach={MELODY_COACH}
         />
       )}
 
@@ -623,13 +626,14 @@ export default function VoiceRecorder({
 // Sub-components
 // ===========================================================================
 
-function ReadingScriptPanel({ readingScript, hummingInstruction }) {
+function ReadingScriptPanel({ readingScript, hummingInstruction, melodyCoach }) {
   // Accept the language-specific script + humming copy as props so this
   // sub-component (defined OUTSIDE the VoiceRecorder function body) can
   // access them. Without these props it can't see READING_SCRIPT /
   // HUMMING_INSTRUCTION which now live inside VoiceRecorder's scope.
   const READING_SCRIPT = readingScript;
   const HUMMING_INSTRUCTION = hummingInstruction;
+  const MELODY_COACH = melodyCoach || melodyCoachFor('es');
 
   const [open, setOpen] = useState(true);
   const wordCount = READING_SCRIPT.trim().split(/\s+/).length;
@@ -660,6 +664,20 @@ function ReadingScriptPanel({ readingScript, hummingInstruction }) {
 
       {open && (
         <div className="px-4 pb-4 space-y-4 animate-fadeIn">
+          {/* Melody coaching — the clone learns pitch from this take; a flat
+              read = a monotone clone (owner-confirmed 2026-08-27). */}
+          <div className="rounded-xl bg-emerald-500/10 border-2 border-emerald-400/40 p-4">
+            <div className="font-bold text-emerald-200 text-base mb-1.5">{MELODY_COACH.title}</div>
+            <ul className="space-y-1">
+              {MELODY_COACH.lines.map((l, i) => (
+                <li key={i} className="text-sm text-white/85 leading-relaxed flex gap-1.5">
+                  <span className="text-emerald-300">•</span>
+                  <span>{l}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+
           {/* Singable lyric */}
           <div className="bg-landing-bg/60 border border-bougainvillea/10 rounded-xl p-5 sm:p-6 text-white text-lg sm:text-xl leading-loose font-body font-medium tracking-wide">
             {READING_SCRIPT.split('\n\n').map((para, i) => (
@@ -696,7 +714,7 @@ function ReadingScriptPanel({ readingScript, hummingInstruction }) {
             <span className="material-symbols-outlined text-base text-bougainvillea">
               tips_and_updates
             </span>
-            Tip: canta con tu voz natural, sin actuar — cualquier melodía sencilla que se te ocurra funciona. No importa si no queda perfecto: solo necesitamos escuchar tu timbre real cantando. Si te sobra tiempo, cántala otra vez.
+            Tip: cualquier melodía que inventes funciona — lo importante es que SUBA y BAJE. No importa desafinar: tu clon copia el carácter de tu voz, y una toma con melodía exagerada siempre gana a una toma plana. Si te sobra tiempo, cántala otra vez con más ganas.
           </p>
         </div>
       )}

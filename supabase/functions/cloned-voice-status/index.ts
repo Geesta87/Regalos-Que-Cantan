@@ -264,7 +264,12 @@ serve(async (req) => {
   // ====== PREVIEW success path ======
   if (isPreviewPhase) {
     // Preview only needs 1 variant. Copy the first one to permanent storage.
-    const permUrl = await copyToPermanentStorage(supabase, sunoUrls[0], row.id, 'preview');
+    // Filename carries the genre (2026-08-27, genre A/B): each genre's
+    // preview gets its own object, so re-rendering in another genre never
+    // overwrites a preview the customer may still be comparing against.
+    const permUrl = await copyToPermanentStorage(
+      supabase, sunoUrls[0], row.id, `preview_${row.genre_slug || 'default'}`
+    );
     const previewUrl = permUrl || sunoUrls[0];
 
     const completedAtIso = new Date().toISOString();

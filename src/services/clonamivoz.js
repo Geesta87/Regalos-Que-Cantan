@@ -237,6 +237,29 @@ export async function generateClonedVoicePreview(args) {
 }
 
 /**
+ * Point an existing preview-stage order at a different genre WITHOUT a new
+ * Kie render (used when the customer picks a genre whose preview was
+ * already generated this session — the paid full song must render in the
+ * genre they're actually hearing). Server rejects paid / generating rows.
+ */
+export async function setPreviewGenre(args) {
+  const res = await fetch(`${FN_BASE}/generate-cloned-voice-preview`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({
+      action: 'set-genre',
+      cloned_voice_song_id: args.clonedVoiceSongId,
+      genre_slug: args.genreSlug,
+    }),
+  });
+  const data = (await safeJson(res)) || {};
+  if (!res.ok) {
+    return { ok: false, error: data.error || `http_${res.status}`, message: data.message };
+  }
+  return { ok: true, ...data };
+}
+
+/**
  * Suno Voice enrollment (clonamivoz-voice-enroll). One call per step:
  *   enrollVoice('start',  { voiceSampleId, language })
  *   enrollVoice('phrase', { voiceSampleId })            → { status, phrase? }

@@ -45,6 +45,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import {
   CLONAMIVOZ_GENRES,
   assertStyleLengths,
+  applyEmotionToStyle,
   validGenreSlugs,
 } from '../_shared/clonamivoz-genres.ts';
 
@@ -221,7 +222,9 @@ serve(async (req) => {
       { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
-  const styleString = genre.style;
+  // Per-song emotion + expressive-delivery cue (owner 2026-08-27: songs came
+  // out monotone; the stored emotional_modifiers were never reaching Suno).
+  const styleString = applyEmotionToStyle(genre.style, body.emotional_modifiers);
   // Combine the always-on voice-clone-protection negatives with the
   // genre-specific musical negatives. Suno accepts a long comma-separated
   // list here.

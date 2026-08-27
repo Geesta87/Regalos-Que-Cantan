@@ -65,6 +65,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import {
   CLONAMIVOZ_GENRES,
   assertStyleLengths,
+  applyEmotionToStyle,
   validGenreSlugs,
 } from '../_shared/clonamivoz-genres.ts';
 
@@ -163,6 +164,11 @@ Escucha bien, te canto con amor`;
 }
 
 interface RequestBody {
+  // 'set-genre' (2026-08-27, genre A/B on the preview screen): update ONLY
+  // the row's genre_slug — no Kie call. Used when the customer picks a
+  // genre whose preview they ALREADY generated (cached client-side), so
+  // the paid full song renders in the genre they are actually hearing.
+  action?: 'set-genre';
   cloned_voice_song_id?: string;
   voice_sample_id?: string;
   recipient_name?: string;
@@ -217,6 +223,43 @@ serve(async (req) => {
     );
   }
 
+  // ---------------- set-genre fast path (no Kie call) ----------------
+  if (body.action === 'set-genre') {
+    const sgSlug = (body.genre_slug || '').trim().toLowerCase();
+    if (!CLONAMIVOZ_GENRES[sgSlug]) {
+      return new Response(
+        JSON.stringify({ error: 'invalid_genre', message: `genre_slug must be one of: ${validGenreSlugs().join(', ')}` }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    if (!body.cloned_voice_song_id) {
+      return new Response(
+        JSON.stringify({ error: 'missing_field', field: 'cloned_voice_song_id', message: 'cloned_voice_song_id is required for set-genre.' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
+    // Only pre-payment rows may switch genre — never a paid/generating order.
+    const { data: sgRow, error: sgErr } = await sb
+      .from('cloned_voice_songs')
+      .update({ genre_slug: sgSlug })
+      .eq('id', body.cloned_voice_song_id)
+      .eq('paid', false)
+      .in('status', ['preview_ready', 'generating_preview', 'awaiting_payment'])
+      .select('id, genre_slug')
+      .maybeSingle();
+    if (sgErr || !sgRow) {
+      return new Response(
+        JSON.stringify({ error: 'set_genre_failed', message: sgErr?.message || 'Row not found or not in a switchable state.' }),
+        { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    return new Response(
+      JSON.stringify({ ok: true, cloned_voice_song_id: sgRow.id, genre_slug: sgRow.genre_slug }),
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+
   // ---------------- validate ----------------
   const required: (keyof RequestBody)[] = [
     'voice_sample_id',
@@ -250,7 +293,9 @@ serve(async (req) => {
       { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
-  const styleString = genre.style;
+  // Per-song emotion + expressive-delivery cue (owner 2026-08-27: songs came
+  // out monotone; the stored emotional_modifiers were never reaching Suno).
+  const styleString = applyEmotionToStyle(genre.style, body.emotional_modifiers);
   // Combined voice-clone-protection + per-genre musical negatives, capped at
   // Kie's 200-char limit (clone-protection tags always survive).
   const negativeTagsCombined = capNegativeTags(`${NEGATIVE_TAGS}, ${genre.negativeTags}`);
@@ -368,6 +413,29 @@ serve(async (req) => {
   };
 
   let clonedVoiceSongId: string;
+  // Per-row Kie submission cap. Genre A/B re-renders and retries reuse the
+  // same row (exempt from the per-voice-sample daily limit), so the row
+  // itself carries the spend ceiling.
+  const MAX_PREVIEWS_PER_ROW = 8;
+  let previousPreviewCount = 0;
+  if (body.cloned_voice_song_id) {
+    const { data: capRow } = await supabase
+      .from('cloned_voice_songs')
+      .select('preview_generation_count')
+      .eq('id', body.cloned_voice_song_id)
+      .maybeSingle();
+    previousPreviewCount = capRow?.preview_generation_count || 0;
+    if (previousPreviewCount >= MAX_PREVIEWS_PER_ROW) {
+      return new Response(
+        JSON.stringify({
+          error: 'preview_limit_reached',
+          message:
+            'Ya probaste muchas versiones de esta canción. Elige tu favorita o escríbenos a hola@regalosquecantan.com.',
+        }),
+        { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+  }
   if (body.cloned_voice_song_id) {
     const { data: updatedRow, error: updateError } = await supabase
       .from('cloned_voice_songs')
@@ -536,7 +604,10 @@ serve(async (req) => {
   // copy + status update once Suno is done.
   const { error: updateError } = await supabase
     .from('cloned_voice_songs')
-    .update({ preview_kie_task_id: previewKieTaskId })
+    .update({
+      preview_kie_task_id: previewKieTaskId,
+      preview_generation_count: previousPreviewCount + 1,
+    })
     .eq('id', clonedVoiceSongId);
 
   if (updateError) {

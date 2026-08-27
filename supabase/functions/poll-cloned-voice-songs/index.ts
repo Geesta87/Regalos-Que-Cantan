@@ -283,7 +283,10 @@ async function sweepActiveRows(supabase: any, summary: Record<string, number>): 
       }
 
       if (isPreview) {
-        const permUrl = await copyToPermanentStorage(supabase, sunoUrls[0], row.id, 'preview');
+        // Genre-tagged filename — keep in sync with cloned-voice-status.
+        const permUrl = await copyToPermanentStorage(
+          supabase, sunoUrls[0], row.id, `preview_${row.genre_slug || 'default'}`
+        );
         await supabase
           .from('cloned_voice_songs')
           .update({
