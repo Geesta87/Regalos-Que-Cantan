@@ -64,7 +64,7 @@ serve(async (req) => {
   const { data: row, error: loadError } = await supabase
     .from('cloned_voice_songs')
     .select(
-      'id, status, paid, voice_sample_id, recipient_name, occasion, relationship, story, genre_slug, language, title, lyrics, emotional_modifiers, lyrics_model_used, customer_email'
+      'id, status, paid, voice_sample_id, recipient_name, occasion, relationship, story, genre_slug, language, title, lyrics, emotional_modifiers, lyrics_model_used, customer_email, suno_audio_urls, permanent_audio_urls'
     )
     .eq('id', body.cloned_voice_song_id)
     .maybeSingle();
@@ -101,7 +101,30 @@ serve(async (req) => {
     return json({ error: 'mark_paid_failed', message: paidUpdateError.message }, 500);
   }
 
-  // ----- Trigger generate-cloned-voice-song (same as webhook does) -----
+  // ----- INSTANT UNLOCK (pre-pay full-render model, mirrors the webhook) -----
+  // Since 2026-08-27 the preview render IS the complete song. If the row
+  // already carries that audio, flip to success — nothing to generate.
+  // (No emails from the test bypass — it exists to exercise the flow.)
+  const hasPreRenderedAudio =
+    (row.permanent_audio_urls && row.permanent_audio_urls.length > 0) ||
+    (row.suno_audio_urls && row.suno_audio_urls.length > 0);
+  if (hasPreRenderedAudio) {
+    const { error: successError } = await supabase
+      .from('cloned_voice_songs')
+      .update({ status: 'success', completed_at: paidAtIso })
+      .eq('id', body.cloned_voice_song_id);
+    if (successError) {
+      return json({ error: 'flip_success_failed', message: successError.message }, 500);
+    }
+    return json({
+      success: true,
+      bypassed_payment: true,
+      instant_delivery: true,
+      cloned_voice_song_id: body.cloned_voice_song_id,
+    });
+  }
+
+  // ----- LEGACY fallback: trigger generate-cloned-voice-song (as webhook does) -----
   try {
     const genResp = await fetch(GENERATE_SONG_URL, {
       method: 'POST',

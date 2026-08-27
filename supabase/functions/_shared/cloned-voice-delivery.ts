@@ -151,6 +151,41 @@ export function extractSunoDurations(kieData: RecordInfoResponse['data']): numbe
 // Permanent storage
 // ---------------------------------------------------------------------------
 
+async function downloadBytes(url: string, tag: string): Promise<Uint8Array | null> {
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) {
+      console.warn(`[cloned-voice-delivery] Fetch returned ${resp.status} for ${tag}`);
+      return null;
+    }
+    const bytes = new Uint8Array(await resp.arrayBuffer());
+    if (bytes.length === 0) {
+      console.warn(`[cloned-voice-delivery] Empty body for ${tag}`);
+      return null;
+    }
+    return bytes;
+  } catch (e) {
+    console.error(`[cloned-voice-delivery] Fetch error for ${tag}:`, e);
+    return null;
+  }
+}
+
+async function uploadBytes(
+  supabase: any,
+  path: string,
+  bytes: Uint8Array
+): Promise<string | null> {
+  const uploadRes = await supabase.storage
+    .from(PERMANENT_BUCKET)
+    .upload(path, bytes, { contentType: 'audio/mpeg', upsert: true });
+  if (uploadRes.error) {
+    console.error(`[cloned-voice-delivery] Storage upload failed for ${path}:`, uploadRes.error);
+    return null;
+  }
+  const { data: publicData } = supabase.storage.from(PERMANENT_BUCKET).getPublicUrl(path);
+  return publicData?.publicUrl || null;
+}
+
 /**
  * Download a single Suno MP3 and upload it to our permanent Storage bucket.
  * Returns the public URL we can serve forever, or null if the copy failed.
@@ -161,47 +196,127 @@ export async function copyToPermanentStorage(
   clonedVoiceSongId: string,
   variantLabel: string
 ): Promise<string | null> {
-  try {
-    const resp = await fetch(sunoUrl);
-    if (!resp.ok) {
-      console.warn(
-        `[cloned-voice-delivery] Suno fetch returned ${resp.status} for ${variantLabel} of ${clonedVoiceSongId}`
-      );
-      return null;
+  const bytes = await downloadBytes(sunoUrl, `${variantLabel} of ${clonedVoiceSongId}`);
+  if (!bytes) return null;
+  return uploadBytes(supabase, `${clonedVoiceSongId}/${variantLabel}.mp3`, bytes);
+}
+
+// ---------------------------------------------------------------------------
+// Pre-payment full render (2026-08-27, owner decision — main-funnel model)
+// ---------------------------------------------------------------------------
+// The "preview" IS the complete real song now. Pre-payment the customer only
+// ever receives a server-cut ~40s teaser of variant 1 (dispute armor: they
+// heard exactly what they bought, and the full files are never exposed to an
+// unpaid browser). Payment then unlocks the already-rendered song instantly.
+
+export const TEASER_SECONDS = 40;
+
+/**
+ * Byte-cut an MP3 to roughly the first `seconds`. MP3 frames decode
+ * independently, so a proportional byte cut plays cleanly up to the cut
+ * point (an abrupt stop is fine for a teaser). No ffmpeg in edge runtime —
+ * this is the whole trick.
+ */
+function cutMp3Bytes(bytes: Uint8Array, totalSeconds: number, seconds: number): Uint8Array {
+  if (!totalSeconds || totalSeconds <= seconds) return bytes;
+  const cut = Math.max(1, Math.floor(bytes.length * (seconds / totalSeconds)));
+  return bytes.slice(0, cut);
+}
+
+/**
+ * Finalize a pre-payment FULL-SONG render: rehost both variants under
+ * genre-tagged names, cut + upload the 40s teaser, and store everything on
+ * the row (primary audio columns + the genre_renders map that set-genre
+ * uses to flip between already-rendered genres).
+ *
+ * Returns the teaser URL to surface as preview_audio_url. Fail-open: if the
+ * teaser can't be produced, the first Suno URL is returned so the customer
+ * still hears SOMETHING (minor leak risk beats a dead preview).
+ */
+export async function finalizePreviewFullSuccess(
+  supabase: any,
+  clonedVoiceSongId: string,
+  genreSlug: string,
+  sunoUrls: string[],
+  durationsS: number[]
+): Promise<{ previewUrl: string | null; permanentUrls: string[] }> {
+  const g = genreSlug || 'default';
+  const permanentUrls: string[] = [];
+  let teaserUrl: string | null = null;
+
+  for (let i = 0; i < sunoUrls.length; i++) {
+    const bytes = await downloadBytes(sunoUrls[i], `v${i + 1}_${g} of ${clonedVoiceSongId}`);
+    if (!bytes) continue;
+    const permUrl = await uploadBytes(supabase, `${clonedVoiceSongId}/v${i + 1}_${g}.mp3`, bytes);
+    if (permUrl) permanentUrls.push(permUrl);
+    if (i === 0) {
+      const teaserBytes = cutMp3Bytes(bytes, durationsS[0] || 0, TEASER_SECONDS);
+      teaserUrl = await uploadBytes(supabase, `${clonedVoiceSongId}/teaser_${g}.mp3`, teaserBytes);
     }
-    const bytes = new Uint8Array(await resp.arrayBuffer());
-    if (bytes.length === 0) {
-      console.warn(
-        `[cloned-voice-delivery] Suno returned empty body for ${variantLabel} of ${clonedVoiceSongId}`
-      );
-      return null;
-    }
-
-    const path = `${clonedVoiceSongId}/${variantLabel}.mp3`;
-
-    const uploadRes = await supabase.storage
-      .from(PERMANENT_BUCKET)
-      .upload(path, bytes, { contentType: 'audio/mpeg', upsert: true });
-
-    if (uploadRes.error) {
-      console.error(
-        `[cloned-voice-delivery] Storage upload failed for ${path}:`,
-        uploadRes.error
-      );
-      return null;
-    }
-
-    const { data: publicData } = supabase.storage
-      .from(PERMANENT_BUCKET)
-      .getPublicUrl(path);
-    return publicData?.publicUrl || null;
-  } catch (e) {
-    console.error(
-      `[cloned-voice-delivery] Unexpected error copying ${variantLabel} of ${clonedVoiceSongId}:`,
-      e
-    );
-    return null;
   }
+
+  const previewUrl = teaserUrl || sunoUrls[0] || null;
+
+  // Merge this genre's render into genre_renders (read-modify-write — a
+  // customer only drives one render at a time, so no meaningful race).
+  const { data: current } = await supabase
+    .from('cloned_voice_songs')
+    .select('genre_renders')
+    .eq('id', clonedVoiceSongId)
+    .maybeSingle();
+  const renders = (current?.genre_renders && typeof current.genre_renders === 'object')
+    ? current.genre_renders
+    : {};
+  renders[g] = {
+    suno: sunoUrls,
+    permanent: permanentUrls,
+    teaser: previewUrl,
+  };
+
+  const { error: updateError } = await supabase
+    .from('cloned_voice_songs')
+    .update({
+      status: 'preview_ready',
+      preview_audio_url: previewUrl,
+      preview_completed_at: new Date().toISOString(),
+      suno_audio_urls: sunoUrls,
+      permanent_audio_urls: permanentUrls.length > 0 ? permanentUrls : null,
+      genre_renders: renders,
+    })
+    .eq('id', clonedVoiceSongId);
+  if (updateError) {
+    console.error(
+      `[cloned-voice-delivery] Failed to persist preview_ready for ${clonedVoiceSongId}:`,
+      updateError
+    );
+  }
+
+  return { previewUrl, permanentUrls };
+}
+
+// ---------------------------------------------------------------------------
+// Lyric marker translation — KEEP IN SYNC with generate-song's
+// stripSpokenProsodyCue + englishifyLyricsMarkers (main $29.99 funnel).
+// Suno is English-trained: Spanish section markers get sung literally.
+// ---------------------------------------------------------------------------
+export function stripSpokenProsodyCue(lyrics: string): string {
+  if (!lyrics) return lyrics;
+  return lyrics
+    .replace(/[ \t]*\(\s*spoken[^)]*\)/gi, '')
+    .replace(/[ \t]*\[[a-záéíóúñ][^\]]*\]/g, '')
+    .replace(/[ \t]+$/gm, '');
+}
+export function englishifyLyricsMarkers(lyrics: string): string {
+  if (!lyrics) return lyrics;
+  return stripSpokenProsodyCue(lyrics)
+    .replace(/\[Verso Final\]/gi, '[Final Verse]')
+    .replace(/\[Verso (\d+)\]/gi, '[Verse $1]')
+    .replace(/\[Verso\]/gi, '[Verse]')
+    .replace(/\[Coro Final\]/gi, '[Final Chorus]')
+    .replace(/\[Coro\]/gi, '[Chorus]')
+    .replace(/\[Puente\]/gi, '[Bridge]')
+    .replace(/\[Pre-Coro\]/gi, '[Pre-Chorus]')
+    .replace(/\[Hablado\]/gi, '[Spoken Word]');
 }
 
 /**

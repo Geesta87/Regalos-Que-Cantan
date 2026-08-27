@@ -68,6 +68,7 @@ import {
   applyEmotionToStyle,
   validGenreSlugs,
 } from '../_shared/clonamivoz-genres.ts';
+import { englishifyLyricsMarkers } from '../_shared/cloned-voice-delivery.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -132,28 +133,6 @@ assertStyleLengths('generate-cloned-voice-preview');
  * lyric — not the default Spanish one. Spanglish gets a code-switched
  * version.
  */
-/**
- * Prefer the customer's REAL chorus for the preview (2026-08-27). By the
- * time the preview runs, the full Claude lyrics already exist — hearing
- * your own voice sing YOUR song's hook converts far better than the
- * generic 4-liner (which stays as the fallback for lyric-less calls or
- * unparseable sheets). Grabs the first [Coro]/[Chorus] section; bracket
- * must close immediately, so [Coro Final] and [Pre-Coro] never match.
- */
-function extractChorusForPreview(fullLyrics: string | null | undefined): string | null {
-  if (!fullLyrics) return null;
-  const m = fullLyrics.match(/\[(?:Coro|Chorus)\]\s*\n([\s\S]*?)(?=\n\s*\[|$)/i);
-  if (!m) return null;
-  const lines = m[1]
-    .split('\n')
-    .map((l) => l.trim())
-    .filter(Boolean);
-  if (lines.length < 2) return null;
-  const chorus = lines.slice(0, 6).join('\n');
-  if (chorus.length < 20 || chorus.length > 500) return null;
-  return `[Chorus]\n${chorus}`;
-}
-
 function buildPreviewLyric(recipientName: string, language: string): string {
   const lang = (language || 'es').toLowerCase();
   const rawName = (recipientName || '').trim();
@@ -261,14 +240,31 @@ serve(async (req) => {
       );
     }
     const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
+    // Pre-pay full-render model: the delivered audio is what's on the row,
+    // so switching to an already-rendered genre must ALSO flip the primary
+    // audio columns to that genre's files — otherwise the customer pays for
+    // the genre they're hearing and receives a different one.
+    const { data: sgCurrent } = await sb
+      .from('cloned_voice_songs')
+      .select('id, genre_renders')
+      .eq('id', body.cloned_voice_song_id)
+      .maybeSingle();
+    const render = sgCurrent?.genre_renders?.[sgSlug];
+    const audioFlip = render
+      ? {
+          suno_audio_urls: render.suno || null,
+          permanent_audio_urls: (render.permanent && render.permanent.length > 0) ? render.permanent : null,
+          preview_audio_url: render.teaser || null,
+        }
+      : {};
     // Only pre-payment rows may switch genre — never a paid/generating order.
     const { data: sgRow, error: sgErr } = await sb
       .from('cloned_voice_songs')
-      .update({ genre_slug: sgSlug })
+      .update({ genre_slug: sgSlug, ...audioFlip })
       .eq('id', body.cloned_voice_song_id)
       .eq('paid', false)
       .in('status', ['preview_ready', 'generating_preview', 'awaiting_payment'])
-      .select('id, genre_slug')
+      .select('id, genre_slug, preview_audio_url')
       .maybeSingle();
     if (sgErr || !sgRow) {
       return new Response(
@@ -277,7 +273,12 @@ serve(async (req) => {
       );
     }
     return new Response(
-      JSON.stringify({ ok: true, cloned_voice_song_id: sgRow.id, genre_slug: sgRow.genre_slug }),
+      JSON.stringify({
+        ok: true,
+        cloned_voice_song_id: sgRow.id,
+        genre_slug: sgRow.genre_slug,
+        preview_audio_url: sgRow.preview_audio_url || null,
+      }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
@@ -509,9 +510,18 @@ serve(async (req) => {
   // configured. Previously the preview lyric was always Spanish even when
   // an English genre / language was selected, which made the preview
   // sound off-language from the customer's recording + lyrics.
-  const previewLyric =
-    extractChorusForPreview(body.lyrics) || buildPreviewLyric(body.recipient_name!, language);
-  const previewTitle = `preview-${clonedVoiceSongId.slice(0, 8)}`;
+  // PRE-PAYMENT FULL RENDER (2026-08-27, owner decision — main-funnel model):
+  // submit the customer's COMPLETE lyrics. The row's task now produces the
+  // real deliverable; the customer only hears a server-cut 40s teaser of it
+  // until they pay (see finalizePreviewFullSuccess), and payment unlocks the
+  // already-rendered song instantly. Kie charges per generation, so this
+  // costs the same as the old chorus-snippet preview did.
+  // Fallback 4-liner remains for lyric-less calls only.
+  const previewLyric = body.lyrics
+    ? englishifyLyricsMarkers(body.lyrics)
+    : buildPreviewLyric(body.recipient_name!, language);
+  // This render IS the deliverable now — use the real song title.
+  const previewTitle = (body.title?.trim() || `cancion-${clonedVoiceSongId.slice(0, 8)}`).slice(0, 80);
 
   // Engine switch (2026-08-08): enrolled Suno Voice (personaId = the Kie
   // voice-creation task id) vs legacy upload-cover. The persona path uses

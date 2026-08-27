@@ -35,7 +35,7 @@ import {
   mapKieTerminal,
   extractSunoUrls,
   extractSunoDurations,
-  copyToPermanentStorage,
+  finalizePreviewFullSuccess,
   finalizeFullSongSuccess,
   sendClonedVoiceDeliveryEmail,
 } from '../_shared/cloned-voice-delivery.ts';
@@ -68,10 +68,15 @@ function jsonResponse(body: unknown, status = 200): Response {
  */
 function buildResponse(row: any, overrides: Record<string, unknown> = {}) {
   // Prefer permanent URLs for the full song; fall back to Suno URLs.
-  const audioUrls =
+  // PAY-GATED (2026-08-27, pre-pay full-render model): the complete song
+  // exists BEFORE payment now, so full URLs only leave the server for paid
+  // rows — an unpaid browser only ever receives the 40s teaser
+  // (preview_audio_url).
+  const fullUrls =
     (row.permanent_audio_urls && row.permanent_audio_urls.length > 0)
       ? row.permanent_audio_urls
       : (row.suno_audio_urls || []);
+  const audioUrls = row.paid ? fullUrls : [];
   return {
     cloned_voice_song_id: row.id,
     status: row.status,
@@ -269,27 +274,14 @@ serve(async (req) => {
 
   // ====== PREVIEW success path ======
   if (isPreviewPhase) {
-    // Preview only needs 1 variant. Copy the first one to permanent storage.
-    // Filename carries the genre (2026-08-27, genre A/B): each genre's
-    // preview gets its own object, so re-rendering in another genre never
-    // overwrites a preview the customer may still be comparing against.
-    const permUrl = await copyToPermanentStorage(
-      supabase, sunoUrls[0], row.id, `preview_${row.genre_slug || 'default'}`
+    // Pre-pay FULL-RENDER model (2026-08-27): this task rendered the real,
+    // complete song. Rehost both variants (genre-tagged, so genre A/B
+    // renders never overwrite each other), cut the 40s teaser, store all of
+    // it on the row. The unpaid customer only ever gets the teaser URL.
+    const { previewUrl } = await finalizePreviewFullSuccess(
+      supabase, row.id, row.genre_slug || 'default', sunoUrls, extractSunoDurations(kieData)
     );
-    const previewUrl = permUrl || sunoUrls[0];
-
     const completedAtIso = new Date().toISOString();
-    const { error: updateError } = await supabase
-      .from('cloned_voice_songs')
-      .update({
-        status: 'preview_ready',
-        preview_audio_url: previewUrl,
-        preview_completed_at: completedAtIso,
-      })
-      .eq('id', row.id);
-    if (updateError) {
-      console.error('[cloned-voice-status] Failed to persist preview_ready state:', updateError);
-    }
 
     return jsonResponse(
       buildResponse(row, {

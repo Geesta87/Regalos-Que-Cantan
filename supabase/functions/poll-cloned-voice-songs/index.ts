@@ -46,6 +46,7 @@ import {
   extractSunoUrls,
   extractSunoDurations,
   copyToPermanentStorage,
+  finalizePreviewFullSuccess,
   finalizeFullSongSuccess,
   sendClonedVoiceDeliveryEmail,
 } from '../_shared/cloned-voice-delivery.ts';
@@ -284,18 +285,11 @@ async function sweepActiveRows(supabase: any, summary: Record<string, number>): 
       }
 
       if (isPreview) {
-        // Genre-tagged filename — keep in sync with cloned-voice-status.
-        const permUrl = await copyToPermanentStorage(
-          supabase, sunoUrls[0], row.id, `preview_${row.genre_slug || 'default'}`
+        // Pre-pay full-render model — same finalizer as cloned-voice-status:
+        // rehost genre-tagged variants + cut the 40s teaser + fill the row.
+        await finalizePreviewFullSuccess(
+          supabase, row.id, row.genre_slug || 'default', sunoUrls, extractSunoDurations(kieData)
         );
-        await supabase
-          .from('cloned_voice_songs')
-          .update({
-            status: 'preview_ready',
-            preview_audio_url: permUrl || sunoUrls[0],
-            completed_at: new Date().toISOString(),
-          })
-          .eq('id', row.id);
         summary.previewsFinished++;
       } else {
         const { permanentUrls } = await finalizeFullSongSuccess(supabase, row.id, sunoUrls);

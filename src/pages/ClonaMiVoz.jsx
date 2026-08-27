@@ -71,7 +71,7 @@ const STAGES = {
 };
 
 const POLL_INTERVAL_MS = 5000;
-const MAX_PREVIEW_POLLS = 36; // 36 × 5s = 3 min ceiling for preview
+const MAX_PREVIEW_POLLS = 72; // 72 × 5s = 6 min ceiling — the preview is now a FULL song render
 const MAX_SONG_POLLS = 60;    // 60 × 5s = 5 min ceiling for full song
 
 const PRICE_USD = '$69';
@@ -87,13 +87,13 @@ const HOW_IT_WORKS = [
     num: '2',
     icon: 'graphic_eq',
     title: 'Escucha una prueba',
-    desc: 'Te mostramos una prueba corta para que oigas tu propia voz.',
+    desc: 'Escucha gratis los primeros 40 segundos de tu canción real.',
   },
   {
     num: '3',
     icon: 'celebration',
     title: 'Recibe tu canción',
-    desc: 'Creamos una canción completa en tu voz en 2-3 minutos.',
+    desc: 'Al comprar, tu canción completa se desbloquea al instante.',
   },
 ];
 
@@ -602,14 +602,16 @@ export default function ClonaMiVoz() {
 
     if (previewCache[slug]) {
       // Already rendered this session — flip the row's genre (no Kie call)
-      // and replay the cached audio.
+      // and replay that genre's teaser. The server also flips the row's
+      // audio columns to this genre's full render (pre-pay model), and
+      // returns the authoritative teaser URL.
       const res = await setPreviewGenre({ clonedVoiceSongId, genreSlug: slug });
       if (!res.ok) {
         setGenreSlug(prevSlug);
         setSwitchError(res.message || 'No pudimos cambiar el género. Intenta otra vez.');
         return;
       }
-      setPreviewAudioUrl(previewCache[slug]);
+      setPreviewAudioUrl(res.preview_audio_url || previewCache[slug]);
       savePendingOrder({
         clonedVoiceSongId, title, lyrics, genreSlug: slug,
         customerEmail, previewAudioUrl: previewCache[slug], storyContext,
@@ -1177,7 +1179,7 @@ export default function ClonaMiVoz() {
                   'Escuchar una prueba con mi voz (gratis)'}
               </button>
               <p className="text-xs text-white/40 mt-2 text-center">
-                Te mostramos una prueba corta antes de pagar · Tarda 1-2 minutos
+                Escuchas el comienzo de tu canción real antes de pagar · Tarda 2-4 minutos
               </p>
             </div>
           </section>
@@ -1187,7 +1189,7 @@ export default function ClonaMiVoz() {
         {stage === STAGES.GENERATING_PREVIEW && (
           <PollingPanel
             title="Creando tu prueba…"
-            subtitle="Estamos cantando una prueba corta con tu voz. Tarda 1-2 minutos."
+            subtitle="Estamos creando tu canción completa con tu voz. Tarda 2-4 minutos."
             elapsedSec={elapsedPolls * (POLL_INTERVAL_MS / 1000)}
             songId={clonedVoiceSongId}
             note="No cierres esta página. Guarda este código por si acaso."
@@ -1207,14 +1209,14 @@ export default function ClonaMiVoz() {
                 ¡Esta es tu voz!
               </h2>
               <p className="text-white/70">
-                Escucha esta prueba corta. ¿Te gusta cómo suena tu propia voz cantando?
+                Estás escuchando el comienzo de tu canción REAL. ¿Te gusta cómo suena?
               </p>
             </div>
 
             <div className="rounded-2xl bg-white/[0.06] backdrop-blur-md border border-white/15 p-5 space-y-3">
               <div className="font-display text-xl font-bold text-white flex items-center gap-2">
                 <span className="material-symbols-outlined text-bougainvillea">music_note</span>
-                Prueba de tu voz
+                El comienzo de tu canción
               </div>
               {previewAudioUrl ? (
                 <audio controls src={previewAudioUrl} className="w-full" autoPlay />
@@ -1224,8 +1226,9 @@ export default function ClonaMiVoz() {
                 </div>
               )}
               <p className="text-xs text-white/40">
-                Esta es solo una prueba de 30 segundos. La canción completa tendrá 2-3 minutos
-                con tu historia, dos versiones, y descarga permanente.
+                Estos son los primeros 40 segundos de tu canción REAL — exactamente lo que
+                recibirás. Al comprar se desbloquea completa (2-3 min), con dos versiones y
+                descarga permanente.
               </p>
             </div>
 
@@ -1237,7 +1240,7 @@ export default function ClonaMiVoz() {
               </div>
               <p className="text-xs text-white/50">
                 Toca un género para escuchar tu voz en ese estilo. Los marcados con ✓ ya están
-                listos y suenan al instante; uno nuevo tarda 1-2 minutos. La canción completa se
+                listos y suenan al instante; uno nuevo tarda 2-4 minutos. La canción completa se
                 hará con el género que dejes seleccionado.
               </p>
               <div className="flex flex-wrap gap-2">
@@ -1320,7 +1323,7 @@ export default function ClonaMiVoz() {
                 <span className="material-symbols-outlined">arrow_forward</span>
               </button>
               <p className="text-xs text-white/40 text-center">
-                Pago seguro con Stripe · Recibes tu canción en 3-5 minutos por email
+                Pago seguro con Stripe · Tu canción completa se desbloquea AL INSTANTE
               </p>
 
               {/* TEST MODE — only visible with ?test=1 in the URL. The

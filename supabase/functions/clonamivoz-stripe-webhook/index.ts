@@ -42,7 +42,10 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import Stripe from 'https://esm.sh/stripe@13.10.0?target=deno';
-import { sendClonedVoicePaidEmail } from '../_shared/cloned-voice-delivery.ts';
+import {
+  sendClonedVoicePaidEmail,
+  sendClonedVoiceDeliveryEmail,
+} from '../_shared/cloned-voice-delivery.ts';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY')!, {
   apiVersion: '2023-10-16',
@@ -246,7 +249,7 @@ serve(async (req) => {
   const { data: row, error: loadError } = await supabase
     .from('cloned_voice_songs')
     .select(
-      'id, status, paid, voice_sample_id, recipient_name, occasion, relationship, story, genre_slug, language, title, lyrics, emotional_modifiers, lyrics_model_used, customer_email, vocal_gender'
+      'id, status, paid, voice_sample_id, recipient_name, occasion, relationship, story, genre_slug, language, title, lyrics, emotional_modifiers, lyrics_model_used, customer_email, vocal_gender, suno_audio_urls, permanent_audio_urls, delivery_email_sent_at'
     )
     .eq('id', clonedVoiceSongId)
     .maybeSingle();
@@ -307,19 +310,6 @@ serve(async (req) => {
     });
   }
 
-  // ---------------- "pago recibido" confirmation email ----------------
-  // Fire-and-forget + idempotent (paid_email_sent_at claim). Tells the
-  // customer they can close the tab — the delivery email carries the
-  // final links. Must never 4xx the webhook.
-  try {
-    await sendClonedVoicePaidEmail(supabase, {
-      ...row,
-      customer_email: session.customer_email || row.customer_email,
-    });
-  } catch (e) {
-    console.error('[clonamivoz-stripe-webhook] Paid email failed (non-fatal):', e);
-  }
-
   // ---------------- Meta CAPI Purchase (fire-and-forget) ----------------
   await sendClonamivozCAPIPurchase({
     sessionId: session.id,
@@ -329,6 +319,59 @@ serve(async (req) => {
     clonedVoiceSongId,
     recipientName: row.recipient_name,
   });
+
+  // ---------------- INSTANT UNLOCK (pre-pay full-render model) ----------
+  // Since 2026-08-27 the "preview" render IS the complete song (the
+  // customer heard a 40s teaser of exactly this audio before paying).
+  // If the row already carries that audio, there is nothing to generate:
+  // flip to success and send the delivery email right now. The old
+  // post-payment generation below remains as the fallback for legacy
+  // rows created before this model.
+  const hasPreRenderedAudio =
+    (row.permanent_audio_urls && row.permanent_audio_urls.length > 0) ||
+    (row.suno_audio_urls && row.suno_audio_urls.length > 0);
+
+  if (hasPreRenderedAudio) {
+    const { error: successError } = await supabase
+      .from('cloned_voice_songs')
+      .update({ status: 'success', completed_at: paidAtIso })
+      .eq('id', clonedVoiceSongId);
+    if (successError) {
+      console.error('[clonamivoz-stripe-webhook] Failed to flip to success:', successError);
+    }
+    try {
+      // Delivery email (includes the owner QA ping + gift-page link).
+      // No separate "pago recibido" email — delivery IS the confirmation.
+      await sendClonedVoiceDeliveryEmail(supabase, {
+        ...row,
+        customer_email: session.customer_email || row.customer_email,
+      });
+    } catch (e) {
+      console.error('[clonamivoz-stripe-webhook] Delivery email failed (non-fatal):', e);
+    }
+    return new Response(
+      JSON.stringify({
+        received: true,
+        cloned_voice_song_id: clonedVoiceSongId,
+        paid_at: paidAtIso,
+        instant_delivery: true,
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+
+  // ---------------- LEGACY fallback: post-payment generation ------------
+  // "pago recibido" confirmation email — fire-and-forget + idempotent
+  // (paid_email_sent_at claim). Tells the customer they can close the tab;
+  // the delivery email carries the final links. Must never 4xx the webhook.
+  try {
+    await sendClonedVoicePaidEmail(supabase, {
+      ...row,
+      customer_email: session.customer_email || row.customer_email,
+    });
+  } catch (e) {
+    console.error('[clonamivoz-stripe-webhook] Paid email failed (non-fatal):', e);
+  }
 
   // ---------------- trigger full song generation ----------------
   // Server-to-server call into generate-cloned-voice-song. Use the
