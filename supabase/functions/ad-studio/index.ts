@@ -176,6 +176,7 @@ async function rendererJson(path: string, payload: Record<string, unknown>): Pro
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-render-token': RENDER_TOKEN },
       body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(180000),
     });
     const j = await r.json().catch(() => ({}));
     return j?.success && j?.url ? String(j.url) : null;
@@ -202,6 +203,7 @@ async function postProcess(admin: any, rowId: string, meta: Record<string, unkno
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SERVICE_ROLE}` },
         body: JSON.stringify({ audioUrl: mainUrl }),
+        signal: AbortSignal.timeout(90000),
       });
       const tj = await t.json().catch(() => ({}));
       const first = Number(tj?.words?.[0]?.start);
@@ -317,6 +319,13 @@ serve(async (req) => {
     // -- list: recent generations (finalizing pending ones first) --------------
     if (action === 'list') {
       await finalize(admin);
+      // Self-heal: if a background post-process died (edge workers can be
+      // recycled mid-waitUntil), re-run it inline for rows stuck 'polishing'
+      // longer than 3 min. Idempotent — trim/finish outputs are upserts.
+      const { data: stale } = await admin.from('ad_studio_generations')
+        .select('id, meta').eq('status', 'ready').eq('meta->>post', 'pending')
+        .lt('updated_at', new Date(Date.now() - 180000).toISOString()).limit(2);
+      for (const s of (stale || [])) await postProcess(admin, s.id, s.meta || {});
       const { data: generations } = await admin.from('ad_studio_generations').select('*')
         .order('created_at', { ascending: false }).limit(100);
       return json({ success: true, generations: generations || [] });
