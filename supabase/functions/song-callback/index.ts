@@ -12,6 +12,7 @@ import { buildUnsubscribeHeaders } from '../_shared/unsubscribe.ts';
 import { buildEmailParts } from '../_shared/email.ts';
 import { renderEmail } from '../_shared/email-shell.ts';
 import { handleKieTerminalFailure, recordKieHealthEvent } from '../_shared/kie-recovery.ts';
+import { healDeadAudio } from '../_shared/dead-audio-heal.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -245,7 +246,16 @@ Deno.serve(async (req) => {
             .eq('id', cid).single();
           if (!s?.audio_url) continue;
           const resp = await fetch(s.audio_url);
-          if (!resp.ok) { console.warn(`[INSTANT-REHOST] download ${resp.status} for ${cid} — sweeper will retry`); continue; }
+          if (!resp.ok) {
+            console.warn(`[INSTANT-REHOST] download ${resp.status} for ${cid} — sweeper will retry`);
+            // Dead at birth (2026-08-28 incident): the file Kie just delivered
+            // is already unreachable. Heal NOW — one Kie re-sing (or straight
+            // to Mureka when the breaker is open) — instead of letting the
+            // customer meet a dead player.
+            const healAction = await healDeadAudio(supabase, cid, resp.status, 'birth');
+            console.log(`[INSTANT-REHOST] heal(${cid}) → ${healAction}`);
+            continue;
+          }
           const blob = await resp.blob();
           // Same deterministic name + cache-buster scheme as the sweeper, so
           // either path landing first produces the same URL.

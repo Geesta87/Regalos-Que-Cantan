@@ -11,6 +11,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { buildUnsubscribeHeaders } from '../_shared/unsubscribe.ts';
 import { buildEmailParts } from '../_shared/email.ts';
 import { handleKieTerminalFailure, KIE_FAILED_STATUSES, isKieOutage, recordKieHealthEvent } from '../_shared/kie-recovery.ts';
+import { healDeadAudio } from '../_shared/dead-audio-heal.ts';
 import { renderEmail } from '../_shared/email-shell.ts';
 
 const corsHeaders = {
@@ -32,10 +33,13 @@ const MAX_RETRIES = 3;           // Max re-submission attempts
 const TIMEOUT_MINUTES = 90;      // Absolute timeout
 
 // AUTO-HEAL (2026-08-28 Kie CDN incident): an UNPAID completed song whose audio
-// has been un-downloadable for this long gets ONE automatic in-place re-sing
-// via regenerate-paid-song-kie. Paid songs are never auto-regenerated — a
-// regen is a new performance/voice, which is an owner decision.
-const AUTO_HEAL_AFTER_MINUTES = 15;
+// has been un-downloadable for this long gets rescued by the shared ladder in
+// _shared/dead-audio-heal.ts — one Kie re-sing, then Mureka; straight to
+// Mureka when the outage breaker is open. Paid songs only alert the owner.
+// 5 min (not more): song-callback already heals dead-at-birth files in
+// seconds — this sweep is the backstop for files that die AFTER delivery, and
+// a customer returning from a recovery email won't wait longer than that.
+const AUTO_HEAL_AFTER_MINUTES = 5;
 const AUTO_HEAL_MAX_PER_RUN = 5;
 
 // Kie/Suno (primary provider since 2026-06-12) — JOB 2 polls record-info as
@@ -398,7 +402,7 @@ Deno.serve(async (req) => {
     {
       const { data: reuploadSongs, error: reuploadError } = await supabase
         .from('songs')
-        .select('id, audio_url, original_audio_url, recipient_name, regenerate_count, fix_count, paid, created_at, session_id, version, lyrics, error_message')
+        .select('id, audio_url, original_audio_url, recipient_name, regenerate_count, fix_count, created_at, version')
         .eq('needs_reupload', true)
         .eq('status', 'completed')
         .order('created_at', { ascending: true })
@@ -435,50 +439,18 @@ Deno.serve(async (req) => {
             if (!audioResponse.ok) {
               console.warn(`[RE-UPLOAD] Download failed for ${song.id} (${audioResponse.status}), keeping CDN URL`);
 
-              // AUTO-HEAL: unpaid song whose audio the provider can no longer
-              // serve (4xx) after AUTO_HEAL_AFTER_MINUTES → ONE automatic
-              // in-place re-sing (same lyrics/style, regenerate-paid-song-kie).
-              // Triggered from the v1 row only (the regen replaces the whole
-              // pair); regenerate_count=0 plus the error_message marker keep it
-              // to a single attempt. Paid songs: never — owner decision.
+              // AUTO-HEAL: hand the song to the shared dead-audio ladder
+              // (_shared/dead-audio-heal.ts): one Kie re-sing, then Mureka;
+              // straight to Mureka when the breaker is open; paid songs only
+              // SMS the owner. The helper owns all the pair/marker/age guards
+              // — the sweeper just reports what the provider said.
               const ageMin = (Date.now() - new Date(song.created_at).getTime()) / 60000;
-              const em = String(song.error_message || '');
-              const is4xx = audioResponse.status >= 400 && audioResponse.status < 500;
-              if (
-                is4xx && !song.paid && song.version === 1 && song.lyrics &&
-                (Number(song.regenerate_count) || 0) === 0 &&
-                ageMin > AUTO_HEAL_AFTER_MINUTES && ageMin < 48 * 60 &&
-                !em.startsWith('AUTO-HEAL') && !em.startsWith('REGEN failed') &&
-                autoHealed < AUTO_HEAL_MAX_PER_RUN
-              ) {
-                try {
-                  const { data: sibling } = await supabase
-                    .from('songs')
-                    .select('id, needs_reupload')
-                    .eq('session_id', song.session_id)
-                    .eq('version', 2)
-                    .maybeSingle();
-                  // Mixed state (v2 already safely hosted, maybe heard) → leave for a human.
-                  if (!sibling || sibling.needs_reupload) {
-                    const regenResp = await fetch(`${SUPABASE_URL}/functions/v1/regenerate-paid-song-kie`, {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
-                      body: JSON.stringify({ v1Id: song.id, v2Id: sibling?.id, lyrics: song.lyrics }),
-                    });
-                    const regenOut = await regenResp.json().catch(() => ({} as any));
-                    if (regenOut?.ok) {
-                      autoHealed++;
-                      const marker = `AUTO-HEAL: dead audio (HTTP ${audioResponse.status}), regen task ${regenOut.taskId} submitted ${new Date().toISOString()}`;
-                      await supabase.from('songs').update({ error_message: marker }).eq('id', song.id);
-                      if (sibling?.id) await supabase.from('songs').update({ error_message: marker }).eq('id', sibling.id);
-                      console.log(`[AUTO-HEAL] ${song.id} (+${sibling?.id ?? 'no v2'}) → regen task ${regenOut.taskId}`);
-                      results.push({ id: song.id, job: 'reupload', action: 'auto_heal_regen', taskId: regenOut.taskId });
-                    } else {
-                      console.warn(`[AUTO-HEAL] regen submit failed for ${song.id}: ${regenOut?.error || regenResp.status}`);
-                    }
-                  }
-                } catch (healErr: any) {
-                  console.warn(`[AUTO-HEAL] ${song.id}: ${healErr?.message}`);
+              if (ageMin > AUTO_HEAL_AFTER_MINUTES && song.version === 1 && autoHealed < AUTO_HEAL_MAX_PER_RUN) {
+                const healAction = await healDeadAudio(supabase, song.id, audioResponse.status, 'sweeper');
+                if (healAction === 'kie_resing_submitted' || healAction.startsWith('mureka_')) autoHealed++;
+                if (healAction !== 'transient_not_healed' && healAction !== 'kie_resing_in_flight') {
+                  console.log(`[AUTO-HEAL] ${song.id} → ${healAction}`);
+                  results.push({ id: song.id, job: 'reupload', action: `auto_heal_${healAction}` });
                 }
               }
 

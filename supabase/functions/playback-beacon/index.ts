@@ -12,6 +12,7 @@
 // endpoint must never make the customer's browser retry or error.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { healDeadAudio } from '../_shared/dead-audio-heal.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -48,6 +49,37 @@ Deno.serve(async (req) => {
         user_agent: (req.headers.get('user-agent') || '').slice(0, 300),
         client_ip: (req.headers.get('x-forwarded-for') || '').split(',')[0].trim().slice(0, 64),
       });
+
+      // A real customer just hit a dead player — verify server-side (the
+      // beacon is untrusted input; only the song's OWN stored URL counts) and
+      // heal immediately instead of leaving them staring at silence. Runs
+      // after the 204 via waitUntil so the beacon reply is never delayed.
+      const verifyAndHeal = async () => {
+        try {
+          const { data: s } = await supabase
+            .from('songs').select('id, audio_url, status').eq('id', songId).single();
+          if (!s?.audio_url || s.status !== 'completed') return;
+          const ctrl = new AbortController();
+          const t = setTimeout(() => ctrl.abort(), 8000);
+          let dead = 0;
+          try {
+            const r = await fetch(s.audio_url, { headers: { Range: 'bytes=0-256' }, signal: ctrl.signal });
+            if (!(r.status === 200 || r.status === 206)) dead = r.status;
+          } catch { /* network error — not proof the file is gone */ }
+          finally { clearTimeout(t); }
+          if (dead) {
+            const action = await healDeadAudio(supabase, songId, dead, 'beacon');
+            console.log(`[BEACON-HEAL] ${songId} (HTTP ${dead}) → ${action}`);
+          }
+        } catch (e: any) {
+          console.warn(`[BEACON-HEAL] ${songId}: ${e?.message}`);
+        }
+      };
+      try {
+        (globalThis as any).EdgeRuntime?.waitUntil
+          ? (globalThis as any).EdgeRuntime.waitUntil(verifyAndHeal())
+          : await verifyAndHeal();
+      } catch { /* heal must never break the beacon */ }
     }
   } catch (e) {
     console.error('playback-beacon error:', e?.message);
