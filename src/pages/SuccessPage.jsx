@@ -2060,8 +2060,9 @@ export default function SuccessPage() {
     && !videoOrder.stripe_session_id
     && !(videoOrder.photo_count > 0) && videoEntitled > 0 && consumedVideoCount >= videoEntitled);
 
-  // Animado production/delivered card — rendered in the DELIVERABLES flow (the
-  // awaiting_photo uploader alone stays pinned to the top of the page).
+  // Animado production/delivered card — rendered right after the hero greeting,
+  // ahead of the song player and every upsell (the awaiting_photo uploader
+  // stays pinned above even the greeting, since it blocks fulfillment).
   const renderAnimadoStatusCards = () => animadoOrders.map((o) => {
     if (o.state === 'deleted' || o.state === 'awaiting_photo') return null;
     const delivered = o.state === 'delivered';
@@ -2235,9 +2236,9 @@ export default function SuccessPage() {
           {/* ===== ANIMADO — needs-your-photo state ONLY up here =====
               The uploader is the one thing that blocks fulfillment, so it's the
               only content allowed above the congratulation. Production/delivered
-              cards render further down, with the other deliverables (audit
-              2026-08-14: opening the page with a product card instead of the
-              greeting read as disorganized). ===== */}
+              cards render just below the greeting (owner call 2026-08-28: the
+              film leads the page — before, it sat under the upsells and buyers
+              had to scroll past ads to find what they paid for). ===== */}
           {animadoOrders.map((o) => {
             if (o.state !== 'awaiting_photo') return null;
             return (
@@ -2318,6 +2319,14 @@ export default function SuccessPage() {
               </>
             )}
           </div>
+
+          {/* ===== ANIMADO — in production / delivered =====
+              The film the customer paid for leads the page (right after the
+              greeting), ahead of the song and every other section. Before
+              2026-08-28 these cards sat at the bottom of the deliverables flow,
+              which made buyers scroll past the photo-video upsell to reach the
+              film they already bought. ===== */}
+          {renderAnimadoStatusCards()}
 
           {/* ===== MULTI-SONG BANNER — shown above player so it cannot be missed ===== */}
           {songs.length > 1 && (
@@ -4217,9 +4226,6 @@ export default function SuccessPage() {
               ))}
             </div>
           )}
-
-          {/* ===== ANIMADO — in production / delivered (deliverables flow) ===== */}
-          {renderAnimadoStatusCards()}
 
           {/* ===== THE upsell — exactly one, and only after every deliverable =====
               Audit 2026-08-14: the page pitched the $5 gift message TWICE (this
