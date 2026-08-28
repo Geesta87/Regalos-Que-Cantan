@@ -395,7 +395,12 @@ Deno.serve(async (req) => {
         .eq('needs_reupload', true)
         .eq('status', 'completed')
         .order('created_at', { ascending: true })
-        .limit(10);
+        // Wide net on purpose (2026-08-28 Kie CDN incident): rows whose CDN URL
+        // is dead keep needs_reupload=true forever, and a .limit(10) of the
+        // oldest rows let 10 dead ones starve every younger song of its rehost.
+        // Fetch up to 50 candidates; the loop below still caps the real work
+        // (successful uploads) at 10 per cycle — failed downloads are cheap.
+        .limit(50);
 
       if (reuploadError) {
         console.error('Error fetching re-upload songs:', reuploadError.message);
@@ -404,7 +409,9 @@ Deno.serve(async (req) => {
       if (reuploadSongs && reuploadSongs.length > 0) {
         console.log(`[RE-UPLOAD] Found ${reuploadSongs.length} songs to re-upload to Storage`);
 
+        let uploadedCount = 0;
         for (const song of reuploadSongs) {
+          if (uploadedCount >= 10) break; // per-cycle cap counts uploads, not attempts
           try {
             const cdnUrl = song.original_audio_url || song.audio_url;
             if (!cdnUrl) {
@@ -468,6 +475,7 @@ Deno.serve(async (req) => {
             }).eq('id', song.id);
 
             console.log(`[RE-UPLOAD] Done: ${song.id} → ${permanentUrl}`);
+            uploadedCount++;
             results.push({ id: song.id, job: 'reupload', action: 'reuploaded' });
 
           } catch (reErr: any) {
@@ -665,6 +673,7 @@ Deno.serve(async (req) => {
     // Customer delay notices: any song still processing after 15 min gets ONE
     // "taking longer than usual" email per order (delay_notified_at stamp).
     // queued_retry songs are excluded — retry-queued-songs already emails those.
+    // Customers who opted into the SMS notify skip the email (no double-touch).
     try {
       const { data: delayedSongs } = await supabase
         .from('songs')
