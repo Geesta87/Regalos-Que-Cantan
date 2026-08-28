@@ -4,6 +4,7 @@ import { AppContext } from '../App';
 import { createCheckout, supabase, checkSongStatus, validateCoupon } from '../services/api';
 import genres from '../config/genres';
 import { trackStep } from '../services/tracking';
+import { reportPlaybackError } from '../utils/playbackBeacon';
 import ExitIntentPopup from '../components/ExitIntentPopup';
 import { AnimadoOffer } from './AnimadoUpsell';
 import GiftAddonField from '../components/GiftAddonField';
@@ -1155,6 +1156,7 @@ export default function ComparisonPage() {
           }}
           onTimeUpdate={(e) => handleTimeUpdate(song.id, e.target)}
           onEnded={() => setPlayingId(null)}
+          onError={(e) => reportPlaybackError(song.id, song.audioUrl || song.previewUrl, e.target?.error?.code)}
         />
       ))}
 

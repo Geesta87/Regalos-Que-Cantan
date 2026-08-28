@@ -31,6 +31,13 @@ const RETRY_AFTER_MINUTES = 15;  // Re-submit after 15 min without callback (Mur
 const MAX_RETRIES = 3;           // Max re-submission attempts
 const TIMEOUT_MINUTES = 90;      // Absolute timeout
 
+// AUTO-HEAL (2026-08-28 Kie CDN incident): an UNPAID completed song whose audio
+// has been un-downloadable for this long gets ONE automatic in-place re-sing
+// via regenerate-paid-song-kie. Paid songs are never auto-regenerated — a
+// regen is a new performance/voice, which is an owner decision.
+const AUTO_HEAL_AFTER_MINUTES = 15;
+const AUTO_HEAL_MAX_PER_RUN = 5;
+
 // Kie/Suno (primary provider since 2026-06-12) — JOB 2 polls record-info as
 // the backup for missed song-callback deliveries. The failure-recovery ladder
 // (retry once on Kie, then hand to Mureka) lives in _shared/kie-recovery.ts,
@@ -391,7 +398,7 @@ Deno.serve(async (req) => {
     {
       const { data: reuploadSongs, error: reuploadError } = await supabase
         .from('songs')
-        .select('id, audio_url, original_audio_url, recipient_name, regenerate_count, fix_count')
+        .select('id, audio_url, original_audio_url, recipient_name, regenerate_count, fix_count, paid, created_at, session_id, version, lyrics, error_message')
         .eq('needs_reupload', true)
         .eq('status', 'completed')
         .order('created_at', { ascending: true })
@@ -410,6 +417,7 @@ Deno.serve(async (req) => {
         console.log(`[RE-UPLOAD] Found ${reuploadSongs.length} songs to re-upload to Storage`);
 
         let uploadedCount = 0;
+        let autoHealed = 0;
         for (const song of reuploadSongs) {
           if (uploadedCount >= 10) break; // per-cycle cap counts uploads, not attempts
           try {
@@ -426,6 +434,54 @@ Deno.serve(async (req) => {
 
             if (!audioResponse.ok) {
               console.warn(`[RE-UPLOAD] Download failed for ${song.id} (${audioResponse.status}), keeping CDN URL`);
+
+              // AUTO-HEAL: unpaid song whose audio the provider can no longer
+              // serve (4xx) after AUTO_HEAL_AFTER_MINUTES → ONE automatic
+              // in-place re-sing (same lyrics/style, regenerate-paid-song-kie).
+              // Triggered from the v1 row only (the regen replaces the whole
+              // pair); regenerate_count=0 plus the error_message marker keep it
+              // to a single attempt. Paid songs: never — owner decision.
+              const ageMin = (Date.now() - new Date(song.created_at).getTime()) / 60000;
+              const em = String(song.error_message || '');
+              const is4xx = audioResponse.status >= 400 && audioResponse.status < 500;
+              if (
+                is4xx && !song.paid && song.version === 1 && song.lyrics &&
+                (Number(song.regenerate_count) || 0) === 0 &&
+                ageMin > AUTO_HEAL_AFTER_MINUTES && ageMin < 48 * 60 &&
+                !em.startsWith('AUTO-HEAL') && !em.startsWith('REGEN failed') &&
+                autoHealed < AUTO_HEAL_MAX_PER_RUN
+              ) {
+                try {
+                  const { data: sibling } = await supabase
+                    .from('songs')
+                    .select('id, needs_reupload')
+                    .eq('session_id', song.session_id)
+                    .eq('version', 2)
+                    .maybeSingle();
+                  // Mixed state (v2 already safely hosted, maybe heard) → leave for a human.
+                  if (!sibling || sibling.needs_reupload) {
+                    const regenResp = await fetch(`${SUPABASE_URL}/functions/v1/regenerate-paid-song-kie`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
+                      body: JSON.stringify({ v1Id: song.id, v2Id: sibling?.id, lyrics: song.lyrics }),
+                    });
+                    const regenOut = await regenResp.json().catch(() => ({} as any));
+                    if (regenOut?.ok) {
+                      autoHealed++;
+                      const marker = `AUTO-HEAL: dead audio (HTTP ${audioResponse.status}), regen task ${regenOut.taskId} submitted ${new Date().toISOString()}`;
+                      await supabase.from('songs').update({ error_message: marker }).eq('id', song.id);
+                      if (sibling?.id) await supabase.from('songs').update({ error_message: marker }).eq('id', sibling.id);
+                      console.log(`[AUTO-HEAL] ${song.id} (+${sibling?.id ?? 'no v2'}) → regen task ${regenOut.taskId}`);
+                      results.push({ id: song.id, job: 'reupload', action: 'auto_heal_regen', taskId: regenOut.taskId });
+                    } else {
+                      console.warn(`[AUTO-HEAL] regen submit failed for ${song.id}: ${regenOut?.error || regenResp.status}`);
+                    }
+                  }
+                } catch (healErr: any) {
+                  console.warn(`[AUTO-HEAL] ${song.id}: ${healErr?.message}`);
+                }
+              }
+
               // Don't set needs_reupload=false — try again next cycle
               results.push({ id: song.id, job: 'reupload', action: 'download_failed' });
               continue;

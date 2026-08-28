@@ -1095,3 +1095,12 @@ verify_jwt = false
 # business-analyst / cos-assistant). No external webhook or pg_cron caller
 # exists → default gate stays ON.
 verify_jwt = true
+
+[functions.playback-beacon]
+# Customer playback-failure beacons from public song pages (success / song /
+# comparison), sent via navigator.sendBeacon as text/plain — a beacon cannot
+# attach an auth header, same pattern as meta-capi-relay / track-song-access.
+# Rows feed health-check's Player Errors alarm (2026-08-28 Kie CDN incident:
+# customers hit silent players for 2h before a complaint surfaced it).
+# Must stay verify_jwt = false or every beacon 401s.
+verify_jwt = false

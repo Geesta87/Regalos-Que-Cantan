@@ -835,6 +835,117 @@ async function checkClonamivozPipeline(supabase: any): Promise<CheckResult> {
   }
 }
 
+/**
+ * CHECK 11: Audio liveness — songs completed/updated in the last 30 min must
+ * actually SERVE audio, not just have a URL. 2026-08-28: Kie's musicfile.kie.ai
+ * CDN went signed-URL-only and every fresh song 403'd for ~2 hours; the first
+ * signal we got was a customer complaint. This probe would have paged at the
+ * first 10-minute run instead.
+ */
+async function checkAudioLiveness(supabase: any): Promise<CheckResult> {
+  const name = 'Audio Liveness';
+  try {
+    const windowStart = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+    const { data: recent, error } = await supabase
+      .from('songs')
+      .select('id, recipient_name, audio_url, paid, updated_at')
+      .eq('status', 'completed')
+      .gt('updated_at', windowStart)
+      .not('audio_url', 'is', null)
+      .order('updated_at', { ascending: false })
+      .limit(30);
+    if (error) throw error;
+    if (!recent || recent.length === 0) {
+      return { name, status: 'ok', severity: 'info', message: 'no completions in the last 30 min to probe' };
+    }
+
+    const probe = async (s: any) => {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 6000);
+      try {
+        const r = await fetch(s.audio_url, { headers: { Range: 'bytes=0-256' }, signal: ctrl.signal });
+        const ct = (r.headers.get('content-type') || '').toLowerCase();
+        const ok = (r.status === 200 || r.status === 206) &&
+          (ct.startsWith('audio') || ct.includes('mpeg') || ct.includes('octet-stream'));
+        return ok ? null : { ...s, http: r.status, ct: ct || 'none' };
+      } catch (e: any) {
+        // A single network blip shouldn't page; fetch errors still count as
+        // dead because the customer's browser hits the same wall.
+        return { ...s, http: 0, ct: String(e?.message || e).slice(0, 40) };
+      } finally {
+        clearTimeout(t);
+      }
+    };
+    const dead = (await Promise.all(recent.map(probe))).filter(Boolean) as any[];
+    if (dead.length === 0) {
+      return { name, status: 'ok', severity: 'info', message: `${recent.length} recent song(s) all serving audio` };
+    }
+
+    const paidDead = dead.filter((d) => d.paid).length;
+    if (await shouldAlert(supabase, 'audio_liveness_dead', 1)) {
+      const sample = dead.slice(0, 8)
+        .map((d) => `• ${d.recipient_name || d.id} — HTTP ${d.http} (${d.ct}) — ${String(d.audio_url).slice(0, 70)}`)
+        .join('\n');
+      return {
+        name, status: 'alert', severity: 'critical',
+        message: `${dead.length}/${recent.length} recently completed song(s) serve NO audio${paidDead ? ` — ${paidDead} PAID` : ''}`,
+        details:
+          `Customers are hitting play and getting silence RIGHT NOW.\n\n${sample}\n\n` +
+          `If the failing host is Kie's (musicfile.kie.ai / tempfile.aiquickdraw.com): their CDN broke again ` +
+          `(2026-08-28 incident) — check poll-processing-songs [RE-UPLOAD] logs; unpaid songs auto-regenerate ` +
+          `after 15 min, PAID songs need a manual decision (regenerate loses the voice).\n` +
+          `If the failing host is OUR storage (supabase.co): storage itself is down — check the audio bucket immediately.`,
+      };
+    }
+    return { name, status: 'ok', severity: 'info', message: `${dead.length} dead audio URL(s) (already alerted this hour)` };
+  } catch (e: any) {
+    return { name, status: 'error', severity: 'warning', message: `Check failed: ${e.message}` };
+  }
+}
+
+/**
+ * CHECK 12: Player errors — customer browsers report <audio> failures via the
+ * playback-beacon function (src/utils/playbackBeacon.js). Catches whatever the
+ * server-side probe can't see: regional CDN failures, mixed-content, expired
+ * links on OLD songs a customer just opened. Threshold of 3 distinct songs in
+ * 30 min so one customer's flaky wifi never pages.
+ */
+async function checkPlaybackErrors(supabase: any): Promise<CheckResult> {
+  const name = 'Player Errors';
+  try {
+    const windowStart = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+    const { data: rows, error } = await supabase
+      .from('playback_errors')
+      .select('song_id, audio_host, page')
+      .gt('created_at', windowStart)
+      .limit(500);
+    if (error) throw error;
+
+    const distinct = new Set((rows || []).map((r: any) => r.song_id));
+    if (distinct.size < 3) {
+      return { name, status: 'ok', severity: 'info', message: `${rows?.length || 0} beacon(s) / ${distinct.size} song(s) in 30 min` };
+    }
+
+    if (await shouldAlert(supabase, 'playback_errors_spike', 1)) {
+      const byHost: Record<string, number> = {};
+      for (const r of rows || []) byHost[r.audio_host || 'unknown'] = (byHost[r.audio_host || 'unknown'] || 0) + 1;
+      const hosts = Object.entries(byHost).map(([h, n]) => `${h}: ${n}`).join(', ');
+      return {
+        name, status: 'alert', severity: 'critical',
+        message: `${distinct.size} different songs failed to play in customers' browsers (last 30 min)`,
+        details:
+          `${rows!.length} playback-error beacon(s) from real customers across ${distinct.size} songs.\n` +
+          `Failing hosts: ${hosts}\n\n` +
+          `This is measured on customer devices — whatever the cause (CDN, storage, DNS), buyers are hearing silence. ` +
+          `Cross-check the Audio Liveness alert; recent rows: SELECT * FROM playback_errors ORDER BY created_at DESC LIMIT 50;`,
+      };
+    }
+    return { name, status: 'ok', severity: 'info', message: `${distinct.size} failing song(s) (already alerted this hour)` };
+  } catch (e: any) {
+    return { name, status: 'error', severity: 'warning', message: `Check failed: ${e.message}` };
+  }
+}
+
 // ============================================================================
 // MAIN HANDLER
 // ============================================================================
@@ -867,6 +978,8 @@ Deno.serve(async (req: Request) => {
     checkMurekaFallback(supabase),
     checkMetaCapiToken(supabase),
     checkClonamivozPipeline(supabase),
+    checkAudioLiveness(supabase),
+    checkPlaybackErrors(supabase),
   ]);
 
   // Filter for alerts

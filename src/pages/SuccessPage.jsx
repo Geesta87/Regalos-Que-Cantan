@@ -6,6 +6,7 @@ import { OneTapUpsell } from '../components/OneTapUpsell';
 import { chargeUpsell } from '../services/api';
 import { forceDownload, isInAppBrowser } from '../utils/forceDownload';
 import { trackSongAccess } from '../utils/trackSongAccess';
+import { reportPlaybackError } from '../utils/playbackBeacon';
 import { CenzoGuide } from '../components/Cenzo';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://yzbvajungshqcpusfiia.supabase.co';
@@ -2179,6 +2180,7 @@ export default function SuccessPage() {
         onLoadedMetadata={handleLoadedMetadata}
         onEnded={() => setIsPlaying(false)}
         onPlay={() => trackSongAccess(currentSong.id, 'play', { once: true })}
+        onError={(e) => reportPlaybackError(currentSong.id, currentSong.audio_url, e.target?.error?.code)}
       />
 
       {/* --- CSS --- */}

@@ -4,6 +4,7 @@ import GiftTextUpsell from '../components/GiftTextUpsell';
 import { Helmet } from 'react-helmet-async';
 import { forceDownload, isInAppBrowser } from '../utils/forceDownload';
 import { trackSongAccess } from '../utils/trackSongAccess';
+import { reportPlaybackError } from '../utils/playbackBeacon';
 import { CenzoMark } from '../components/Cenzo';
 
 const supabase = import.meta.env.VITE_SUPABASE_URL
@@ -775,7 +776,12 @@ export default function SongPage({ songId: propSongId }) {
       el.addEventListener('canplaythrough', () => { if (el.duration && isFinite(el.duration)) setDur(el.duration); });
       el.addEventListener('durationchange', () => { if (el.duration && isFinite(el.duration)) setDur(el.duration); });
       el.addEventListener('timeupdate', () => { setTime(el.currentTime); if (el.duration && isFinite(el.duration)) setDur(el.duration); });
-      el.addEventListener('error', () => console.error('Audio error:', el.error?.code, el.error?.message));
+      el.addEventListener('error', () => {
+        console.error('Audio error:', el.error?.code, el.error?.message);
+        const failedSrc = el.currentSrc || el.getAttribute('data-loaded') || '';
+        const failedSong = allSongs.find((s) => s.audio_url === failedSrc) || allSongs[activeIndex];
+        if (failedSong) reportPlaybackError(failedSong.id, failedSrc, el.error?.code);
+      });
       el.addEventListener('ended', () => { setIsPlaying(false); });
     }
   };

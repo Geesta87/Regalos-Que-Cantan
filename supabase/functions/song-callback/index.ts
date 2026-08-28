@@ -230,6 +230,57 @@ Deno.serve(async (req) => {
     // proof Kie is healthy, which closes the breaker again after an outage.
     if (completedIds.length > 0) await recordKieHealthEvent(supabase, 'success', taskId);
 
+    // ---- Instant backup to our own storage (2026-08-28 Kie CDN incident) ----
+    // Kie's CDN links died the moment they were issued and the 2-min sweeper
+    // could never fetch them — 2 hours of songs were unplayable. Copy the audio
+    // to our storage the second the callback lands, shrinking custody risk from
+    // minutes to seconds. Runs AFTER the response via waitUntil; on any failure
+    // needs_reupload stays true so poll-processing-songs remains the backstop.
+    const instantRehost = async () => {
+      for (const cid of completedIds) {
+        try {
+          const { data: s } = await supabase
+            .from('songs')
+            .select('id, audio_url, recipient_name, regenerate_count, fix_count')
+            .eq('id', cid).single();
+          if (!s?.audio_url) continue;
+          const resp = await fetch(s.audio_url);
+          if (!resp.ok) { console.warn(`[INSTANT-REHOST] download ${resp.status} for ${cid} — sweeper will retry`); continue; }
+          const blob = await resp.blob();
+          // Same deterministic name + cache-buster scheme as the sweeper, so
+          // either path landing first produces the same URL.
+          const cleanName = (s.recipient_name || 'unknown')
+            .toLowerCase()
+            .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+            .replace(/[^a-z0-9\s-]/g, '')
+            .replace(/\s+/g, '-')
+            .substring(0, 50);
+          const fileName = `songs/cancion-para-${cleanName}-${s.id.substring(0, 8)}.mp3`;
+          const { error: upErr } = await supabase.storage.from('audio')
+            .upload(fileName, blob, { contentType: 'audio/mpeg', cacheControl: '3600', upsert: true });
+          if (upErr) { console.warn(`[INSTANT-REHOST] upload failed for ${cid}: ${upErr.message}`); continue; }
+          const { data: pub } = supabase.storage.from('audio').getPublicUrl(fileName);
+          const ver = (Number(s.regenerate_count) || 0) + (Number(s.fix_count) || 0);
+          const permanentUrl = pub.publicUrl + (ver > 0 ? `?v=${ver}` : '');
+          await supabase.from('songs').update({
+            audio_url: permanentUrl,
+            preview_url: permanentUrl,
+            needs_reupload: false,
+          }).eq('id', cid);
+          console.log(`[INSTANT-REHOST] ${cid} → ${permanentUrl}`);
+        } catch (e: any) {
+          console.warn(`[INSTANT-REHOST] ${cid}: ${e?.message} — sweeper will retry`);
+        }
+      }
+    };
+    try {
+      (globalThis as any).EdgeRuntime?.waitUntil
+        ? (globalThis as any).EdgeRuntime.waitUntil(instantRehost())
+        : await instantRehost();
+    } catch (e: any) {
+      console.warn('[INSTANT-REHOST] scheduling failed:', e?.message);
+    }
+
     // ---- One email per order, linking to EVERY version ----
     // This used to fire inside the loop with `/preview/<first id>`, which the
     // frontend resolves to /listen?song_id=<one id> — so the customer only ever
