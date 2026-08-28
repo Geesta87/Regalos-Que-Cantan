@@ -9,6 +9,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { buildUnsubscribeHeaders } from '../_shared/unsubscribe.ts';
 import { buildEmailParts } from '../_shared/email.ts';
 import { renderEmail } from '../_shared/email-shell.ts';
+import { isHedgedRow, revertHedgeToKie } from '../_shared/kie-recovery.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -152,7 +153,7 @@ Deno.serve(async (req) => {
     // ---- Look up songs by mureka_job_id ----
     const { data: dbSongs, error: lookupError } = await supabase
       .from('songs')
-      .select('id, version, recipient_name, sender_name, email, genre, genre_name, occasion, status, mureka_job_id')
+      .select('id, version, recipient_name, sender_name, email, genre, genre_name, occasion, status, mureka_job_id, kie_task_id, error_message')
       .eq('mureka_job_id', jobId)
       .eq('status', 'processing')
       .order('version', { ascending: true });
@@ -248,6 +249,12 @@ Deno.serve(async (req) => {
       console.log(`Job ${jobId} FAILED: ${errMsg}`);
 
       for (const dbSong of dbSongs) {
+        // Hedged rows (slow-Kie hedge — the Kie task is still racing): revert
+        // to Kie instead of killing the order over the hedge's failure.
+        if (isHedgedRow(dbSong)) {
+          await revertHedgeToKie(supabase, dbSong as any, `useapi.net callback: ${errMsg}`);
+          continue;
+        }
         await supabase.from('songs').update({
           status: 'failed',
           error_message: `useapi.net callback: ${errMsg}`.substring(0, 500),

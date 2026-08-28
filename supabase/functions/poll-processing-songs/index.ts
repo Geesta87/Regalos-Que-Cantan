@@ -5,12 +5,13 @@
 //   3. SAFETY NET: Re-submit stuck 'processing' songs to Mureka when polling also fails
 // Runs via pg_cron every 2 minutes
 // Provider: Mureka AI (migrated from Evolink/Kie.ai)
-// Deploy with: supabase functions deploy poll-processing-songs --no-verify-jwt
+// Deploy: supabase functions deploy poll-processing-songs --project-ref yzbvajungshqcpusfiia
+// (verify_jwt=false is pinned in supabase/config.toml — do NOT pass --no-verify-jwt)
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { buildUnsubscribeHeaders } from '../_shared/unsubscribe.ts';
 import { buildEmailParts } from '../_shared/email.ts';
-import { handleKieTerminalFailure, KIE_FAILED_STATUSES, isKieOutage, recordKieHealthEvent } from '../_shared/kie-recovery.ts';
+import { handleKieTerminalFailure, KIE_FAILED_STATUSES, isKieOutage, recordKieHealthEvent, isHedgedRow, revertHedgeToKie } from '../_shared/kie-recovery.ts';
 import { renderEmail } from '../_shared/email-shell.ts';
 
 const corsHeaders = {
@@ -488,7 +489,7 @@ Deno.serve(async (req) => {
     if (USEAPI_TOKEN) {
       const { data: useapiSongs, error: useapiError } = await supabase
         .from('songs')
-        .select('id, mureka_job_id, version, recipient_name, email, genre, occasion')
+        .select('id, mureka_job_id, kie_task_id, error_message, version, recipient_name, email, genre, occasion')
         .eq('status', 'processing')
         .eq('provider', 'mureka-useapi')
         .not('mureka_job_id', 'is', null)
@@ -564,6 +565,13 @@ Deno.serve(async (req) => {
               const errMsg = jobData.response?.error || jobData.error || 'unknown error';
               console.log(`useapi.net job ${jobId} FAILED: ${errMsg}`);
               for (const s of songs) {
+                // Hedged rows: the Kie task is still racing — put the row back
+                // on Kie instead of killing the order over the hedge's failure.
+                if (isHedgedRow(s)) {
+                  await revertHedgeToKie(supabase, s as any, `useapi.net job failed: ${errMsg}`);
+                  results.push({ id: s.id, job: 'useapi_poll', action: 'hedge_reverted_to_kie' });
+                  continue;
+                }
                 await supabase.from('songs').update({
                   status: 'failed',
                   error_message: `useapi.net job failed: ${errMsg}`.substring(0, 500),
@@ -771,7 +779,7 @@ Deno.serve(async (req) => {
     const pollThreshold = new Date(Date.now() - POLL_AFTER_MINUTES * 60 * 1000).toISOString();
     const { data: pollSongs, error: pollError } = await supabase
       .from('songs')
-      .select('id, task_id, version, recipient_name, email, genre, occasion, provider, error_message, created_at')
+      .select('id, task_id, version, recipient_name, email, genre, occasion, provider, error_message, created_at, regenerate_count')
       .eq('status', 'processing')
       .not('task_id', 'is', null)
       .lt('updated_at', pollThreshold)
@@ -854,20 +862,38 @@ Deno.serve(async (req) => {
               // generation time.
               const callbackFailed = (song.error_message || '').includes('(awaiting auto-recovery)');
               const ageMin = (Date.now() - new Date(song.created_at).getTime()) / 60000;
-              // Outage fast lane: with the breaker open, don't make customers
-              // wait for Kie's 10-25 min failure admission — rescue to Mureka
-              // as soon as a song is past normal generation time. Normal Kie
-              // takes finish in 2-4 min, so 5 min is the earliest point where
-              // "still pending" reliably means "dying". A late Kie completion
-              // is a benign race: whichever provider finishes first wins the
-              // row, the loser finds no processing songs and no-ops.
-              const stuckAfterMin = kieOutage ? 5 : 30;
-              if (callbackFailed || ageMin > stuckAfterMin) {
+              // Slow-task hedge (2026-08-28, Fidela Almoza deaddb87): Kie can
+              // silently restart a generation internally (duplicated text/first
+              // callbacks, no failure ever reported), turning a 3-min job into
+              // 14+. Normal Kie takes finish in 2-4 min (48h p95: 4.6 min), so
+              // a task still pending past 6 min is almost never healthy —
+              // dispatch a Mureka hedge instead of waiting the old 30 min.
+              // The Kie task stays in flight: kie_task_id is preserved, so a
+              // late Kie completion is a benign race — whichever provider
+              // finishes first wins the row, the loser finds no processing
+              // songs and no-ops. Costs one duplicate generation on ~1% of
+              // orders. Breaker-open keeps the slightly faster 5-min lane.
+              const stuckAfterMin = kieOutage ? 5 : 6;
+              // Each dispatched hedge bumps regenerate_count; once the cap is
+              // hit, stop hedging and stop bumping updated_at — JOB 3's stale
+              // net then fails the order for real (max retries / timeout).
+              const hedgeCapReached = !callbackFailed && (song.regenerate_count || 0) >= MAX_RETRIES;
+              if (ageMin > stuckAfterMin && hedgeCapReached) {
+                results.push({ id: song.id, job: 'poll', action: 'hedge_cap_reached', kieStatus });
+              } else if (callbackFailed || ageMin > stuckAfterMin) {
                 if (!handledKieTasks.has(song.task_id)) {
                   handledKieTasks.add(song.task_id);
                   const syntheticStatus = callbackFailed ? 'CALLBACK_REPORTED_FAILURE'
-                    : (ageMin > 30 ? 'STUCK_OVER_30_MIN' : 'STUCK_KIE_OUTAGE');
-                  const recovery = await handleKieTerminalFailure(supabase, song.task_id, syntheticStatus);
+                    : (kieOutage ? 'STUCK_KIE_OUTAGE' : 'STUCK_OVER_6_MIN');
+                  // Stuck-age paths run in hedge mode: straight to Mureka (no
+                  // retry-on-Kie rung), no breaker 'failure' event, and rows
+                  // left untouched if the handoff can't be dispatched — see
+                  // handleKieTerminalFailure. A real failure callback keeps
+                  // the full ladder and its breaker accounting.
+                  const recovery = await handleKieTerminalFailure(
+                    supabase, song.task_id, syntheticStatus,
+                    callbackFailed ? {} : { hedge: true },
+                  );
                   results.push({ id: song.id, job: 'poll', action: `kie_recovery_${recovery}`, kieStatus: syntheticStatus });
                 } else {
                   results.push({ id: song.id, job: 'poll', action: 'kie_recovery_already_handled', kieStatus });

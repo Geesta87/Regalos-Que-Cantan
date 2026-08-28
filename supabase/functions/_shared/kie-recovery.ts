@@ -62,6 +62,36 @@ export async function isKieOutage(supabase: any): Promise<boolean> {
   }
 }
 
+// ---- Slow-task hedge helpers ----------------------------------------------
+// A hedged row is one the slow-task hedge handed to Mureka while its Kie task
+// was still in flight (error_message stamped 'kie STUCK_* — handed to Mureka'
+// by handleKieTerminalFailure; kie_task_id is preserved for the race). When
+// the MUREKA side then fails, the order must not die — the Kie take may still
+// land. Callers revert the row to Kie instead of failing it; the poll sweep
+// resumes record-info polling and re-hedges if needed (bounded by the retry
+// cap), with the stuck-song timeout as the final backstop.
+export function isHedgedRow(row: { kie_task_id?: string | null; error_message?: string | null }): boolean {
+  return !!row.kie_task_id
+    && /^kie STUCK_/.test(row.error_message || '')
+    && (row.error_message || '').includes('handed to Mureka');
+}
+
+export async function revertHedgeToKie(
+  supabase: any,
+  row: { id: string; kie_task_id: string },
+  murekaErr: string,
+) {
+  await supabase.from('songs').update({
+    provider: 'kie',
+    task_id: row.kie_task_id,
+    // Clear the dead job id: a duplicate/late failure callback for it must
+    // not re-match this row and kill it after the revert.
+    mureka_job_id: null,
+    error_message: `mureka hedge failed (${String(murekaErr)}) — back on kie`.substring(0, 500),
+    updated_at: new Date().toISOString(),
+  }).eq('id', row.id).eq('status', 'processing');
+}
+
 export function englishifyMarkersForProvider(lyrics: string): string {
   if (!lyrics) return lyrics;
   return lyrics
@@ -75,7 +105,24 @@ export function englishifyMarkersForProvider(lyrics: string): string {
     .replace(/\[Hablado\]/gi, '[Spoken Word]');
 }
 
-export async function handleKieTerminalFailure(supabase: any, taskId: string, kieStatus: string): Promise<string> {
+// opts.hedge: slow-task hedge mode (Kie is SLOW, not failed — the task is
+// still in flight). Three differences from the failure ladder:
+//   1. Skips the retry-on-Kie rung (resubmitting a slow job restarts the clock)
+//      and goes straight to the Mureka handoff.
+//   2. Records no breaker 'failure' event (slow ≠ failed; counting it could
+//      falsely open the breaker while Kie is healthy).
+//   3. If the handoff cannot be dispatched, leaves the rows UNTOUCHED — the
+//      Kie task is still generating and may yet win; never fail or requeue a
+//      live order over a hedge that didn't launch. The next poll sweep simply
+//      tries the hedge again.
+// On a successful handoff the Kie task keeps racing: kie_task_id is preserved,
+// so whichever provider finishes first wins the row and the loser no-ops.
+export async function handleKieTerminalFailure(
+  supabase: any,
+  taskId: string,
+  kieStatus: string,
+  opts: { hedge?: boolean } = {},
+): Promise<string> {
   // Load ALL sibling rows still processing for this task, with retry fields
   const { data: siblings } = await supabase
     .from('songs')
@@ -84,7 +131,9 @@ export async function handleKieTerminalFailure(supabase: any, taskId: string, ki
     .eq('status', 'processing');
   if (!siblings || siblings.length === 0) return 'no_siblings';
 
-  await recordKieHealthEvent(supabase, 'failure', taskId);
+  if (!opts.hedge) {
+    await recordKieHealthEvent(supabase, 'failure', taskId);
+  }
 
   const attempt = Math.max(...siblings.map((s: any) => s.regenerate_count || 0));
   const failAll = async (msg: string) => {
@@ -119,7 +168,7 @@ export async function handleKieTerminalFailure(supabase: any, taskId: string, ki
   // Also skipped for TAGS_REJECTED (Suno's deterministic artist-name/tags 400):
   // the identical payload is guaranteed to fail again — go straight to Mureka,
   // which doesn't enforce the artist rule.
-  if (attempt === 0 && KIE_API_KEY && kieStatus !== 'TAGS_REJECTED' && !(await isKieOutage(supabase))) {
+  if (!opts.hedge && attempt === 0 && KIE_API_KEY && kieStatus !== 'TAGS_REJECTED' && !(await isKieOutage(supabase))) {
     // The submit payload is stored on processing rows by generate-song
     // (completed rows get it overwritten with the track object — guard on .prompt)
     let submitPayload: any = null;
@@ -167,6 +216,10 @@ export async function handleKieTerminalFailure(supabase: any, taskId: string, ki
   const USEAPI_WEBHOOK_SECRET = Deno.env.get('USEAPI_WEBHOOK_SECRET') || '';
   const base = siblings[0];
   if (!USEAPI_TOKEN_2 || !MUREKA_ACCOUNT || !base?.lyrics || !base?.style_used) {
+    if (opts.hedge) {
+      console.warn(`Hedge for ${taskId}: no Mureka fallback available — leaving Kie task in flight`);
+      return 'hedge_no_fallback';
+    }
     // Can't hand to Mureka — but if a Kie submit payload exists, the retry
     // queue can keep re-trying Kie itself until it recovers.
     const hasKiePayload = siblings.some((s: any) => {
@@ -226,6 +279,14 @@ export async function handleKieTerminalFailure(supabase: any, taskId: string, ki
       console.log(`Kie task ${taskId} failed twice — HANDED TO MUREKA as ${data.jobid}`);
       return 'mureka_handoff';
     }
+    // Hedge mode: the Kie task is still alive — a hedge that failed to launch
+    // must never fail or requeue the order. Leave rows alone; the next poll
+    // sweep re-attempts the hedge (and the 90-min absolute timeout still
+    // backstops a Kie task that truly never finishes).
+    if (opts.hedge) {
+      console.warn(`Hedge handoff for ${taskId} failed (${r.status}) — leaving Kie task in flight`);
+      return 'hedge_handoff_error';
+    }
     // 4xx (except 429) = Mureka deterministically rejected this payload —
     // retrying the same thing forever would spin, so fail for real. Anything
     // else (429, 5xx, weird body) is transient: queue for auto-retry.
@@ -239,6 +300,10 @@ export async function handleKieTerminalFailure(supabase: any, taskId: string, ki
     );
     return 'queued_handoff_error';
   } catch (e: any) {
+    if (opts.hedge) {
+      console.warn(`Hedge handoff for ${taskId} network error (${e.message}) — leaving Kie task in flight`);
+      return 'hedge_handoff_network';
+    }
     await queueAll(
       `kie ${kieStatus}; Mureka handoff network error (${e.message}) — queued for auto-retry`.substring(0, 400),
       JSON.stringify(murekaPayload),
