@@ -946,6 +946,61 @@ async function checkPlaybackErrors(supabase: any): Promise<CheckResult> {
   }
 }
 
+/**
+ * CHECK 13: Backup freshness — the offsite vault (GCS rqc-backup-vault, Cloud
+ * Run job rqc-backup-vault, nightly 10:00 UTC) must have a successful run in
+ * the last 26h, and its restore drill must pass. An unverified backup fails
+ * exactly when it's needed — this alarm is what makes it a backup, not a hope.
+ */
+async function checkBackupFreshness(supabase: any): Promise<CheckResult> {
+  const name = 'Offsite Backup';
+  try {
+    const { data: runs, error } = await supabase
+      .from('backup_runs')
+      .select('finished_at, ok, files_copied, bytes_copied, copy_errors, drill_ok, error')
+      .order('finished_at', { ascending: false, nullsFirst: false })
+      .limit(5);
+    if (error) throw error;
+
+    if (!runs || runs.length === 0) {
+      if (await shouldAlert(supabase, 'backup_never_ran', 24)) {
+        return {
+          name, status: 'alert', severity: 'warning',
+          message: 'Offsite backup has NEVER reported a run',
+          details: 'The rqc-backup-vault Cloud Run job has not written to backup_runs. Check the job in Google Cloud Console (us-central1) and the Cloud Scheduler trigger rqc-backup-nightly.',
+        };
+      }
+      return { name, status: 'ok', severity: 'info', message: 'no runs yet (already alerted)' };
+    }
+
+    const lastOk = runs.find((r: any) => r.ok);
+    const ageH = lastOk ? (Date.now() - new Date(lastOk.finished_at).getTime()) / 3600000 : Infinity;
+    const latest = runs[0];
+    const problems: string[] = [];
+    if (ageH > 26) problems.push(`last SUCCESSFUL backup was ${Number.isFinite(ageH) ? Math.round(ageH) + 'h' : 'never'} ago (expected nightly)`);
+    if (!latest.ok) problems.push(`latest run FAILED: ${latest.error || `${latest.copy_errors} copy errors`}`);
+    if (latest.ok && latest.drill_ok === false) problems.push('restore drill FAILED — a song could not be read back from the vault');
+
+    if (problems.length > 0) {
+      if (await shouldAlert(supabase, 'backup_stale', 6)) {
+        return {
+          name, status: 'alert', severity: 'critical',
+          message: 'Offsite backup is stale or failing',
+          details:
+            `${problems.join('\n')}\n\n` +
+            'Customer songs are only protected while this runs nightly. Check: Cloud Run job rqc-backup-vault logs (us-central1) and Cloud Scheduler rqc-backup-nightly. Manual run: gcloud run jobs execute rqc-backup-vault --region=us-central1',
+        };
+      }
+      return { name, status: 'ok', severity: 'info', message: 'stale (already alerted this window)' };
+    }
+
+    const gb = ((Number(lastOk.bytes_copied) || 0) / 1e9).toFixed(1);
+    return { name, status: 'ok', severity: 'info', message: `last run ${Math.round(ageH)}h ago — ${lastOk.files_copied} new files (${gb} GB), drill ${lastOk.drill_ok === false ? 'FAILED' : 'ok'}` };
+  } catch (e: any) {
+    return { name, status: 'error', severity: 'warning', message: `Check failed: ${e.message}` };
+  }
+}
+
 // ============================================================================
 // MAIN HANDLER
 // ============================================================================
@@ -980,6 +1035,7 @@ Deno.serve(async (req: Request) => {
     checkClonamivozPipeline(supabase),
     checkAudioLiveness(supabase),
     checkPlaybackErrors(supabase),
+    checkBackupFreshness(supabase),
   ]);
 
   // Filter for alerts
