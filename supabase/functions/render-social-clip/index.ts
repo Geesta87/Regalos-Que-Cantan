@@ -203,6 +203,18 @@ type WhisperWord = { word: string; start: number; end: number };
 type WhisperResult = { words: WhisperWord[]; duration: number; language: string };
 type TimedChunk = { text: string; start: number; end: number };
 
+function whisperFileName(audioUrl: string, contentType?: string | null): string {
+  const m = String(audioUrl).split('?')[0].match(/.(mp3|m4a|mp4|mpeg|mpga|wav|webm|ogg|oga|flac|aac)$/i);
+  if (m) { const e = m[1].toLowerCase(); return 'song.' + (e === 'aac' ? 'm4a' : e === 'oga' ? 'ogg' : e); }
+  const ct = String(contentType || '').toLowerCase();
+  if (ct.includes('m4a') || ct.includes('mp4') || ct.includes('aac')) return 'song.m4a';
+  if (ct.includes('wav')) return 'song.wav';
+  if (ct.includes('webm')) return 'song.webm';
+  if (ct.includes('ogg')) return 'song.ogg';
+  if (ct.includes('flac')) return 'song.flac';
+  return 'song.mp3';
+}
+
 async function transcribeAudio(audioUrl: string): Promise<WhisperResult | null> {
   if (!OPENAI_API_KEY) {
     console.warn('[whisper] OPENAI_API_KEY not set — skipping transcription');
@@ -218,7 +230,7 @@ async function transcribeAudio(audioUrl: string): Promise<WhisperResult | null> 
     console.log(`[whisper] audio fetched: ${audioBlob.size} bytes`);
 
     const form = new FormData();
-    form.append('file', audioBlob, 'song.mp3');
+    form.append('file', audioBlob, whisperFileName(audioUrl, audioRes.headers.get('content-type')));
     form.append('model', 'whisper-1');
     form.append('language', 'es');
     form.append('response_format', 'verbose_json');

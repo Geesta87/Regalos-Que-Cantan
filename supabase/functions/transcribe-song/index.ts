@@ -62,12 +62,26 @@ async function getKieWords(song: any) {
   return words.length ? words : null;
 }
 
+function whisperFileName(audioUrl: string, contentType?: string | null): string {
+  const m = String(audioUrl).split('?')[0].match(/\.(mp3|m4a|mp4|mpeg|mpga|wav|webm|ogg|oga|flac|aac)$/i);
+  if (m) { const e = m[1].toLowerCase(); return 'song.' + (e === 'aac' ? 'm4a' : e === 'oga' ? 'ogg' : e); }
+  const ct = String(contentType || '').toLowerCase();
+  if (ct.includes('m4a') || ct.includes('mp4') || ct.includes('aac')) return 'song.m4a';
+  if (ct.includes('wav')) return 'song.wav';
+  if (ct.includes('webm')) return 'song.webm';
+  if (ct.includes('ogg')) return 'song.ogg';
+  if (ct.includes('flac')) return 'song.flac';
+  return 'song.mp3';
+}
+
 async function getWhisperWords(audioUrl: string) {
   if (!OPENAI_API_KEY) return null;
   const audioRes = await fetch(audioUrl);
   if (!audioRes.ok) throw new Error(`audio fetch ${audioRes.status}`);
   const form = new FormData();
-  form.append('file', await audioRes.blob(), 'song.mp3');
+  // Kie takes arrive as .m4a since 2026-08-28 — Whisper decodes by this
+  // filename, so a wrong extension is an HTTP 400 on a perfectly good file.
+  form.append('file', await audioRes.blob(), whisperFileName(audioUrl, audioRes.headers.get('content-type')));
   form.append('model', 'whisper-1');
   form.append('language', 'es');
   form.append('response_format', 'verbose_json');

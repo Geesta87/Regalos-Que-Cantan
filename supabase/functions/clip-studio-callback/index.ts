@@ -26,12 +26,24 @@ const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
 const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
 const now = () => new Date().toISOString();
 
+function whisperFileName(audioUrl: string, contentType?: string | null): string {
+  const m = String(audioUrl).split('?')[0].match(/.(mp3|m4a|mp4|mpeg|mpga|wav|webm|ogg|oga|flac|aac)$/i);
+  if (m) { const e = m[1].toLowerCase(); return 'song.' + (e === 'aac' ? 'm4a' : e === 'oga' ? 'ogg' : e); }
+  const ct = String(contentType || '').toLowerCase();
+  if (ct.includes('m4a') || ct.includes('mp4') || ct.includes('aac')) return 'song.m4a';
+  if (ct.includes('wav')) return 'song.wav';
+  if (ct.includes('webm')) return 'song.webm';
+  if (ct.includes('ogg')) return 'song.ogg';
+  if (ct.includes('flac')) return 'song.flac';
+  return 'song.mp3';
+}
+
 async function whisperWords(audioUrl: string) {
   if (!OPENAI_API_KEY) throw new Error('OPENAI_API_KEY not configured');
   const audioRes = await fetch(audioUrl);
   if (!audioRes.ok) throw new Error(`audio fetch ${audioRes.status}`);
   const form = new FormData();
-  form.append('file', await audioRes.blob(), 'audio.mp3');
+  form.append('file', await audioRes.blob(), whisperFileName(audioUrl, audioRes.headers.get('content-type')));
   form.append('model', 'whisper-1');
   form.append('response_format', 'verbose_json');
   form.append('timestamp_granularities[]', 'word');
