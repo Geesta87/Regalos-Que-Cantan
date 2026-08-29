@@ -213,6 +213,80 @@ const DEMO_CONVERSATIONS = [
   },
 ];
 
+// Saved replies — the most common responses the team has typed by hand,
+// mined from the real sms_messages history (2026-08). Spanish `text` is what
+// gets inserted into the reply box (and sent); `en` is a reading aid only so
+// a non-Spanish reader (Ivan) knows what each one says — it is never sent,
+// same convention as the 🇬🇧 translation bubbles in the thread.
+const SAVED_REPLIES = [
+  {
+    label: '👋 Saludo',
+    labelEn: 'Greeting',
+    text: '¡Hola! 👋 Gracias por contactar a Regalos Que Cantan 🎵 Con gusto le ayudo. ¿Ya hizo su canción?',
+    en: 'Hi! 👋 Thanks for contacting Regalos Que Cantan 🎵 Happy to help. Have you made your song yet?',
+  },
+  {
+    label: '🎧 Muestras — escuche y escoja',
+    labelEn: 'Previews — listen & pick',
+    text: 'Aquí están sus canciones para que las escuche y escoja las que le gustan 🎵 Complete el proceso y se las mandamos inmediatamente completas.',
+    en: "Here are your songs — listen and pick the ones you like 🎵 Complete the process and we'll send you the full versions right away.",
+  },
+  {
+    label: '⬇️ Entrega — descargar y compartir',
+    labelEn: 'Delivery — download & share',
+    text: 'Aquí están sus canciones para descargar y compartir 🎶 ¡Muchas gracias por confiar en RegalosQueCantan.com! ❤️',
+    en: 'Here are your songs to download and share 🎶 Thank you so much for trusting RegalosQueCantan.com! ❤️',
+  },
+  {
+    label: '🙏 Gracias por su confianza',
+    labelEn: 'Thanks & goodbye',
+    text: '¡Muchas gracias por confiar en RegalosQueCantan.com! Valoramos enormemente su apoyo y nos alegra formar parte de su momento especial ❤️',
+    en: 'Thank you so much for trusting RegalosQueCantan.com! We truly value your support and are glad to be part of your special moment ❤️',
+  },
+  {
+    label: '📝 Preguntas para canción nueva',
+    labelEn: 'New-song questions',
+    text: '¡Por supuesto! Estaremos encantados de ayudarte ❤️🎶\n\nPor favor, cuéntanos:\n• ¿A quién le dedicas la canción?\n• ¿Cuál es su nombre?\n• ¿Cuál es la ocasión?\n• ¿Qué mensaje te gustaría incluir?\n• ¿Hay algún recuerdo o detalle especial que quieras que añadamos?',
+    en: "Of course! We'd love to help ❤️🎶 Please tell us: Who is the song for? What's their name? What's the occasion? What message would you like to include? Any special memory or detail to add?",
+  },
+  {
+    label: '🛠 Garantía de corrección',
+    labelEn: 'Fix guarantee',
+    text: 'Si hay un error de nuestra parte (nombre, fecha o un detalle que nos dio), lo corregimos sin costo 🙏 ¿Nos dice exactamente qué palabra o parte salió mal?',
+    en: "If there's an error on our part (name, date, or a detail you gave us), we'll fix it at no cost 🙏 Can you tell us exactly which word or part came out wrong?",
+  },
+  {
+    label: '⏳ Corrección en proceso',
+    labelEn: 'Fix in progress',
+    text: 'Ya estamos trabajando en corregir su canción. En cuanto esté lista se la mandamos 🙏',
+    en: "We're already working on correcting your song. We'll send it over as soon as it's ready 🙏",
+  },
+  {
+    label: '✅ Canción corregida',
+    labelEn: 'Corrected song delivered',
+    text: '¡Aquí tienes tu canción corregida! Muchas gracias por tu paciencia y por confiar en RegalosQueCantan.com ❤️',
+    en: "Here's your corrected song! Thank you for your patience and for trusting RegalosQueCantan.com ❤️",
+  },
+  {
+    label: '💳 Pago seguro / Zelle',
+    labelEn: 'Payment & trust',
+    text: 'Nuestra empresa tiene su sede en Estados Unidos y aceptamos las principales tarjetas de débito y crédito, así como Zelle ✅ Si tiene alguna otra pregunta, con gusto le ayudamos.',
+    en: "Our company is based in the United States and we accept all major debit and credit cards, as well as Zelle ✅ If you have any other questions, we're happy to help.",
+  },
+  {
+    label: '💲 Oferta $29',
+    labelEn: '$29 offer',
+    text: '¡En este momento tenemos una oferta para una canción personalizada por solo $29! Podrás escuchar tu canción antes de comprarla, y una vez pagada podrás descargarla y conservarla para siempre 🎵',
+    en: 'Right now we have an offer: a personalized song for only $29! You can listen to your song before buying, and once paid you can download it and keep it forever 🎵',
+  },
+  {
+    label: '🚫 No se cambia el estilo',
+    labelEn: 'Style-change policy',
+    text: 'Una vez generada y pagada una canción, no se puede cambiar el género ni el estilo musical (como se indica en la advertencia antes de crearla). Pero si hay un error de nombre, fecha o letra de nuestra parte, lo corregimos sin costo ❤️',
+    en: "Once a song is generated and paid for, the genre and musical style can't be changed (as noted in the warning shown before creating it). But if there's a name, date, or lyric error on our part, we'll fix it at no cost ❤️",
+  },
+];
+
 export default function SmsInboxTab({ accessToken }) {
   const [conversations, setConversations] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
@@ -242,6 +316,9 @@ export default function SmsInboxTab({ accessToken }) {
   // File plus an object-URL for instant preview. Sent as base64 on Send.
   const [attachment, setAttachment] = useState(null); // { file, url, name }
   const [attachError, setAttachError] = useState('');
+  // Saved-replies dropdown (💬 Respuestas). Closes on outside click / Escape.
+  const [savedOpen, setSavedOpen] = useState(false);
+  const savedMenuRef = useRef(null);
   const replyRef = useRef(null);
   const fileInputRef = useRef(null);
   const copilotInputRef = useRef(null);
@@ -256,6 +333,20 @@ export default function SmsInboxTab({ accessToken }) {
     const el = copilotInputRef.current;
     if (el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 220) + 'px'; }
   }, [copilotInput]);
+  // Close the saved-replies dropdown on outside click or Escape.
+  useEffect(() => {
+    if (!savedOpen) return;
+    const onDown = (e) => {
+      if (savedMenuRef.current && !savedMenuRef.current.contains(e.target)) setSavedOpen(false);
+    };
+    const onKey = (e) => { if (e.key === 'Escape') setSavedOpen(false); };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [savedOpen]);
   // Push-notification button state:
   // 'hidden' (unsupported desktop browser), 'ios-install' (iPhone Safari tab —
   // must add to home screen first), 'off', 'busy', 'on', 'denied'.
@@ -1877,8 +1968,47 @@ export default function SmsInboxTab({ accessToken }) {
                 >
                   {/* One-tap quick replies — fill the box, then edit/Send. The
                       first one asks for the email so you can look them up when
-                      the copilot can't find them by phone. */}
+                      the copilot can't find them by phone. The 💬 Respuestas
+                      dropdown holds the longer saved replies (the 11 most
+                      common hand-typed messages), each with an English
+                      reading aid for Ivan — only the Spanish is inserted. */}
+                  <div ref={savedMenuRef} className="relative">
+                    {savedOpen && (
+                      <div className="absolute bottom-full left-0 mb-2 z-30 w-[min(30rem,calc(100vw-3rem))] max-h-96 overflow-y-auto bg-[#141922] border border-white/10 rounded-2xl shadow-2xl">
+                        <div className="px-3 py-2 border-b border-white/10 text-[10px] font-semibold uppercase tracking-wide text-gray-400 sticky top-0 bg-[#141922]">
+                          💬 Respuestas guardadas · Saved replies — tap to fill the box, then edit/Send
+                        </div>
+                        {SAVED_REPLIES.map((r) => (
+                          <button
+                            key={r.label}
+                            onClick={() => {
+                              setReply(r.text);
+                              setSavedOpen(false);
+                              replyRef.current?.focus();
+                            }}
+                            className="w-full text-left px-3 py-2.5 hover:bg-white/5 border-b border-white/5 last:border-b-0 transition block"
+                          >
+                            <div className="text-xs font-semibold text-gray-200">
+                              {r.label} <span className="text-gray-500 font-normal">· {r.labelEn}</span>
+                            </div>
+                            <p className="text-[11px] text-gray-400 mt-0.5 leading-snug whitespace-pre-wrap">{r.text}</p>
+                            <p className="text-[11px] text-sky-300/90 mt-1 leading-snug">🇬🇧 {r.en}</p>
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   <div className="flex gap-1.5 mb-2 overflow-x-auto pb-1 -mx-1 px-1">
+                    <button
+                      onClick={() => setSavedOpen((v) => !v)}
+                      className={`flex-shrink-0 text-xs border rounded-full px-3 py-1.5 transition whitespace-nowrap font-medium ${
+                        savedOpen
+                          ? 'bg-emerald-500/25 text-emerald-100 border-emerald-500/50'
+                          : 'bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-200 border-emerald-500/40'
+                      }`}
+                      title="Saved replies — the team's most common responses, with English translations"
+                    >
+                      💬 Respuestas {savedOpen ? '▴' : '▾'}
+                    </button>
                     {[
                       { label: '📧 Pedir correo', text: '¡Con gusto te ayudo a localizar tu canción! 🎵 ¿Me compartes el correo con el que hiciste tu pedido, por favor?' },
                       { label: '⏳ Un momento', text: '¡Claro! Dame un momentito por favor mientras lo reviso 🙏' },
@@ -1912,6 +2042,7 @@ export default function SmsInboxTab({ accessToken }) {
                     >
                       🎵 Make Song
                     </button>
+                  </div>
                   </div>
                   {/* Staged attachment preview — paste (Ctrl+V), drag-drop, or 📎. */}
                   {attachment && (
