@@ -64,6 +64,7 @@ import PaqueteLanding from './pages/PaqueteLanding';
 import PaqueteCheckout from './pages/PaqueteCheckout';
 import OneTapUpsellDemo from './components/OneTapUpsell';
 import SimpleCreateFlow from './pages/SimpleCreateFlow';
+import TrendsPage from './pages/TrendsPage';
 import { captureAffiliateRef, captureTrafficSource } from './services/tracking';
 
 // App State Context
@@ -132,7 +133,9 @@ const pathToPage = {
   '/paquete/checkout': 'paqueteCheckout',
   '/pack-listo': 'packReady',
   '/animado-demo': 'animadoDemo',
-  '/upsell-demo': 'upsellDemo'
+  '/upsell-demo': 'upsellDemo',
+  // Internal, unlinked preview of new product verticals (Trends Lab).
+  '/trends': 'trends'
 };
 
 // Helper to get initial page from URL - runs BEFORE first render
@@ -385,7 +388,8 @@ export default function App() {
       store: '/tienda',
       paquete: '/paquete',
       paqueteCheckout: '/paquete/checkout',
-      packReady: '/pack-listo'
+      packReady: '/pack-listo',
+      trends: '/trends'
     };
 
     // Handle dynamic SEO routes (generos/*, ocasiones/*)
@@ -518,6 +522,9 @@ export default function App() {
           {currentPage === 'diaDelPadre' && <DiaDelPadreLanding />}
           {currentPage === 'corridos' && <CorridosLanding />}
           {currentPage === 'bachata' && <BachataLanding />}
+
+          {/* Internal Trends Lab preview — hidden, noindex, not linked anywhere */}
+          {currentPage === 'trends' && <TrendsPage />}
 
           {/* SEO Dynamic Genre pages */}
           {currentPage.startsWith('generos/') && (
