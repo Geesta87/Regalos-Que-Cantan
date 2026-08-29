@@ -1,5 +1,6 @@
 // src/components/admin/OpsAgentTab.jsx
-// Ops Agent — the customer-support & operations chat console (admin-only).
+// Ops Agent — the customer-support & operations chat console (admin AND
+// assistant roles — Ivan works this tab).
 //
 // Chat with an agent that looks up orders/payments, verifies video files
 // really exist in storage, audits duplicate charges, reads a customer's

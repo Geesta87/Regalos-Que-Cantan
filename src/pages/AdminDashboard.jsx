@@ -5506,7 +5506,7 @@ export default function AdminDashboard() {
           {inboxCriticalCount > 0 && <span className="bg-red-500 text-white text-[10px] font-bold rounded-full min-w-5 h-5 px-1 flex items-center justify-center">{inboxCriticalCount}</span>}
         </button>
         )}
-        {userRole === 'admin' && (
+        {(userRole === 'admin' || userRole === 'assistant') && (
         <button onClick={() => setActiveTab('opsagent')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'opsagent' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
           <Headset size={18} className={`flex-shrink-0 ${activeTab === 'opsagent' ? 'text-amber-400' : ''}`} /> Ops Agent
         </button>
@@ -6228,7 +6228,7 @@ export default function AdminDashboard() {
                   )}
                 </button>
               )}
-              {userRole === 'admin' && (
+              {(userRole === 'admin' || userRole === 'assistant') && (
                 <button
                   onClick={() => setActiveTab('opsagent')}
                   className={`px-5 py-2.5 rounded-xl font-medium transition ${
@@ -6534,14 +6534,15 @@ export default function AdminDashboard() {
              admin server-side. Approvals dispatch to the SAME endpoints the
              per-agent tabs use — no new write paths. */
           <ActionInboxTab accessToken={accessToken} showToast={showToast} onNavigate={setActiveTab} />
-        ) : (activeTab === 'opsagent' && userRole === 'admin') ? (
+        ) : (activeTab === 'opsagent' && (userRole === 'admin' || userRole === 'assistant')) ? (
           /* Ops Agent — customer-support & operations chat console. Order and
              payment lookups, storage-verified video status, payment audits,
              SMS/WhatsApp history reads, bulk problem-finding, Spanish message
              drafts. Writes are staged in ops_pending_actions and only run on
-             the owner's Confirm tap; executors reuse the existing endpoints
+             an explicit Confirm tap; executors reuse the existing endpoints
              (admin-videos retry, recover-song send, test-karaoke,
-             song-fix-queue create-intake). ops-agent edge fn enforces admin. */
+             song-fix-queue create-intake). ops-agent edge fn enforces
+             admin_users membership (admin OR assistant — Ivan uses this tab). */
           <OpsAgentTab accessToken={accessToken} showToast={showToast} />
         ) : activeTab === 'orders' ? (
           <>

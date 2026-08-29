@@ -21,7 +21,8 @@
 // Refunds are NEVER executed — the agent identifies the exact charge and the
 // owner clicks refund in Stripe himself.
 //
-// Admin-only (verify_jwt = true + admin_users gate, same as business-analyst).
+// admin_users gate (verify_jwt = true): both roles — admin AND assistant
+// (Ivan) — may use this console. Other agent consoles stay admin-only.
 // Deploy: supabase functions deploy ops-agent --project-ref yzbvajungshqcpusfiia
 // Required secrets: ANTHROPIC_API_KEY. Optional: OPS_AGENT_MODEL.
 
@@ -495,14 +496,14 @@ async function runTool(admin: any, name: string, input: any, pending: any[], bud
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   try {
-    // --- Admin gate (same as business-analyst / cos-assistant) ---
+    // --- Staff gate: any admin_users row (admin or assistant) ---
     const authHeader = req.headers.get('Authorization') || '';
     const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { global: { headers: { Authorization: authHeader } } });
     const { data: ud, error: ue } = await userClient.auth.getUser();
     if (ue || !ud?.user) return json({ success: false, error: 'Invalid session' }, 401);
     const admin = createClient(SUPABASE_URL, SERVICE_ROLE);
     const { data: roleRow } = await admin.from('admin_users').select('role').eq('user_id', ud.user.id).single();
-    if (!roleRow || roleRow.role !== 'admin') return json({ success: false, error: 'Admins only' }, 403);
+    if (!roleRow || !['admin', 'assistant'].includes(roleRow.role)) return json({ success: false, error: 'Staff only' }, 403);
 
     let body: any = {}; try { body = await req.json(); } catch { body = {}; }
     const action = body.action || 'chat';
