@@ -32,6 +32,7 @@ const vault = gcs.bucket(GCS_BUCKET);
 const sbHeaders = { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` };
 
 const stats = { checked: 0, copied: 0, bytes: 0, errors: 0, dbRows: 0, drillOk: null };
+const runStartedAt = new Date().toISOString();
 
 async function fetchJson(url, opts = {}, tries = 3) {
   for (let i = 1; i <= tries; i++) {
@@ -160,8 +161,14 @@ async function backupTable(table, dateDir) {
 // ---- 4. Restore drill: pull one real paid song back OUT of the vault ----
 async function restoreDrill() {
   try {
+    // Only songs paid ≥1h BEFORE this run started: their audio was hosted (and
+    // inventoried) before the storage walk, so "missing from the vault" means a
+    // real backup failure — not the timing race that false-failed run #1
+    // (2026-08-29: drill picked a song paid at 00:16, mid-copy, whose file
+    // postdated the 00:05 inventory).
+    const cutoff = new Date(Date.parse(runStartedAt) - 60 * 60 * 1000).toISOString();
     const rows = await fetchJson(
-      `${SUPABASE_URL}/rest/v1/songs?select=id,audio_url&paid=eq.true&audio_url=like.*${SUPABASE_URL.replace('https://', '')}*&order=paid_at.desc.nullslast&limit=25`,
+      `${SUPABASE_URL}/rest/v1/songs?select=id,audio_url&paid=eq.true&paid_at=lt.${encodeURIComponent(cutoff)}&audio_url=like.*${SUPABASE_URL.replace('https://', '')}*&order=paid_at.desc.nullslast&limit=25`,
     );
     const pick = rows[Math.floor(Math.random() * rows.length)];
     if (!pick) { stats.drillOk = null; return; }
@@ -202,7 +209,7 @@ async function report(startedAt, ok, error) {
 }
 
 (async () => {
-  const startedAt = new Date().toISOString();
+  const startedAt = runStartedAt;
   console.log(`=== RQC BACKUP VAULT run ${startedAt} → gs://${GCS_BUCKET} (copy-only, no deletes) ===`);
   try {
     await backupStorage();
