@@ -916,25 +916,30 @@ async function checkPlaybackErrors(supabase: any): Promise<CheckResult> {
     const windowStart = new Date(Date.now() - 30 * 60 * 1000).toISOString();
     const { data: rows, error } = await supabase
       .from('playback_errors')
-      .select('song_id, audio_host, page')
+      .select('song_id, audio_host, page, verified_dead')
       .gt('created_at', windowStart)
       .limit(500);
     if (error) throw error;
 
-    const distinct = new Set((rows || []).map((r: any) => r.song_id));
+    // Only VERIFIED-dead reports count toward paging (2026-08-29 tuning:
+    // three simultaneous cell-signal hiccups SMS'd the owner while every file
+    // was provably healthy). playback-beacon probes each reported URL and
+    // stamps verified_dead; alive/inconclusive rows stay logged as diagnostics.
+    const deadRows = (rows || []).filter((r: any) => r.verified_dead === true);
+    const distinct = new Set(deadRows.map((r: any) => r.song_id));
     if (distinct.size < 3) {
-      return { name, status: 'ok', severity: 'info', message: `${rows?.length || 0} beacon(s) / ${distinct.size} song(s) in 30 min` };
+      return { name, status: 'ok', severity: 'info', message: `${rows?.length || 0} beacon(s), ${distinct.size} verified-dead song(s) in 30 min` };
     }
 
     if (await shouldAlert(supabase, 'playback_errors_spike', 1)) {
       const byHost: Record<string, number> = {};
-      for (const r of rows || []) byHost[r.audio_host || 'unknown'] = (byHost[r.audio_host || 'unknown'] || 0) + 1;
+      for (const r of deadRows) byHost[r.audio_host || 'unknown'] = (byHost[r.audio_host || 'unknown'] || 0) + 1;
       const hosts = Object.entries(byHost).map(([h, n]) => `${h}: ${n}`).join(', ');
       return {
         name, status: 'alert', severity: 'critical',
-        message: `${distinct.size} different songs failed to play in customers' browsers (last 30 min)`,
+        message: `${distinct.size} different songs VERIFIED unplayable from customers' browsers (last 30 min)`,
         details:
-          `${rows!.length} playback-error beacon(s) from real customers across ${distinct.size} songs.\n` +
+          `${deadRows.length} verified-dead beacon(s) across ${distinct.size} songs (${rows!.length} raw reports).\n` +
           `Failing hosts: ${hosts}\n\n` +
           `This is measured on customer devices — whatever the cause (CDN, storage, DNS), buyers are hearing silence. ` +
           `Cross-check the Audio Liveness alert; recent rows: SELECT * FROM playback_errors ORDER BY created_at DESC LIMIT 50;`,

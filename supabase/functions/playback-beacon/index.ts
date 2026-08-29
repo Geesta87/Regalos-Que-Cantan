@@ -40,7 +40,9 @@ Deno.serve(async (req) => {
       try { audioHost = new URL(audioUrl).hostname; } catch { /* not a URL */ }
 
       const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+      const beaconId = crypto.randomUUID();
       await supabase.from('playback_errors').insert({
+        id: beaconId,
         song_id: songId,
         audio_url: audioUrl,
         audio_host: audioHost,
@@ -62,11 +64,17 @@ Deno.serve(async (req) => {
           const ctrl = new AbortController();
           const t = setTimeout(() => ctrl.abort(), 8000);
           let dead = 0;
+          let verdict: boolean | null = null; // null = probe inconclusive
           try {
             const r = await fetch(s.audio_url, { headers: { Range: 'bytes=0-256' }, signal: ctrl.signal });
-            if (!(r.status === 200 || r.status === 206)) dead = r.status;
+            if (r.status === 200 || r.status === 206) verdict = false;
+            else { dead = r.status; verdict = true; }
           } catch { /* network error — not proof the file is gone */ }
           finally { clearTimeout(t); }
+          // Stamp the verdict so health-check's Player Errors alarm counts
+          // only VERIFIED-dead reports (a customer's bad cell signal stays
+          // logged for diagnostics but never pages the owner).
+          await supabase.from('playback_errors').update({ verified_dead: verdict }).eq('id', beaconId);
           if (dead) {
             const action = await healDeadAudio(supabase, songId, dead, 'beacon');
             console.log(`[BEACON-HEAL] ${songId} (HTTP ${dead}) → ${action}`);
