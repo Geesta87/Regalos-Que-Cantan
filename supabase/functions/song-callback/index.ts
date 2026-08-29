@@ -265,9 +265,18 @@ Deno.serve(async (req) => {
             .replace(/[^a-z0-9\s-]/g, '')
             .replace(/\s+/g, '-')
             .substring(0, 50);
-          const fileName = `songs/cancion-para-${cleanName}-${s.id.substring(0, 8)}.mp3`;
+
+          // Store the REAL container (2026-08-28: Kie flipped fix takes to m4a
+          // with no notice — if the generation feed flips too, mislabeling m4a
+          // bytes as .mp3/audio/mpeg would poison every downstream consumer).
+          let storeExt = 'mp3', storeCt = 'audio/mpeg';
+          try {
+            const hb = new Uint8Array(await blob.slice(0, 12).arrayBuffer());
+            if (String.fromCharCode(...hb.slice(4, 8)) === 'ftyp') { storeExt = 'm4a'; storeCt = 'audio/mp4'; console.warn('[FORMAT] Kie delivered m4a audio — storing as .m4a'); }
+          } catch { /* default mp3 */ }
+          const fileName = `songs/cancion-para-${cleanName}-${s.id.substring(0, 8)}.${storeExt}`;
           const { error: upErr } = await supabase.storage.from('audio')
-            .upload(fileName, blob, { contentType: 'audio/mpeg', cacheControl: '3600', upsert: true });
+            .upload(fileName, blob, { contentType: storeCt, cacheControl: '3600', upsert: true });
           if (upErr) { console.warn(`[INSTANT-REHOST] upload failed for ${cid}: ${upErr.message}`); continue; }
           const { data: pub } = supabase.storage.from('audio').getPublicUrl(fileName);
           const ver = (Number(s.regenerate_count) || 0) + (Number(s.fix_count) || 0);

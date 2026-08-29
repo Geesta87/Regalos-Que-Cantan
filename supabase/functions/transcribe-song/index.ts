@@ -81,7 +81,16 @@ async function getWhisperWords(audioUrl: string) {
   const form = new FormData();
   // Kie takes arrive as .m4a since 2026-08-28 — Whisper decodes by this
   // filename, so a wrong extension is an HTTP 400 on a perfectly good file.
-  form.append('file', await audioRes.blob(), whisperFileName(audioUrl, audioRes.headers.get('content-type')));
+  const audioBlob = await audioRes.blob();
+  let whisperName = whisperFileName(audioUrl, audioRes.headers.get('content-type'));
+    // Magic-byte check: an MP4/M4A container starts with "....ftyp". The URL
+    // extension can lie (2026-08-28: mislabeled files were a silent Whisper
+    // 400) — bytes never do.
+    try {
+      const hb = new Uint8Array(await audioBlob.slice(0, 12).arrayBuffer());
+      if (String.fromCharCode(...hb.slice(4, 8)) === 'ftyp') whisperName = 'song.m4a';
+    } catch { /* keep the URL-derived name */ }
+  form.append('file', audioBlob, whisperName);
   form.append('model', 'whisper-1');
   form.append('language', 'es');
   form.append('response_format', 'verbose_json');
