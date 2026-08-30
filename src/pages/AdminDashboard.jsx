@@ -1110,6 +1110,14 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
         const content = toks.filter((t) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]/g, '').length > 2).join(' ');
         if (content !== line && buildTokenGroups(content).length >= 3) best = countCleanOccurrences(inWords, content);
       }
+      // FINAL-CONSONANT RETRY (2026-08-29, Sarita 0e1ae0cc, mirror of Ace's
+      // audit): a swallowed line-final consonant ("\u2026que me den" heard "\u2026que
+      // me d\u00e9") zeroed a chorus line in four straight takes. Count once more
+      // without the final token; the >=3-group floor keeps identity.
+      if (!best) {
+        const rest = toks.slice(0, -1).join(' ');
+        if (toks.length >= 4 && buildTokenGroups(rest).length >= 3) best = countCleanOccurrences(inWords, rest);
+      }
       return best;
     };
     for (const { line, n, rawCap } of need.values()) {

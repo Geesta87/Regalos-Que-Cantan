@@ -515,6 +515,20 @@ function countLineForAudit(ws: W[], line: string, groups: string[][], n: number)
         if (cg.length >= 3) have = Math.max(have, Math.min(n, countByGroups(ws, cg)));
       }
     }
+    // FINAL-CONSONANT RETRY (2026-08-29, Sarita 0e1ae0cc): singers swallow a
+    // line-final consonant and Whisper writes the truncated word — every take
+    // sang "en cada vida que me den" but transcribed "…que me dé" (norm-
+    // stripped to a 2-char token) and the line counted 0/3 in four takes
+    // across two rounds, burning them all. When the line still fails, count
+    // once more WITHOUT its final token — the >=3-group floor keeps identity
+    // and the clamp keeps this an undercount cure only.
+    if (have < n) {
+      const toks2 = line.split(/\s+/).filter(Boolean);
+      if (toks2.length >= 4) {
+        const rg = buildAuditGroups(toks2.slice(0, -1).join(' '));
+        if (rg.length >= 3) have = Math.max(have, Math.min(n, countByGroups(ws, rg)));
+      }
+    }
     return have;
   }
 }
