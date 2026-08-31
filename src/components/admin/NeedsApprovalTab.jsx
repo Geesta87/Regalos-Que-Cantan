@@ -160,6 +160,7 @@ export default function NeedsApprovalTab({ accessToken, showToast, gate = 'liken
                     </div>
                   </div>
                   <Assumptions items={o.assumptions} />
+                  <CastPanel cast={o.cast_tags} />
                   <p className="text-xs text-gray-500 mb-2">Compare against the real photo and pick the closest likeness:</p>
                   <div className="grid grid-cols-3 gap-3">
                     {/* original photo for comparison — no button */}
@@ -303,6 +304,7 @@ export default function NeedsApprovalTab({ accessToken, showToast, gate = 'liken
                 {finals.map((o) => (
                   <div key={o.id} className="rounded-xl border border-gray-800 bg-[#1a1f26] p-4">
                     <div className="text-white font-semibold mb-3">{o.recipient}</div>
+                    <CastPanel cast={o.cast_tags} />
                     {o.video_url && <video controls src={o.video_url} className="w-full rounded-lg bg-black aspect-[9/16] max-h-[480px] mx-auto" />}
                     <div className="flex gap-2 mt-3">
                       <button onClick={() => act(o.id, 'approve_final')} disabled={busy}
@@ -362,6 +364,31 @@ function Assumptions({ items }) {
         ))}
       </ul>
       <p className="text-[11px] text-amber-200/60 mt-1.5">If something is wrong, reject and request a photo or adjust the story.</p>
+    </div>
+  );
+}
+
+// Customer-confirmed cast from the "who is who" questionnaire (multi-person
+// photos). Authoritative identities — check every person in the likeness /
+// video against this list before approving.
+function CastPanel({ cast }) {
+  if (!Array.isArray(cast) || cast.length === 0) return null;
+  return (
+    <div className="mb-3 rounded-lg bg-sky-500/10 border border-sky-500/30 px-3 py-2.5">
+      <p className="text-xs font-bold text-sky-300 mb-1.5">
+        👥 Confirmed cast — the customer said who each person is ({cast.length}):
+      </p>
+      <ul className="space-y-1">
+        {cast.map((c, i) => (
+          <li key={i} className="text-xs text-sky-100/90 leading-snug">
+            • <span className="font-semibold">{c.name || '(no name)'}</span>
+            {c.role ? <span className="text-sky-200/80"> — {c.role}</span> : null}
+            {c.in_photo === false ? <span className="text-amber-300/80"> · not in photo</span> : null}
+            {c.description ? <span className="text-sky-200/60"> · {c.description}</span> : null}
+          </li>
+        ))}
+      </ul>
+      <p className="text-[11px] text-sky-200/60 mt-1.5">Every person above must be recognizable and in the right role. If someone is missing or swapped, redo or reject.</p>
     </div>
   );
 }
@@ -532,6 +559,8 @@ function SceneReview({ orderId, call, showToast, onRerender }) {
                   {song?.details && <p className="mt-1 text-gray-500 line-clamp-4">“{song.details}”</p>}
                 </div>
               </div>
+
+              <CastPanel cast={order.cast_tags} />
 
               {(order.storyboard?.assumptions || []).length > 0 && (
                 <div className="rounded-lg bg-amber-500/10 border border-amber-500/30 px-3 py-2">

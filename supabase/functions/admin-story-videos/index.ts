@@ -56,7 +56,7 @@ serve(async (req) => {
       // 'delivered' is capped (order by updated_at desc, limit) so the completed
       // history can't grow the payload unbounded.
       const { data: rows, error } = await admin.from('story_video_orders')
-        .select('id, state, recipient_photo_url, character_options, approved_character_url, approved_character_at, video_url, storyboard, created_at, updated_at, build_started_at, delivered_at, final_approved_at, deleted_at, deleted_from_state, error, song_id')
+        .select('id, state, recipient_photo_url, character_options, approved_character_url, approved_character_at, video_url, storyboard, cast_tags, created_at, updated_at, build_started_at, delivered_at, final_approved_at, deleted_at, deleted_from_state, error, song_id')
         // generating_likeness included so a redo/regenerate shows as "Regenerating…"
         // in the Likeness tab instead of silently vanishing until it's done.
         .in('state', ['generating_likeness', 'likeness_review', 'final_review', 'building', 'failed', 'delivered', 'deleted'])
@@ -171,7 +171,7 @@ serve(async (req) => {
     // persisted asset, plus the song facts the storyboard was built from.
     if (action === 'detail') {
       const { data: full } = await admin.from('story_video_orders')
-        .select('id, state, song_id, video_url, recipient_photo_url, approved_character_url, storyboard, scene_assets, morph_asset, error, updated_at')
+        .select('id, state, song_id, video_url, recipient_photo_url, approved_character_url, storyboard, scene_assets, morph_asset, cast_tags, error, updated_at')
         .eq('id', id).single();
       if (!full) return json({ success: false, error: 'order not found' }, 404);
       const { data: song } = await admin.from('songs')
@@ -247,7 +247,7 @@ serve(async (req) => {
       if (!question?.trim()) return json({ success: false, error: 'Missing question' }, 400);
       if (!ANTHROPIC_API_KEY) return json({ success: false, error: 'ANTHROPIC_API_KEY not set' }, 500);
       const { data: full } = await admin.from('story_video_orders')
-        .select('song_id, state, storyboard, scene_assets').eq('id', id).single();
+        .select('song_id, state, storyboard, scene_assets, cast_tags').eq('id', id).single();
       if (!full) return json({ success: false, error: 'order not found' }, 404);
       const { data: song } = await admin.from('songs')
         .select('recipient_name, sender_name, relationship, occasion, genre_name, details, lyrics')
@@ -263,6 +263,11 @@ serve(async (req) => {
         `STORYBOARD (scenes in song order; "hero" scenes are animated):\n${JSON.stringify((full.storyboard?.scenes || []).map((s: any) => ({ image_id: s.image_id, anchor: s.anchor, visual: s.visual_prompt, hero: s.hero })), null, 0)}`,
         '',
         `AI'S FLAGGED ASSUMPTIONS (details it guessed, not stated by the customer):\n${JSON.stringify(full.storyboard?.assumptions || [])}`,
+        '',
+        // Customer-confirmed cast (the "who is who" questionnaire on multi-person
+        // photos) — authoritative identities; anything on screen that contradicts
+        // a confirmed name/role/description is an inaccuracy.
+        `CUSTOMER-CONFIRMED CAST (authoritative — confirmed by the customer at photo upload):\n${Array.isArray(full.cast_tags) && full.cast_tags.length ? JSON.stringify(full.cast_tags) : '(none — single-person photo or questionnaire skipped)'}`,
       ].join('\n');
       const msgs = [...(Array.isArray(history) ? history.slice(-8) : []), { role: 'user', content: question.trim() }];
       const r = await fetch('https://api.anthropic.com/v1/messages', {
