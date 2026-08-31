@@ -48,11 +48,24 @@ async function fetchJson(url, opts = {}, tries = 3) {
 }
 
 // ---- 1. Inventory what the vault already holds (one listing, not 92k HEADs)
+// Each page is retried: the 110k-object listing takes ~110 MB over several
+// minutes, and a single dropped socket killed the whole 2026-08-31 run.
 async function loadVaultIndex() {
   const index = new Map(); // 'supabase/<bucket>/<path>' -> size
   let pageToken;
   do {
-    const [files, , resp] = await vault.getFiles({ prefix: 'supabase/', maxResults: 5000, pageToken, autoPaginate: false });
+    let page;
+    for (let attempt = 1; ; attempt++) {
+      try {
+        page = await vault.getFiles({ prefix: 'supabase/', maxResults: 5000, pageToken, autoPaginate: false });
+        break;
+      } catch (e) {
+        if (attempt >= 4) throw e;
+        console.warn(`vault listing page failed (attempt ${attempt}): ${e.message} — retrying`);
+        await new Promise((res) => setTimeout(res, 3000 * attempt));
+      }
+    }
+    const [files, , resp] = page;
     for (const f of files) index.set(f.name, Number(f.metadata.size));
     pageToken = resp && resp.nextPageToken;
   } while (pageToken);
@@ -207,6 +220,15 @@ async function report(startedAt, ok, error) {
     console.warn(`backup_runs report failed: ${e.message}`);
   }
 }
+
+// Any crash that escapes the main try/catch must still leave a failure row —
+// the 2026-08-31 socket crash reported NOTHING, so backup_runs looked merely
+// "quiet" instead of failed until the 26h freshness alarm.
+process.on('unhandledRejection', async (e) => {
+  console.error('unhandledRejection:', e);
+  try { await report(runStartedAt, false, `unhandledRejection: ${e?.message || e}`); } catch { /* best effort */ }
+  process.exit(1);
+});
 
 (async () => {
   const startedAt = runStartedAt;
