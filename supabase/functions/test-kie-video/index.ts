@@ -172,6 +172,25 @@ serve(async (req) => {
       const raw = await r.json().catch(() => ({ error: 'non-json response', status: r.status }));
       return json(200, { http: r.status, predictionId: raw?.data?.id || raw?.id || null, raw });
     }
+    // { mode:'atlas-audio', model?, input: {...full passthrough} }
+    // -> { predictionId, raw }   then poll with { mode:'atlas-status', predictionId }
+    // Music/audio twin of the 'atlas' video mode (provider bake-offs, 2026-09-01:
+    // MiniMax Music 3.0 evaluation). Full passthrough so schema changes never
+    // need a redeploy.
+    if (body.mode === 'atlas-audio') {
+      if (!ATLAS_API_KEY) throw new Error('ATLAS_API_KEY not set');
+      const payload: Record<string, unknown> = {
+        model: body.model || 'minimax/music-3.0',
+        ...(body.input && typeof body.input === 'object' ? body.input : {}),
+      };
+      const r = await fetch(`${ATLAS}/generateAudio`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${ATLAS_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const raw = await r.json().catch(() => ({ error: 'non-json response', status: r.status }));
+      return json(200, { http: r.status, predictionId: raw?.data?.id || raw?.id || null, raw });
+    }
     if (body.mode === 'atlas-status') {
       if (!ATLAS_API_KEY) throw new Error('ATLAS_API_KEY not set');
       const id = body.predictionId || body.taskId;
