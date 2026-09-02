@@ -678,7 +678,7 @@ Deno.serve(async (req) => {
               await recordKieHealthEvent(supabase, 'success', amTaskId); // Suno sang — feeds breaker recovery
               for (const song of group.sort((a: any, b: any) => (a.version || 1) - (b.version || 1))) {
                 const idx = Math.min((song.version || 1) - 1, task.tracks.length - 1);
-                const ok = await completeSong(song, task.tracks[idx].audio_url);
+                const ok = await completeSong(supabase, song, task.tracks[idx].audio_url);
                 results.push({ id: song.id, job: 'apimart', action: ok ? 'completed_mirror' : 'complete_failed' });
               }
               console.log(`[APIMART] task ${amTaskId} completed → ${group.length} song(s) delivered`);
