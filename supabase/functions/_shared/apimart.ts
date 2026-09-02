@@ -75,7 +75,11 @@ export async function getApimartTask(
     const j = await r.json().catch(() => ({} as any));
     const d = j?.data;
     const status = d?.status || d?.[0]?.status;
-    if (['completed', 'done', 'succeeded'].includes(status)) {
+    // A finished task may carry status='completed' OR (as observed live
+    // 2026-09-02) no status field at all — just progress:100 with a
+    // populated result. Treat either shape as done.
+    const progressDone = Number(d?.progress) === 100 || Number(d?.[0]?.progress) === 100 || !!d?.completed;
+    if (['completed', 'done', 'succeeded'].includes(status) || progressDone) {
       const tracks: ApimartTrack[] = [];
       const scan = (o: unknown) => {
         if (!o || typeof o !== 'object') return;
