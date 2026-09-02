@@ -1104,3 +1104,19 @@ verify_jwt = true
 # customers hit silent players for 2h before a complaint surfaced it).
 # Must stay verify_jwt = false or every beacon 401s.
 verify_jwt = false
+
+[functions.mercury-sync]
+# Mercury bank → mercury_transactions sync (Finance tab / P&L). Runs nightly
+# via pg_cron (no JWT context — see CRON_SETUP.sql) and on-demand via the
+# finance-data server-side proxy, so verify_jwt = false. READ-ONLY Mercury
+# token; the response carries counts only, never transaction data, so an
+# anonymous hit can at worst trigger a harmless re-sync.
+verify_jwt = false
+
+[functions.finance-data]
+# Finance tab API (bank balances, monthly P&L, ledger, recategorize, sync
+# trigger). Called ONLY from our own frontend with the owner's Supabase Auth
+# JWT; the handler re-checks admin_users role='admin' and — unlike most tabs —
+# REJECTS assistants (bank data is owner-only, decision 2026-09-02). No
+# external webhook or pg_cron caller exists → default gate stays ON.
+verify_jwt = true

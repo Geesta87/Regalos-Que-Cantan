@@ -15,6 +15,7 @@ import CharacterStudioTab from '../components/admin/CharacterStudioTab';
 import AdStudioTab from '../components/admin/AdStudioTab';
 import CuentoTab from '../components/admin/CuentoTab';
 import DailyBriefingTab from '../components/admin/DailyBriefingTab';
+import FinanceTab from '../components/admin/FinanceTab';
 import ChiefOfStaffTab from '../components/admin/ChiefOfStaffTab';
 import AdsCoachTab from '../components/admin/AdsCoachTab';
 import SeoCoachTab from '../components/admin/SeoCoachTab';
@@ -25,7 +26,7 @@ import ActionInboxTab, {
   loadHidden as loadInboxHidden, isHiddenNow as isInboxHiddenNow, INBOX_COUNT_EVENT,
 } from '../components/admin/ActionInboxTab';
 import OpsAgentTab from '../components/admin/OpsAgentTab';
-import { Package, Send, Flame, MessageSquare, Users, Search, Mic, Music, X, Wrench, Film, Video, Sparkles, Newspaper, Compass, UserPlus, Scissors, Target, Inbox, Contact, BookOpen, QrCode, Gift, Clapperboard, Headset } from 'lucide-react';
+import { Package, Send, Flame, MessageSquare, Users, Search, Mic, Music, X, Wrench, Film, Video, Sparkles, Newspaper, Compass, UserPlus, Scissors, Target, Inbox, Contact, BookOpen, QrCode, Gift, Clapperboard, Headset, Landmark } from 'lucide-react';
 import { spliceIntoOriginal, spliceLineReplace, trimTake, parseTimed, findLastLineEnd, findCleanLine, validateTake, buildTokenGroups, lastSungWordEnd, findAnchorEnd, timelineDamage } from '../utils/audioSplice';
 
 // Debounce hook for search inputs
@@ -3218,7 +3219,7 @@ export default function AdminDashboard() {
     const tab = new URLSearchParams(window.location.search).get('tab');
     // Keep in sync with the nav (sidebar + mobile pills). Every tab that has a
     // content branch must be listed here so push/bookmark deep-links can reach it.
-    const valid = ['inbox', 'opsagent', 'orders', 'pendingsend', 'hotleads', 'sms', 'training', 'fixsong', 'affiliates', 'recruit', 'lookup', 'clonamivoz', 'animado', 'videos', 'chiefofstaff', 'dailybriefing', 'creativestudio', 'clipstudio', 'characterstudio', 'adstudio', 'cuento'];
+    const valid = ['inbox', 'opsagent', 'orders', 'pendingsend', 'hotleads', 'sms', 'training', 'fixsong', 'affiliates', 'recruit', 'lookup', 'clonamivoz', 'animado', 'videos', 'chiefofstaff', 'dailybriefing', 'finance', 'creativestudio', 'clipstudio', 'characterstudio', 'adstudio', 'cuento'];
     // The Action Inbox is the admin home: one ranked queue of everything
     // waiting on the owner. Assistants get bounced to Orders (effect below).
     return valid.includes(tab) ? tab : 'inbox';
@@ -5580,6 +5581,11 @@ export default function AdminDashboard() {
         </button>
         )}
         {userRole === 'admin' && (
+        <button onClick={() => setActiveTab('finance')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'finance' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
+          <Landmark size={18} className={`flex-shrink-0 ${activeTab === 'finance' ? 'text-amber-400' : ''}`} /> Finance
+        </button>
+        )}
+        {userRole === 'admin' && (
         <button onClick={() => setActiveTab('adscoach')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'adscoach' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
           <Target size={18} className={`flex-shrink-0 ${activeTab === 'adscoach' ? 'text-amber-400' : ''}`} /> Ads Coach
         </button>
@@ -5701,7 +5707,7 @@ export default function AdminDashboard() {
           <div className="flex items-center gap-3">
             <div>
               <h1 className="font-bold text-lg flex items-center gap-2">
-                {({ orders: 'Orders', pendingsend: 'Pending to Send', hotleads: 'Hot Leads', sms: 'SMS Messages', training: 'Bot Training', fixsong: 'Fix Song', affiliates: 'Affiliates', recruit: 'Recruit Partners', lookup: 'Lookup', clonamivoz: 'Clone Mi Voz', animado: 'Animado™', videos: 'Videos (Slideshow)', chiefofstaff: 'Chief of Staff', dailybriefing: 'Daily Briefing', creativestudio: 'Creative Studio', clipstudio: 'Clip Studio', characterstudio: 'Character Studio', cuento: 'Cuento Ilustrado' }[activeTab]) || 'Dashboard'}
+                {({ orders: 'Orders', pendingsend: 'Pending to Send', hotleads: 'Hot Leads', sms: 'SMS Messages', training: 'Bot Training', fixsong: 'Fix Song', affiliates: 'Affiliates', recruit: 'Recruit Partners', lookup: 'Lookup', clonamivoz: 'Clone Mi Voz', animado: 'Animado™', videos: 'Videos (Slideshow)', chiefofstaff: 'Chief of Staff', dailybriefing: 'Daily Briefing', finance: 'Finance', creativestudio: 'Creative Studio', clipstudio: 'Clip Studio', characterstudio: 'Character Studio', cuento: 'Cuento Ilustrado' }[activeTab]) || 'Dashboard'}
                 {userRole && (
                   <span
                     className={`text-[10px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded-full border ${
@@ -6436,6 +6442,18 @@ export default function AdminDashboard() {
                 }`}
               >
                 📰 Daily Briefing
+              </button>
+              )}
+              {userRole === 'admin' && (
+              <button
+                onClick={() => setActiveTab('finance')}
+                className={`px-5 py-2.5 rounded-xl font-medium transition ${
+                  activeTab === 'finance'
+                    ? 'bg-cyan-500 text-white'
+                    : 'bg-white/5 text-gray-400 hover:bg-white/10'
+                }`}
+              >
+                🏦 Finance
               </button>
               )}
               {userRole === 'admin' && (
@@ -8400,6 +8418,13 @@ export default function AdminDashboard() {
              hidden from the sidebar AND the route is guarded for assistants like
              Ivan. daily-briefing-admin edge function enforces it server-side too. */
           <DailyBriefingTab accessToken={accessToken} showToast={showToast} />
+        ) : (activeTab === 'finance' && userRole === 'admin') ? (
+          /* Finance — Mercury bank P&L: every dollar in/out of the business
+             account, balances, runway, category ledger. OWNER-only (bank
+             data): hidden from assistants like Ivan here AND rejected
+             server-side by the finance-data edge function. Read-only token —
+             this tab cannot move money. */
+          <FinanceTab accessToken={accessToken} showToast={showToast} />
         ) : (activeTab === 'adscoach' && userRole === 'admin') ? (
           /* Ads Coach — interactive, advice-only Meta ads specialist. Reads live
              account numbers + real orders, sees your ad creatives, reasons with the

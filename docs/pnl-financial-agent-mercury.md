@@ -1,7 +1,13 @@
 # P&L Financial Agent — Mercury Bank integration (design doc)
 
-Status: **DESIGN — nothing built or deployed yet.** Drafted 2026-09-02 on branch
-`claude/pnl-financial-agent-mercury-f87c52`.
+Status: **Phase 1 BUILT on branch `claude/pnl-financial-agent-mercury-f87c52`
+(2026-09-02) — not yet merged or deployed.** Owner decisions locked in
+2026-09-02: sync ALL Mercury accounts; tab + API are **owner-only** (role
+`admin`; assistants like Ivan rejected server-side); big-debit alert threshold
+**$500**; backfill 24 months. Phase 1 files: migration
+`20260902150000_mercury_finance.sql`, `mercury-sync` (+ CRON_SETUP.sql),
+`finance-data`, `FinanceTab.jsx`, config.toml blocks. Phases 2–3 below remain
+design.
 
 ## 1. What this is
 
