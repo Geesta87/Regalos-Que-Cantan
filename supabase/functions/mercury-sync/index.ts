@@ -182,8 +182,14 @@ serve(async (req) => {
       for (const t of txns) {
         const clean = cleanCounterparty(t.counterpartyNickname || t.counterpartyName);
         // Internal moves between our own Mercury accounts double-count the
-        // P&L, so flag and exclude them.
-        const isTransfer = t.kind === 'internalTransfer' || (t.counterpartyId && ownAccountIds.has(t.counterpartyId));
+        // P&L, so flag and exclude them. That INCLUDES Mercury Credit card
+        // bill payments: the card's individual charges (Meta ads etc.) are
+        // already counted, so the monthly payment from checking is just money
+        // moving between our own pockets (verified against live data
+        // 2026-09-02 — these were inflating "fees" by ~$25-35k/mo).
+        const isTransfer = t.kind === 'internalTransfer'
+          || (t.counterpartyId && ownAccountIds.has(t.counterpartyId))
+          || /^mercury (credit|checking|savings|treasury|vault)/.test(clean);
         const prior = existing.get(t.id);
         const base = {
           account_id: t.accountId,

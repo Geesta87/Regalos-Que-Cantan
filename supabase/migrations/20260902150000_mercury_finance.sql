@@ -94,7 +94,12 @@ insert into public.mercury_category_rules (pattern, category, priority, created_
   ('shotstack',   'infra',               50, 'seed'),
   ('twilio',      'messaging',           50, 'seed'),
   ('sendgrid',    'messaging',           50, 'seed'),
-  ('mercury',     'fees_bank',           60, 'seed'),
+  -- NOTE: no 'mercury' → fees_bank seed. It matched "Mercury Credit" card-bill
+  -- payments and own-account transfer legs (removed in prod 2026-09-02;
+  -- mercury-sync marks those is_transfer instead). AmEx bill payments get
+  -- 'other' — Mercury mislabels them as bank fees, and the card's real spend
+  -- mix is invisible to the bank feed (owner recategorizes in the tab).
+  ('american express', 'other',           40, 'seed'),
   ('irs',         'taxes',               50, 'seed'),
   ('franchise tax','taxes',              50, 'seed')
 on conflict do nothing;
