@@ -75,6 +75,14 @@ export async function getApimartTask(
     const j = await r.json().catch(() => ({} as any));
     const d = j?.data;
     const status = d?.status || d?.[0]?.status;
+    // FAILURE FIRST (2026-09-02, Jazmin's order): a failed task ALSO carries
+    // progress:100, so the completion shapes below would otherwise read it as
+    // "completed with no tracks" and stall until the 30-min stale guard.
+    const errObj = d?.error || d?.[0]?.error;
+    if (status === 'failed' || errObj) {
+      const msg = errObj?.message || 'unknown';
+      return { state: 'failed', error: String(msg).substring(0, 300) };
+    }
     // A finished task may carry status='completed' OR (as observed live
     // 2026-09-02) no status field at all — just progress:100 with a
     // populated result. Treat either shape as done.
