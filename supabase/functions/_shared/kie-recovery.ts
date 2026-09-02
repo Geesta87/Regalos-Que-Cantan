@@ -16,6 +16,8 @@
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const KIE_API_KEY = Deno.env.get('KIE_API_KEY') || '';
 
+import { isApimartConfigured, submitApimartFromKiePayload } from './apimart.ts';
+
 export const KIE_FAILED_STATUSES = new Set([
   'CREATE_TASK_FAILED', 'GENERATE_AUDIO_FAILED', 'CALLBACK_EXCEPTION',
   'SENSITIVE_WORD_ERROR', 'FAILED',
@@ -79,7 +81,7 @@ export async function handleKieTerminalFailure(supabase: any, taskId: string, ki
   // Load ALL sibling rows still processing for this task, with retry fields
   const { data: siblings } = await supabase
     .from('songs')
-    .select('id, version, recipient_name, lyrics, style_used, voice_type, genre, sub_genre, regenerate_count, kie_payload')
+    .select('id, version, recipient_name, lyrics, style_used, voice_type, genre, sub_genre, regenerate_count, kie_payload, provider')
     .eq('task_id', taskId)
     .eq('status', 'processing');
   if (!siblings || siblings.length === 0) return 'no_siblings';
@@ -113,6 +115,17 @@ export async function handleKieTerminalFailure(supabase: any, taskId: string, ki
     }
   };
 
+  // The submit payload is stored on processing rows by generate-song
+  // (completed rows get it overwritten with the track object — guard on
+  // .prompt). Hoisted: the Kie retry AND the APIMart mirror both need it.
+  let submitPayload: any = null;
+  for (const s of siblings) {
+    try {
+      const p = s.kie_payload ? JSON.parse(s.kie_payload) : null;
+      if (p?.prompt) { submitPayload = p; break; }
+    } catch { /* ignore */ }
+  }
+
   // ---- Attempt 1: resubmit the SAME job to Kie ----
   // Skipped when the breaker is open: during a Kie/Suno outage the retry just
   // burns another 10-25 min waiting for Kie to admit failure again.
@@ -120,15 +133,6 @@ export async function handleKieTerminalFailure(supabase: any, taskId: string, ki
   // the identical payload is guaranteed to fail again — go straight to Mureka,
   // which doesn't enforce the artist rule.
   if (attempt === 0 && KIE_API_KEY && kieStatus !== 'TAGS_REJECTED' && !(await isKieOutage(supabase))) {
-    // The submit payload is stored on processing rows by generate-song
-    // (completed rows get it overwritten with the track object — guard on .prompt)
-    let submitPayload: any = null;
-    for (const s of siblings) {
-      try {
-        const p = s.kie_payload ? JSON.parse(s.kie_payload) : null;
-        if (p?.prompt) { submitPayload = p; break; }
-      } catch { /* ignore */ }
-    }
     if (submitPayload) {
       submitPayload.callBackUrl = `${SUPABASE_URL}/functions/v1/song-callback`;
       try {
@@ -158,7 +162,39 @@ export async function handleKieTerminalFailure(supabase: any, taskId: string, ki
         console.warn(`Kie retry network error for ${taskId}: ${e.message}`);
       }
     }
-    // fall through to Mureka if the Kie retry could not be submitted
+    // fall through to the APIMart mirror if the Kie retry could not be submitted
+  }
+
+  // ---- Attempt 1.5 — RUNG 2 (2026-09-02): same Suno engine via APIMart ----
+  // The week of Aug 28–Sep 2 produced five incidents where KIE (the middleman)
+  // was the broken link while Suno itself kept singing. APIMart reaches the
+  // same v5.5 engine through an independent door: the customer gets the SAME
+  // singer at ~$0.05/generation instead of dropping to the Mureka sound.
+  // Skipped for deterministic CONTENT rejections (tags/sensitive-word) — the
+  // same upstream engine would reject the identical payload — those flow to
+  // Mureka, a different engine with different rules. Also skipped when the
+  // rows are ALREADY on APIMart (its own failure must escalate, not loop).
+  {
+    const contentRejected = kieStatus === 'TAGS_REJECTED' || kieStatus === 'SENSITIVE_WORD_ERROR';
+    const alreadyOnApimart = siblings.some((s: any) => s.provider === 'apimart-suno');
+    if (isApimartConfigured() && submitPayload && !contentRejected && !alreadyOnApimart && attempt <= 1) {
+      const am = await submitApimartFromKiePayload(submitPayload);
+      if (am.taskId) {
+        for (const s of siblings) {
+          await supabase.from('songs').update({
+            task_id: am.taskId,
+            provider: 'apimart-suno',
+            regenerate_count: (s.regenerate_count || 0) + 1,
+            error_message: `kie ${kieStatus} — mirrored to APIMart (same Suno engine)`,
+            updated_at: new Date().toISOString(),
+          }).eq('id', s.id);
+        }
+        console.log(`Kie task ${taskId} failed (${kieStatus}) — MIRRORED to APIMart as ${am.taskId}`);
+        return 'apimart_mirror';
+      }
+      console.warn(`APIMart mirror submit failed for ${taskId}: ${am.error} — falling to Mureka`);
+      // fall through to Mureka
+    }
   }
 
   // ---- Attempt 2 (or Kie-retry unavailable): hand the order to Mureka ----

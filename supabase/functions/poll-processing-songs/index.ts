@@ -11,6 +11,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { buildUnsubscribeHeaders } from '../_shared/unsubscribe.ts';
 import { buildEmailParts } from '../_shared/email.ts';
 import { handleKieTerminalFailure, KIE_FAILED_STATUSES, isKieOutage, recordKieHealthEvent } from '../_shared/kie-recovery.ts';
+import { isApimartConfigured, getApimartTask } from '../_shared/apimart.ts';
 import { healDeadAudio } from '../_shared/dead-audio-heal.ts';
 import { renderEmail } from '../_shared/email-shell.ts';
 
@@ -646,6 +647,61 @@ Deno.serve(async (req) => {
       }
     } else {
       console.log('[JOB 0] USEAPI_TOKEN not configured, skipping');
+    }
+
+    // ========================================================================
+    // JOB 0.5: Poll APIMart mirror tasks (provider='apimart-suno') — RUNG 2.
+    //   kie-recovery mirrors failed Kie jobs to APIMart (same Suno engine);
+    //   this job completes them: track[version-1] → completeSong (which
+    //   rehosts to our storage and sends the single preview email). A failed
+    //   or 30-min-stale APIMart task escalates through the normal ladder
+    //   (attempt count skips Kie AND APIMart → Mureka).
+    // ========================================================================
+    if (isApimartConfigured()) {
+      const { data: amSongs } = await supabase
+        .from('songs')
+        .select('id, version, recipient_name, email, session_id, created_at, updated_at, task_id')
+        .eq('provider', 'apimart-suno')
+        .eq('status', 'processing')
+        .not('task_id', 'is', null)
+        .limit(40);
+
+      if (amSongs && amSongs.length > 0) {
+        const groups: Record<string, any[]> = {};
+        for (const s of amSongs) (groups[s.task_id] = groups[s.task_id] || []).push(s);
+        console.log(`[APIMART] Polling ${Object.keys(groups).length} mirror task(s) (${amSongs.length} songs)`);
+
+        for (const [amTaskId, group] of Object.entries(groups)) {
+          try {
+            const task = await getApimartTask(amTaskId);
+            if (task.state === 'completed' && task.tracks && task.tracks.length > 0) {
+              await recordKieHealthEvent(supabase, 'success', amTaskId); // Suno sang — feeds breaker recovery
+              for (const song of group.sort((a: any, b: any) => (a.version || 1) - (b.version || 1))) {
+                const idx = Math.min((song.version || 1) - 1, task.tracks.length - 1);
+                const ok = await completeSong(supabase, song, task.tracks[idx].audio_url);
+                results.push({ id: song.id, job: 'apimart', action: ok ? 'completed_mirror' : 'complete_failed' });
+              }
+              console.log(`[APIMART] task ${amTaskId} completed → ${group.length} song(s) delivered`);
+              continue;
+            }
+            if (task.state === 'failed') {
+              console.warn(`[APIMART] task ${amTaskId} FAILED: ${task.error} — escalating to Mureka`);
+              const action = await handleKieTerminalFailure(supabase, amTaskId, 'APIMART_FAILED');
+              results.push({ job: 'apimart', task: amTaskId, action: `escalated_${action}` });
+              continue;
+            }
+            // Stale guard: a mirror task pending >30 min is wedged — escalate.
+            const oldest = Math.min(...group.map((s: any) => new Date(s.updated_at).getTime()));
+            if (Date.now() - oldest > 30 * 60 * 1000) {
+              console.warn(`[APIMART] task ${amTaskId} pending >30 min — escalating`);
+              const action = await handleKieTerminalFailure(supabase, amTaskId, 'APIMART_STALE');
+              results.push({ job: 'apimart', task: amTaskId, action: `escalated_${action}` });
+            }
+          } catch (amErr: any) {
+            console.error(`[APIMART] ${amTaskId}: ${amErr?.message}`);
+          }
+        }
+      }
     }
 
     // ========================================================================
