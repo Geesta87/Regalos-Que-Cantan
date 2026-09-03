@@ -2,8 +2,15 @@
 //
 // One-click dispute evidence assembler (chargeback defense, 2026-08-19).
 //
-// POST { email: string, dispute_id?: string } → markdown evidence pack built
-// from everything the database knows about that customer:
+// Actions (POST JSON, `action` defaults to 'pack'):
+//   list    → every mirrored dispute + current blocked_emails state + order
+//             counts, for the admin Disputes tab.
+//   pack    → { email } or { dispute_id } → markdown evidence pack built
+//             from everything the database knows about that customer:
+//   unblock → { email } deletes the blocked_emails row (a mistaken dispute).
+//   block   → { email } re-adds it (tagged MANUAL).
+//
+// The pack pulls:
 //   - songs (order records, IPs, delivery timestamps, download counts)
 //   - lyric_submissions (the customer's own submitted story / custom lyrics)
 //   - song_access_log (page views, plays, downloads — proof of consumption)
@@ -63,7 +70,69 @@ serve(async (req) => {
     }
 
     const body = await req.json().catch(() => ({}));
-    const email = String(body.email || '').toLowerCase().trim();
+    const action = String(body.action || 'pack');
+    const json = (payload: unknown, status = 200) => new Response(JSON.stringify(payload), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status,
+    });
+
+    // ── action: list ──────────────────────────────────────────────────────
+    if (action === 'list') {
+      const { data: rows, error: listErr } = await supabase.from('disputes')
+        .select('id, stripe_dispute_id, charge_id, payment_intent_id, amount_cents, currency, reason, network_reason_code, status, customer_email, customer_name, evidence_due_by, auto_blocked, outcome, opened_at, closed_at, updated_at, raw')
+        .order('opened_at', { ascending: false }).limit(200);
+      if (listErr) return json({ error: listErr.message }, 500);
+      const emails = [...new Set((rows || []).map((r) => (r.customer_email || '').toLowerCase()).filter(Boolean))];
+      const blockedSet = new Set<string>();
+      const orders = new Map<string, { total: number; paid: number }>();
+      if (emails.length) {
+        const { data: blocked } = await supabase.from('blocked_emails').select('email').in('email', emails);
+        for (const b of (blocked || [])) blockedSet.add(String(b.email).toLowerCase());
+        for (const e of emails) {
+          const { data: songRows } = await supabase.from('songs').select('amount_paid').ilike('email', e).limit(500);
+          const total = (songRows || []).length;
+          const paid = (songRows || []).filter((r) => Number(r.amount_paid) > 0).length;
+          orders.set(e, { total, paid });
+        }
+      }
+      const disputes = (rows || []).map((r) => {
+        const raw = (r.raw || {}) as { evidence_details?: { has_evidence?: boolean; submission_count?: number; past_due?: boolean } };
+        const e = (r.customer_email || '').toLowerCase();
+        const o = orders.get(e);
+        const { raw: _raw, ...rest } = r;
+        return {
+          ...rest,
+          blocked: blockedSet.has(e),
+          evidence_submitted: !!(raw.evidence_details?.submission_count && raw.evidence_details.submission_count > 0),
+          orders_total: o ? o.total : null,
+          orders_paid: o ? o.paid : null,
+        };
+      });
+      return json({ ok: true, disputes });
+    }
+
+    // ── action: unblock / block ───────────────────────────────────────────
+    if (action === 'unblock' || action === 'block') {
+      const target = String(body.email || '').toLowerCase().trim();
+      if (!target.includes('@')) return json({ error: 'email required' }, 400);
+      if (action === 'unblock') {
+        const { error: delErr } = await supabase.from('blocked_emails').delete().ilike('email', target);
+        if (delErr) return json({ error: delErr.message }, 500);
+      } else {
+        const { error: upErr } = await supabase.from('blocked_emails').upsert(
+          { email: target, reason: `MANUAL: blocked from the Disputes tab by ${userData.user.email || userData.user.id}${body.dispute_id ? ` (dispute ${body.dispute_id})` : ''}` },
+          { onConflict: 'email', ignoreDuplicates: true },
+        );
+        if (upErr) return json({ error: upErr.message }, 500);
+      }
+      return json({ ok: true, email: target, blocked: action === 'block' });
+    }
+
+    // ── action: pack (default) ────────────────────────────────────────────
+    let email = String(body.email || '').toLowerCase().trim();
+    if ((!email || !email.includes('@')) && body.dispute_id) {
+      const { data: d } = await supabase.from('disputes').select('customer_email').eq('stripe_dispute_id', String(body.dispute_id)).maybeSingle();
+      email = String(d?.customer_email || '').toLowerCase().trim();
+    }
     if (!email || !email.includes('@')) {
       return new Response(JSON.stringify({ error: 'email required' }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400,
