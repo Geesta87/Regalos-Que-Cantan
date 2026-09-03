@@ -84,17 +84,52 @@ async function markFailed(songId, errorMsg) {
 // Kie has a dedicated vocal-removal endpoint (validated 2026-06-12): submit
 // taskId+audioId, poll until SUCCESS, download instrumentalUrl (already MP3 —
 // no ZIP, no WAV, no re-encode). ~10 credits and ~90s per song.
+//
+// SOURCE-EXPIRY FALLBACK (2026-09-03): with taskId+audioId Kie separates from
+// ITS OWN stored copy of the original generation — and Kie purges that after a
+// while. A customer who buys the instrumental weeks after the song was made
+// (Rudy: generated 08-09, add-on bought 09-03) hits
+// "GENERATE_AUDIO_FAILED File fetch failed ... use our File Upload API".
+// Retrying can never fix that. Our delivered MP3 is safely rehosted in Supabase,
+// so on that failure we push it through Kie's URL-upload (lands on Kie's own
+// storage) and separate via `audioUrl` instead — see kieUploadFromUrl.
 // ---------------------------------------------------------------------------
 
 // Kie requires a callBackUrl even when polling; this throwaway target just
 // absorbs the POST (same pattern as the generation test harness).
 const KIE_DUMMY_CALLBACK = 'https://webhook.site/00000000-0000-0000-0000-000000000000';
 
-async function kieSeparateInstrumental(taskId, audioId) {
+// Push a public file URL into Kie's storage (POST /api/file-url-upload) and
+// return the Kie-hosted downloadUrl. Kie fetches the URL itself (30s timeout,
+// ~100MB max); the hosted copy auto-deletes after 3 days — plenty for one
+// separation job.
+async function kieUploadFromUrl(fileUrl, fileName) {
+  const resp = await fetch('https://api.kie.ai/api/file-url-upload', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${KIE_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fileUrl, uploadPath: 'rqc/karaoke-src', fileName }),
+  });
+  const data = await resp.json().catch(() => ({}));
+  const hosted = data?.data?.downloadUrl;
+  if (!resp.ok || data.code !== 200 || !hosted) {
+    throw new Error(`kie.ai file-url-upload failed: http=${resp.status} code=${data.code} ${data.msg || ''}`);
+  }
+  console.log(`[karaoke-fetch] uploaded source to Kie: ${hosted}`);
+  return hosted;
+}
+
+// `source` is either { taskId, audioId } (separate from Kie's stored copy of
+// the original generation) or { audioUrl, audioId } (separate from a file we
+// uploaded — the fallback when Kie no longer holds the original).
+async function kieSeparateInstrumental(source) {
+  const { taskId, audioUrl, audioId } = source;
+  const body = taskId
+    ? { taskId, audioId, type: 'separate_vocal', callBackUrl: KIE_DUMMY_CALLBACK }
+    : { audioUrl, audioId, type: 'separate_vocal', callBackUrl: KIE_DUMMY_CALLBACK };
   const submitResp = await fetch('https://api.kie.ai/api/v1/vocal-removal/generate', {
     method: 'POST',
     headers: { Authorization: `Bearer ${KIE_API_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ taskId, audioId, type: 'separate_vocal', callBackUrl: KIE_DUMMY_CALLBACK }),
+    body: JSON.stringify(body),
   });
   const submitData = await submitResp.json().catch(() => ({}));
   if (!submitResp.ok || submitData.code !== 200 || !submitData.data?.taskId) {
@@ -229,7 +264,7 @@ export default async function handler(req, res) {
   let song;
   try {
     const r = await supa(
-      `/songs?id=eq.${songId}&select=id,status,version,provider,mureka_payload,kie_task_id,kie_payload,karaoke_url,karaoke_status`,
+      `/songs?id=eq.${songId}&select=id,status,version,provider,mureka_payload,kie_task_id,kie_payload,karaoke_url,karaoke_status,audio_url`,
     );
     const rows = await r.json();
     song = rows?.[0];
@@ -300,7 +335,18 @@ export default async function handler(req, res) {
       }
       if (!audioId) throw new Error('Could not resolve Kie audioId for song');
 
-      const instrumentalUrl = await kieSeparateInstrumental(song.kie_task_id, audioId);
+      // Fast path: separate from Kie's stored copy of the original generation.
+      // If Kie has purged that source ("File fetch failed"), fall back to
+      // uploading the MP3 we delivered and separating from the hosted copy.
+      let instrumentalUrl;
+      try {
+        instrumentalUrl = await kieSeparateInstrumental({ taskId: song.kie_task_id, audioId });
+      } catch (primaryErr) {
+        if (!song.audio_url) throw primaryErr;
+        console.warn(`[karaoke-fetch] taskId separation failed (${primaryErr.message}) — retrying via uploaded source`);
+        const hosted = await kieUploadFromUrl(song.audio_url, `${songId}.mp3`);
+        instrumentalUrl = await kieSeparateInstrumental({ audioUrl: hosted, audioId });
+      }
       console.log(`[karaoke-fetch] downloading Kie instrumental`);
       const dl = await fetch(instrumentalUrl);
       if (!dl.ok) throw new Error(`Kie instrumental download ${dl.status}`);
