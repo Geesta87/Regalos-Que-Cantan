@@ -8,6 +8,16 @@
 // and sets state = 'likeness_review' so they appear in the admin "Needs Approval" tab.
 // Admin then calls approve-likeness.
 //
+// Optional targeting inputs (2026-09-02, Alex el Chino 56b175ba: a 12-person family
+// photo came back as two DIFFERENT random relatives because the prompt only said
+// "the person in the reference photo"):
+//   photo_url  — generate FROM this image (e.g. a crop of the recipient / couple)
+//                without touching the order's recipient_photo_url, which the
+//                storyboard still needs for the group scenes.
+//   subject    — who to draw, replacing "the person in the reference photo"
+//                (e.g. "the married Mexican couple in the reference photo").
+//   extra      — appended to both prompts (wardrobe, framing, "exactly two people").
+//
 // Server-to-server (no Supabase JWT) -> verify_jwt = false (config.toml).
 // Reads OPENAI_API_KEY + service-role key from its own env.
 
@@ -100,8 +110,9 @@ serve(async (req) => {
   let failOrderId: string | undefined;
   try {
     if (!OPENAI_API_KEY) throw new Error('OPENAI_API_KEY not set');
-    const { songId, recipient_photo_url, story_video_order_id } = await req.json();
-    if (!recipient_photo_url) throw new Error('Missing recipient_photo_url');
+    const { songId, recipient_photo_url, story_video_order_id, photo_url, subject, extra } = await req.json();
+    const sourceUrl: string | undefined = (typeof photo_url === 'string' && photo_url.trim()) ? photo_url.trim() : recipient_photo_url;
+    if (!sourceUrl) throw new Error('Missing recipient_photo_url');
 
     const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
 
@@ -109,24 +120,33 @@ serve(async (req) => {
     let orderId = story_video_order_id as string | undefined;
     if (!orderId) {
       const { data, error } = await supabase.from('story_video_orders')
-        .insert({ song_id: songId || null, recipient_photo_url, state: 'generating_likeness' })
+        .insert({ song_id: songId || null, recipient_photo_url: recipient_photo_url || sourceUrl, likeness_photo_url: sourceUrl, state: 'generating_likeness' })
         .select('id').single();
       if (error) throw new Error(`insert order: ${error.message}`);
       orderId = data.id;
     } else {
-      await supabase.from('story_video_orders').update({ state: 'generating_likeness', recipient_photo_url, error: null }).eq('id', orderId);
+      // only overwrite the order's photo when the caller actually sent one;
+      // always remember which photo the likeness comes from — the story builder
+      // opens the video on it (morph_photo_url via story-build-context)
+      await supabase.from('story_video_orders').update({
+        state: 'generating_likeness', error: null,
+        ...(recipient_photo_url ? { recipient_photo_url } : {}),
+        likeness_photo_url: sourceUrl,
+      }).eq('id', orderId);
     }
     failOrderId = orderId;
 
     // 2 likeness variations for the admin to choose from.
     // STRONG cartoon prompts that demand "3D CARTOON, NOT photorealistic" to force
     // true Pixar. GPT Image 2 stylizes fully and holds the likeness (verified 2026-06-26).
+    const who = (typeof subject === 'string' && subject.trim()) ? subject.trim().slice(0, 600) : 'the person in the reference photo';
+    const tail = (typeof extra === 'string' && extra.trim()) ? ` ${extra.trim().slice(0, 900)}` : '';
     const prompts = [
-      'A warm Disney/Pixar-style 3D ANIMATED CARTOON character portrait of the person in the reference photo. Fully stylized 3D animation, NOT photorealistic. Big expressive eyes, smooth rounded stylized features, soft cel-like shading, the bright polished Pixar/Disney movie look (like Encanto/Coco). Faithful, recognizable likeness — same face shape, hair, beard, age and clothing. Soft warm lighting, simple cozy background.',
-      'A charming Disney/Pixar-style 3D ANIMATED CARTOON character portrait of the person in the reference photo: fully 3D-animated (not a photograph, not realistic), big expressive eyes, smooth rounded stylized features, warm gentle expression, the polished animated-movie look. Faithful, recognizable likeness — same hair, age and clothing. Soft golden light, simple warm background.',
+      `A warm Disney/Pixar-style 3D ANIMATED CARTOON character portrait of ${who}. Fully stylized 3D animation, NOT photorealistic. Big expressive eyes, smooth rounded stylized features, soft cel-like shading, the bright polished Pixar/Disney movie look (like Encanto/Coco). Faithful, recognizable likeness — same face shape, hair, beard, age and clothing. Soft warm lighting, simple cozy background.${tail}`,
+      `A charming Disney/Pixar-style 3D ANIMATED CARTOON character portrait of ${who}: fully 3D-animated (not a photograph, not realistic), big expressive eyes, smooth rounded stylized features, warm gentle expression, the polished animated-movie look. Faithful, recognizable likeness — same hair, age and clothing. Soft golden light, simple warm background.${tail}`,
     ];
     // fetch (and shrink) the source photo ONCE, then style it twice
-    const photo = await loadPhoto(recipient_photo_url);
+    const photo = await loadPhoto(sourceUrl);
     const optionBytes = await Promise.all(prompts.map((p) => gptCartoon(photo, p)));
 
     // persist both into our own storage

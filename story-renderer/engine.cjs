@@ -268,6 +268,16 @@ function wrapHero(motionFile, outFile, L) {
 // so the kids stay recognizable and the morph transforms the whole picture.
 let CHAR_REF = cfg.approved_character_url;
 let MORPH_END = cfg.approved_character_url;
+// The REAL photo the intro opens on and the morph transforms FROM. Prefer the
+// photo the approved likeness was actually generated from (a crop of the
+// recipient / couple, story-build-context passes it as morph_photo_url).
+// recipient_photo_url is the WHOLE family photo whenever one was uploaded, and
+// morphing 12 people into a 2-person cartoon is exactly what shipped on Alex el
+// Chino's order (2026-09-02).
+const MORPH_SRC = cfg.morph_photo_url || cfg.recipient_photo_url;
+// intro -> storybook cross-fade length; shared by render() and prependMorph()
+const INTRO_XF = 1.0;
+const probeDur = (f) => parseFloat(execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', path.join(DIR, f)]).toString().trim());
 
 // For a family/group: cartoonify the EXACT uploaded photo keeping the identical
 // composition, pose, background and EVERY person in place. This faithful family
@@ -293,7 +303,7 @@ async function genMorph() {
   console.log('generating morph (Kie Seedance)...');
   const url = await kieRun('bytedance/seedance-2',
     'A real photograph slowly and magically transforms into a warm 3D Pixar-style animated version of the same subjects, keeping every person and the exact pose and framing. Smooth seamless morph, gentle glow. Wholesome.',
-    { first_frame_url: cfg.recipient_photo_url, last_frame_url: MORPH_END, resolution: '720p', aspect_ratio: '3:4', duration: 5, generate_audio: false }, 'morph');
+    { first_frame_url: MORPH_SRC, last_frame_url: MORPH_END, resolution: '720p', aspect_ratio: '3:4', duration: 5, generate_audio: false }, 'morph');
   dl(url, out); console.log('  morph ok');
   if (ORDER_ID) {
     try { morphUrl = await uploadAsset(out, 'video/mp4'); await checkpoint('morph'); }
@@ -310,11 +320,11 @@ async function genMorph() {
 // morph's first frame HAS drifted. Falls back to the raw morph on any failure.
 function buildIntro() {
   const W = 1080, H = 1920, FPS = 30, HOLD = 1.2, XFH = 0.35;
-  if (!cfg.recipient_photo_url) return 'BOOKEND.mp4';
+  if (!MORPH_SRC) return 'BOOKEND.mp4';
   const ff = (a) => execFileSync('ffmpeg', ['-y', '-hide_banner', '-loglevel', 'error', ...a], { cwd: DIR, stdio: 'inherit' });
   const fit = `scale=${W}:${H}:force_original_aspect_ratio=increase:flags=lanczos,crop=${W}:${H},setsar=1,fps=${FPS},settb=1/${FPS},format=yuv420p`;
   try {
-    if (!fs.existsSync(path.join(DIR, '_photo.png'))) dl(cfg.recipient_photo_url, '_photo.png');
+    if (!fs.existsSync(path.join(DIR, '_photo.png'))) dl(MORPH_SRC, '_photo.png');
     // hold runs HOLD + XFH so the crossfade has material to work with
     ff(['-loop', '1', '-t', String(HOLD + XFH), '-i', '_photo.png', '-vf', fit, '-an', '-c:v', 'libx264', '-preset', 'medium', '-crf', '20', '-pix_fmt', 'yuv420p', '_hold.mp4']);
     ff(['-i', '_hold.mp4', '-i', 'BOOKEND.mp4', '-filter_complex',
@@ -326,7 +336,7 @@ function buildIntro() {
 }
 
 // ---- 4. FFmpeg render ----
-function render(flat, total) {
+function render(flat, total, titleAt = 0) {
   const W = 1080, H = 1920, FPS = 30, SS = 2, XF = 1.0, N = flat.length, BW = W * SS, BH = H * SS;
   const ff = (a) => execFileSync('ffmpeg', ['-y', '-hide_banner', '-loglevel', 'error', '-stats', ...a], { cwd: DIR, stdio: 'inherit' });
   const inputs = [];
@@ -340,30 +350,33 @@ function render(flat, total) {
   }
   let prev = 'v0';
   for (let i = 1; i < N; i++) { const off = +(flat[i].absStart - XF).toFixed(2); const lbl = i === N - 1 ? 'vx' : `x${i}`; fc.push(`[${prev}][v${i}]xfade=transition=fade:duration=${XF}:offset=${off}[${lbl}]`); prev = lbl; }
-  const tA = `if(lt(t,0.8),t/0.8,if(lt(t,4.5),1,(5.5-t)/1))`;
-  fc.push(`[vx]drawtext=fontfile=serif.ttf:text='${cfg.title.replace(/'/g, '')}':fontcolor=white:fontsize=80:box=1:boxcolor=black@0.4:boxborderw=40:x=(w-text_w)/2:y=(h-text_h)/2:enable='between(t,0,5.5)':alpha='${tA}'[vt]`);
+  // the title shows once the intro has cross-faded into the story (t >= titleAt)
+  const T0 = +titleAt.toFixed(2);
+  const tA = `if(lt(t,${T0}+0.8),(t-${T0})/0.8,if(lt(t,${T0}+4.5),1,(${T0}+5.5-t)/1))`;
+  fc.push(`[vx]drawtext=fontfile=serif.ttf:text='${cfg.title.replace(/'/g, '')}':fontcolor=white:fontsize=80:box=1:boxcolor=black@0.4:boxborderw=40:x=(w-text_w)/2:y=(h-text_h)/2:enable='between(t,${T0},${T0}+5.5)':alpha='${tA}'[vt]`);
   const cs = (total - 13).toFixed(2); const cA = `if(lt(t,${cs}+0.8),(t-${cs})/0.8,1)`;
   fc.push(`[vt]drawtext=fontfile=serif.ttf:text='${(cfg.endcard || '').replace(/'/g, '')}':fontcolor=white:fontsize=56:box=1:boxcolor=black@0.4:boxborderw=32:x=(w-text_w)/2:y=h*0.40:enable='gte(t,${cs})':alpha='${cA}',drawtext=fontfile=serif.ttf:text='regalosquecantan.com':fontcolor=white:fontsize=40:box=1:boxcolor=black@0.4:boxborderw=22:x=(w-text_w)/2:y=h*0.49:enable='gte(t,${cs})':alpha='${cA}'[vout]`);
   fc.push(`[${songIdx}:a]atrim=0:${total},asetpts=PTS-STARTPTS,afade=t=in:st=0:d=2,afade=t=out:st=${(total - 4).toFixed(2)}:d=4[aout]`);
   ff([...inputs, '-filter_complex', fc.join(';'), '-map', '[vout]', '-map', '[aout]', '-r', String(FPS), '-c:v', 'libx264', '-preset', 'medium', '-crf', '20', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k', '-t', String(total), 'STORYBOOK.mp4']);
 }
-function prependMorph(total) {
-  const W = 1080, H = 1920, FPS = 30, XF = 1.0;
-  // the intro is the raw morph, or (preferred) the real photo held in front of it
-  const intro = buildIntro();
-  const probe = (f) => parseFloat(execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', path.join(DIR, f)]).toString().trim());
-  const MV = +probe(intro).toFixed(2), OFF = +(MV - XF).toFixed(2);
-  const storyDur = probe('STORYBOOK.mp4');
-  const tot = +(OFF + storyDur).toFixed(2);
+// ONE timeline: the song starts at t=0 and plays ONCE. The storybook is rendered
+// against song time, so its first OFF seconds (which sit under the intro) are
+// dropped and the morph cross-fades into it at OFF — the scene that belongs to
+// song-second OFF appears exactly when the song reaches it, and the storybook's
+// own audio track (the song from 0) is used untouched.
+// Until 2026-09-02 the intro played the song's opening at 55% volume and the
+// storybook then started the song AGAIN from 0 (Alex el Chino: "it starts,
+// resets after a moment and plays over from the beginning").
+function prependMorph(total, intro, OFF) {
+  const W = 1080, H = 1920, FPS = 30, XF = INTRO_XF;
+  const MV = +(OFF + XF).toFixed(2);
+  const tot = +probeDur('STORYBOOK.mp4').toFixed(2);
   const fc = [
     `[0:v]scale=${W}:${H}:force_original_aspect_ratio=increase:flags=lanczos,crop=${W}:${H},setsar=1,fps=${FPS},trim=duration=${MV},setpts=PTS-STARTPTS,settb=1/${FPS},format=yuv420p[mv]`,
-    `[1:v]fps=${FPS},setpts=PTS-STARTPTS,settb=1/${FPS},format=yuv420p[sv]`,
+    `[1:v]trim=start=${OFF},setpts=PTS-STARTPTS,fps=${FPS},settb=1/${FPS},format=yuv420p[sv]`,
     `[mv][sv]xfade=transition=fade:duration=${XF}:offset=${OFF}[v]`,
-    `[2:a]atrim=0:${MV},asetpts=PTS-STARTPTS,volume='if(lt(t,0.6),(t/0.6)*0.55,0.55)',afade=t=out:st=${(MV - 0.6).toFixed(2)}:d=0.6[ma]`,
-    `[1:a]adelay=${Math.round(OFF * 1000)}|${Math.round(OFF * 1000)}[sa]`,
-    `[ma][sa]amix=inputs=2:duration=longest:normalize=0[a]`,
   ];
-  execFileSync('ffmpeg', ['-y', '-hide_banner', '-loglevel', 'error', '-stats', '-i', intro, '-i', 'STORYBOOK.mp4', '-i', 'song.mp3', '-filter_complex', fc.join(';'), '-map', '[v]', '-map', '[a]', '-r', String(FPS), '-c:v', 'libx264', '-preset', 'medium', '-crf', '20', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k', '-t', String(tot), 'FINAL-AUTO.mp4'], { cwd: DIR, stdio: 'inherit' });
+  execFileSync('ffmpeg', ['-y', '-hide_banner', '-loglevel', 'error', '-stats', '-i', intro, '-i', 'STORYBOOK.mp4', '-filter_complex', fc.join(';'), '-map', '[v]', '-map', '1:a', '-r', String(FPS), '-c:v', 'libx264', '-preset', 'medium', '-crf', '20', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k', '-t', String(tot), 'FINAL-AUTO.mp4'], { cwd: DIR, stdio: 'inherit' });
   console.log(`\nDONE -> ${path.join(DIR, 'FINAL-AUTO.mp4')} (${tot}s)`);
 }
 
@@ -383,6 +396,10 @@ function prependMorph(total) {
     scene_assets: Object.entries(assetMap).map(([image_id, a]) => ({ image_id, image_url: a.image_url || null, motion_url: a.motion_url || null })),
     morph_asset: morphUrl,
   }));
-  render(flat, total);
-  prependMorph(total);
+  // the intro is the raw morph, or (preferred) the real photo held in front of it;
+  // built BEFORE the render so the title card can be placed after it
+  const intro = buildIntro();
+  const OFF = +(probeDur(intro) - INTRO_XF).toFixed(2);
+  render(flat, total, OFF);
+  prependMorph(total, intro, OFF);
 })().catch((e) => { console.error('AUTO-BUILD FAILED:', e.message); process.exit(1); });

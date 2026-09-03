@@ -25,7 +25,7 @@ serve(async (req) => {
     const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
 
     const { data: order, error } = await supabase.from('story_video_orders')
-      .select('id, song_id, state, approved_character_url, recipient_photo_url, storyboard, scene_assets, morph_asset').eq('id', story_video_order_id).single();
+      .select('id, song_id, state, approved_character_url, recipient_photo_url, likeness_photo_url, storyboard, scene_assets, morph_asset').eq('id', story_video_order_id).single();
     if (error || !order) throw new Error('order not found');
     if (!order.approved_character_url) throw new Error('no approved_character_url (gate 1 not passed)');
 
@@ -54,6 +54,10 @@ serve(async (req) => {
       endcard: storyboard?.endcard || name,
       approved_character_url: order.approved_character_url,
       recipient_photo_url: order.recipient_photo_url,
+      // the photo the likeness was generated FROM (recipient / couple crop): the
+      // engine opens the video on it and morphs it into the cartoon. Falls back
+      // to recipient_photo_url in the engine when unset (older orders).
+      morph_photo_url: order.likeness_photo_url || null,
     };
     return json(200, {
       success: true, config, storyboard, song_audio_url: song.audio_url, timing: song.lyrics_timestamps,
