@@ -9,6 +9,10 @@
 //             from everything the database knows about that customer:
 //   unblock → { email } deletes the blocked_emails row (a mistaken dispute).
 //   block   → { email } re-adds it (tagged MANUAL).
+//   email   → { email, subject, text, recipient_name?, reply_to?, bcc? } sends a
+//             plain outreach email to the customer from hola@ via SendGrid and
+//             logs it in email_logs (email_type 'dispute_outreach') so it shows
+//             in the dispute box's communications and in the pack.
 //
 // The pack pulls:
 //   - songs (order records, IPs, delivery timestamps, download counts)
@@ -25,6 +29,8 @@
 //
 // Auth: same model as admin-songs — requires a valid Supabase Auth JWT
 // (verify_jwt stays true/default) AND the caller must exist in admin_users.
+// The service-role key is also accepted (server-to-server / operator runs),
+// mirroring fix-song-section.
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -37,6 +43,12 @@ const corsHeaders = {
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+const SENDGRID_API_KEY = Deno.env.get('SENDGRID_API_KEY') || '';
+const SENDER_EMAIL = 'hola@regalosquecantan.com';
+
+function escapeHtml(str: string): string {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
 
 function fmt(ts: string | null | undefined): string {
   if (!ts) return '—';
@@ -106,23 +118,27 @@ serve(async (req) => {
     // ── Admin gate (mirrors admin-songs) ──────────────────────────────────
     const authHeader = req.headers.get('authorization') || '';
     const jwt = authHeader.replace(/^Bearer\s+/i, '');
-    const anonClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    const { data: userData, error: userErr } = await anonClient.auth.getUser(jwt);
-    if (userErr || !userData?.user) {
-      return new Response(JSON.stringify({ error: 'unauthorized' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401,
-      });
-    }
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-    const { data: adminRow } = await supabase
-      .from('admin_users')
-      .select('role')
-      .eq('user_id', userData.user.id)
-      .maybeSingle();
-    if (!adminRow) {
-      return new Response(JSON.stringify({ error: 'forbidden' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 403,
-      });
+    let actor = { id: 'service-role', email: 'service-role' };
+    if (jwt !== SUPABASE_SERVICE_ROLE_KEY) {
+      const anonClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      const { data: userData, error: userErr } = await anonClient.auth.getUser(jwt);
+      if (userErr || !userData?.user) {
+        return new Response(JSON.stringify({ error: 'unauthorized' }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401,
+        });
+      }
+      const { data: adminRow } = await supabase
+        .from('admin_users')
+        .select('role')
+        .eq('user_id', userData.user.id)
+        .maybeSingle();
+      if (!adminRow) {
+        return new Response(JSON.stringify({ error: 'forbidden' }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 403,
+        });
+      }
+      actor = { id: userData.user.id, email: userData.user.email || userData.user.id };
     }
 
     const body = await req.json().catch(() => ({}));
@@ -141,11 +157,14 @@ serve(async (req) => {
       const blockedSet = new Set<string>();
       const orders = new Map<string, { total: number; paid: number }>();
       const commsByEmail = new Map<string, { messages: Msg[]; emails: SentEmail[]; phones: string[] }>();
+      const firstNames = new Map<string, string>();
       if (emails.length) {
         const { data: blocked } = await supabase.from('blocked_emails').select('email').in('email', emails);
         for (const b of (blocked || [])) blockedSet.add(String(b.email).toLowerCase());
         for (const e of emails) {
-          const { data: songRows } = await supabase.from('songs').select('id, amount_paid, whatsapp_phone').ilike('email', e).limit(500);
+          const { data: songRows } = await supabase.from('songs').select('id, amount_paid, whatsapp_phone, sender_name').ilike('email', e).order('created_at', { ascending: false }).limit(500);
+          const senderName = ((songRows || []).find((r) => r.sender_name)?.sender_name || '') as string;
+          firstNames.set(e, senderName.trim().split(/\s+/)[0] || '');
           const total = (songRows || []).length;
           const paid = (songRows || []).filter((r) => Number(r.amount_paid) > 0).length;
           orders.set(e, { total, paid });
@@ -163,6 +182,7 @@ serve(async (req) => {
           messages: comms?.messages || [],
           emails_sent: comms?.emails || [],
           phones: comms?.phones || [],
+          customer_first_name: firstNames.get(e) || null,
           blocked: blockedSet.has(e),
           evidence_submitted: !!(raw.evidence_details?.submission_count && raw.evidence_details.submission_count > 0),
           ...paymentRail(r.raw),
@@ -182,12 +202,53 @@ serve(async (req) => {
         if (delErr) return json({ error: delErr.message }, 500);
       } else {
         const { error: upErr } = await supabase.from('blocked_emails').upsert(
-          { email: target, reason: `MANUAL: blocked from the Disputes tab by ${userData.user.email || userData.user.id}${body.dispute_id ? ` (dispute ${body.dispute_id})` : ''}` },
+          { email: target, reason: `MANUAL: blocked from the Disputes tab by ${actor.email}${body.dispute_id ? ` (dispute ${body.dispute_id})` : ''}` },
           { onConflict: 'email', ignoreDuplicates: true },
         );
         if (upErr) return json({ error: upErr.message }, 500);
       }
       return json({ ok: true, email: target, blocked: action === 'block' });
+    }
+
+    // ── action: email — outreach to the disputing customer ───────────────
+    if (action === 'email') {
+      const to = String(body.email || '').toLowerCase().trim();
+      const subject = String(body.subject || '').trim();
+      const text = String(body.text || '').trim();
+      if (!to.includes('@') || !subject || !text) return json({ error: 'email, subject and text required' }, 400);
+      if (!SENDGRID_API_KEY) return json({ error: 'SENDGRID_API_KEY not configured' }, 500);
+      // Replies go to hola@ unless the caller says otherwise; the acting admin
+      // (or an explicit bcc) gets a copy so the thread is never lost.
+      const replyTo = String(body.reply_to || SENDER_EMAIL).toLowerCase().trim();
+      const bcc = String(body.bcc || (actor.email.includes('@') ? actor.email : '')).toLowerCase().trim();
+      const html = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.55;color:#1f2937;max-width:600px">${escapeHtml(text).replace(/\n/g, '<br>')}</div>`;
+      const personalization: Record<string, unknown> = { to: [{ email: to }] };
+      if (bcc && bcc !== to) personalization.bcc = [{ email: bcc }];
+      const res = await fetch('https://api.sendgrid.com/v3/mail/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SENDGRID_API_KEY}` },
+        body: JSON.stringify({
+          personalizations: [personalization],
+          from: { email: SENDER_EMAIL, name: 'Regalos Que Cantan' },
+          reply_to: { email: replyTo },
+          subject,
+          content: [{ type: 'text/plain', value: text }, { type: 'text/html', value: html }],
+          categories: ['dispute_outreach'],
+          custom_args: body.dispute_id ? { dispute_id: String(body.dispute_id) } : undefined,
+        }),
+      });
+      if (!res.ok) {
+        const errText = await res.text().catch(() => '');
+        console.error('[dispute-evidence-pack] sendgrid failed:', res.status, errText.slice(0, 300));
+        return json({ error: `SendGrid ${res.status}: ${errText.slice(0, 200)}` }, 502);
+      }
+      const sgId = res.headers.get('x-message-id');
+      const { error: logErr } = await supabase.from('email_logs').insert({
+        email: to, recipient_name: body.recipient_name || null, email_type: 'dispute_outreach',
+        subject, status: 'sent', resend_id: sgId,
+      });
+      if (logErr) console.error('[dispute-evidence-pack] email_logs insert failed:', logErr.message);
+      return json({ ok: true, to, reply_to: replyTo, bcc: bcc || null, sendgrid_message_id: sgId, sent_by: actor.email });
     }
 
     // ── action: pack (default) ────────────────────────────────────────────

@@ -138,6 +138,12 @@ export default function DisputesTab({ accessToken, showToast }) {
     finally { setBusyEmail(''); }
   };
 
+  const sendEmail = async (d, { subject, text }) => {
+    const r = await call({ action: 'email', email: d.customer_email, dispute_id: d.stripe_dispute_id, subject, text, recipient_name: d.customer_name || d.customer_first_name || null });
+    showToast?.(`Email sent to ${r.to}${r.bcc ? ` (copy to ${r.bcc})` : ''}`, 'success');
+    await load();
+  };
+
   const copyPack = async () => {
     try {
       await navigator.clipboard.writeText(pack.markdown);
@@ -211,7 +217,7 @@ export default function DisputesTab({ accessToken, showToast }) {
           <div className="space-y-3">
             {openList.map((d) => (
               <DisputeRow key={d.stripe_dispute_id} d={d} selected={selected === d.stripe_dispute_id} building={building && selected === d.stripe_dispute_id}
-                busy={busyEmail === d.customer_email} onBuild={() => buildPack({ email: d.customer_email, dispute_id: d.stripe_dispute_id })} onToggleBlock={() => toggleBlock(d)} />
+                busy={busyEmail === d.customer_email} onBuild={() => buildPack({ email: d.customer_email, dispute_id: d.stripe_dispute_id })} onToggleBlock={() => toggleBlock(d)} onEmail={(payload) => sendEmail(d, payload)} />
             ))}
           </div>
         )}
@@ -260,7 +266,7 @@ export default function DisputesTab({ accessToken, showToast }) {
           <div className="space-y-3">
             {closedList.map((d) => (
               <DisputeRow key={d.stripe_dispute_id} d={d} selected={selected === d.stripe_dispute_id} building={building && selected === d.stripe_dispute_id}
-                busy={busyEmail === d.customer_email} onBuild={() => buildPack({ email: d.customer_email, dispute_id: d.stripe_dispute_id })} onToggleBlock={() => toggleBlock(d)} compact />
+                busy={busyEmail === d.customer_email} onBuild={() => buildPack({ email: d.customer_email, dispute_id: d.stripe_dispute_id })} onToggleBlock={() => toggleBlock(d)} onEmail={(payload) => sendEmail(d, payload)} compact />
             ))}
           </div>
         )}
@@ -269,7 +275,45 @@ export default function DisputesTab({ accessToken, showToast }) {
   );
 }
 
-function DisputeRow({ d, selected, building, busy, onBuild, onToggleBlock, compact }) {
+// Prefilled outreach email (Spanish, customer-facing). Warm, never accusatory:
+// confirms delivery without leading with it, asks what happened, offers a free
+// fix instead of a refund. Signed as the team — no personal names.
+function buildEmailTemplate(d) {
+  const name = d.customer_first_name || (d.customer_name || '').split(/\s+/)[0] || '';
+  const rail = (d.payment_method || 'card').toLowerCase();
+  const railName = rail === 'klarna' ? 'Klarna' : rail === 'paypal' ? 'PayPal' : 'tu banco';
+  const amount = usd(d.amount_cents);
+  const when = d.opened_at ? new Date(d.opened_at).toLocaleDateString('es-MX', { day: 'numeric', month: 'long' }) : '';
+  const greet = name ? `Hola ${name},` : 'Hola,';
+  return {
+    subject: name ? `${name}, ¿qué pasó con tu canción?` : '¿Qué pasó con tu canción?',
+    text: `${greet}
+
+Te escribimos de Regalos Que Cantan. Nos llegó un aviso de ${railName} indicando que pediste la devolución del pago de tu canción (${amount}${when ? `, aviso del ${when}` : ''}).
+
+Antes que nada queremos entender qué pasó. Vimos que la canción se entregó por WhatsApp y correo, pero no recibimos ningún mensaje tuyo, así que no sabemos si hubo algún problema.
+
+Si algo de la letra no quedó como querías — un nombre, una fecha, un detalle de tu historia — lo corregimos sin costo. Solo dinos qué cambiar y te mandamos la versión corregida.
+
+Y si fue otra cosa, cuéntanos con confianza. Puedes responder a este correo o escribirnos al WhatsApp de donde te llegó la canción.
+
+Un saludo,
+El equipo de Regalos Que Cantan`,
+  };
+}
+
+function DisputeRow({ d, selected, building, busy, onBuild, onToggleBlock, onEmail, compact }) {
+  const [composing, setComposing] = useState(false);
+  const [draft, setDraft] = useState(null);
+  const [sending, setSending] = useState(false);
+  const openCompose = () => { setDraft(buildEmailTemplate(d)); setComposing(true); };
+  const send = async () => {
+    if (!draft?.subject.trim() || !draft?.text.trim()) return;
+    setSending(true);
+    try { await onEmail({ subject: draft.subject.trim(), text: draft.text.trim() }); setComposing(false); }
+    catch (e) { alert(e.message || 'Could not send'); }
+    finally { setSending(false); }
+  };
   const left = daysLeft(d.evidence_due_by);
   const isOpen = OPEN_STATUSES.has(d.status);
   const dueTone = left == null ? 'gray' : left <= 3 ? 'red' : left <= 7 ? 'amber' : 'gray';
@@ -315,12 +359,35 @@ function DisputeRow({ d, selected, building, busy, onBuild, onToggleBlock, compa
             <ExternalLink size={15} /> Open in Stripe
           </a>
           {d.customer_email && (
+            <button onClick={composing ? () => setComposing(false) : openCompose} className={btn.ghost}>
+              <Mail size={15} /> {composing ? 'Cancel email' : 'Email customer'}
+            </button>
+          )}
+          {d.customer_email && (
             <button onClick={onToggleBlock} disabled={busy} className={btn.ghost}>
               {busy ? <Loader2 size={15} className="animate-spin" /> : d.blocked ? <Unlock size={15} /> : <Ban size={15} />} {d.blocked ? 'Unblock customer' : 'Block customer'}
             </button>
           )}
         </div>
       </div>
+
+      {composing && draft && (
+        <div className="mt-3 border border-indigo-200 bg-indigo-50/30 rounded-lg p-3 space-y-2">
+          <SectionLabel>Email to {d.customer_email}</SectionLabel>
+          <p className="text-xs text-gray-500">Sent from hola@regalosquecantan.com as "Regalos Que Cantan". Replies go to hola@ and you get a copy. It is logged and will appear under Communications and in the evidence pack.</p>
+          <input value={draft.subject} onChange={(e) => setDraft({ ...draft, subject: e.target.value })}
+            className="w-full text-sm px-3 py-2 rounded-lg border border-gray-200 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200" placeholder="Subject" />
+          <textarea value={draft.text} onChange={(e) => setDraft({ ...draft, text: e.target.value })} rows={12}
+            className="w-full text-sm px-3 py-2 rounded-lg border border-gray-200 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200 font-sans" />
+          <div className="flex gap-2 justify-end">
+            <button onClick={() => setComposing(false)} className={btn.ghost} disabled={sending}>Cancel</button>
+            <button onClick={send} className={btn.accent} disabled={sending || !draft.subject.trim() || !draft.text.trim()}>
+              {sending ? <Loader2 size={15} className="animate-spin" /> : <Mail size={15} />} Send email
+            </button>
+          </div>
+        </div>
+      )}
+
       <CommsPanel d={d} defaultOpen={!compact} />
     </div>
   );
