@@ -44,6 +44,14 @@ function fmt(ts: string | null | undefined): string {
 }
 
 type SongLite = { id: string; whatsapp_phone: string | null };
+
+type PmDetails = { type?: string; klarna?: { reason_code?: string }; paypal?: { reason_code?: string }; card?: { network_reason_code?: string } };
+function paymentRail(raw: unknown): { payment_method: string; pm_reason_code: string | null } {
+  const pm = ((raw as { payment_method_details?: PmDetails } | null)?.payment_method_details) || {};
+  const type = pm.type || 'card';
+  const code = pm.klarna?.reason_code || pm.paypal?.reason_code || null;
+  return { payment_method: type, pm_reason_code: code };
+}
 type Msg = {
   created_at: string; direction: string; channel: string; body: string | null; twilio_sid: string | null;
   status: string | null; media_type: string | null; ai_generated: boolean | null; phone: string;
@@ -157,6 +165,7 @@ serve(async (req) => {
           phones: comms?.phones || [],
           blocked: blockedSet.has(e),
           evidence_submitted: !!(raw.evidence_details?.submission_count && raw.evidence_details.submission_count > 0),
+          ...paymentRail(r.raw),
           orders_total: o ? o.total : null,
           orders_paid: o ? o.paid : null,
         };
@@ -244,6 +253,10 @@ serve(async (req) => {
       L.push(`## Stripe dispute on file`);
       L.push(`- **${dd.stripe_dispute_id}** — $${((dd.amount_cents as number) / 100).toFixed(2)} ${String(dd.currency || '').toUpperCase()} · reason ${dd.reason}${dd.network_reason_code ? ` (network code ${dd.network_reason_code})` : ''} · status ${dd.status}`);
       L.push(`- Charge ${dd.charge_id} · PI ${dd.payment_intent_id} · evidence due ${fmt(dd.evidence_due_by as string)} · auto-blocked: ${dd.auto_blocked ? 'yes' : 'no'}`);
+      const rail = paymentRail(dd.raw);
+      if (rail.payment_method !== 'card') {
+        L.push(`- **Paid with ${rail.payment_method.toUpperCase()}** — the provider's own reason code is \`${rail.pm_reason_code || 'n/a'}\`. Stripe's "${dd.reason}" label is a translation; argue against the provider's code.`);
+      }
       L.push('');
     }
 
@@ -313,6 +326,15 @@ serve(async (req) => {
     L.push(`- Never attach a refund/cancellation policy to a fraud-coded dispute`);
     L.push(`- AVS/CVC: cite ONLY if the charge was a keyed card with cvc_check/postal pass (never on Link/Google Pay)`);
     L.push(`- The preview is a 40-second window of the real finished song — say "a real preview of the finished song (voice, lyrics, music)", never "heard in full"`);
+    const rails = (disputesQ.data || []).map((d) => paymentRail((d as { raw?: unknown }).raw));
+    if (rails.some((r) => r.payment_method === 'klarna')) {
+      L.push('');
+      L.push(`## Klarna dispute — what changes`);
+      L.push(`- Klarna decides this, not the card network, and it leans toward its shopper. The allegation is the Klarna code above (e.g. \`return\` = "I returned it / want my money back"), not identity.`);
+      L.push(`- Identity arguments are pointless — Klarna already verified the buyer. Lead with: nothing to return (digital), delivered fast, consumed (plays/downloads), no refund request or promise anywhere in the thread.`);
+      L.push(`- DO attach the refund policy here ("personalized digital songs are non-refundable once delivered" from the Terms of Service). This is not a fraud-coded dispute.`);
+      L.push(`- Quote the customer's own submitted story next to the delivered lyrics — it proves the product was exactly what was ordered.`);
+    }
 
     return new Response(JSON.stringify({ ok: true, email, markdown: L.join('\n') }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200,

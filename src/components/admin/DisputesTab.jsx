@@ -38,6 +38,21 @@ const REASON_PLAYBOOK = {
   duplicate: 'Check the orders list — a 2-pack stamps the full total on both rows and is NOT a duplicate charge.',
 };
 
+// Klarna / PayPal disputes are decided by that provider, not the card network,
+// and Stripe folds their codes into its generic reasons. The provider's own
+// code is the real allegation, so the box shows it and swaps the playbook.
+const RAIL_LABELS = { klarna: 'Klarna', paypal: 'PayPal', card: 'Card' };
+const RAIL_PLAYBOOK = {
+  klarna: 'Klarna decides this and leans toward its shopper. Identity arguments are pointless (Klarna already verified him). Lead with: nothing to return (digital), delivered fast, plays and downloads, no refund request or promise in the thread. DO attach the refund policy from the Terms — this is not a fraud case.',
+  paypal: 'PayPal decides this. Lead with delivery proof, consumption, and the refund policy. Identity arguments are pointless.',
+};
+const RAIL_CODE_LABELS = {
+  return: 'return (customer says they returned it / want money back)',
+  goods_not_received: 'goods not received',
+  faulty_goods: 'faulty goods',
+  unauthorized: 'unauthorized',
+};
+
 const OPEN_STATUSES = new Set(['needs_response', 'warning_needs_response', 'warning_under_review', 'under_review']);
 
 function statusTone(s) {
@@ -258,7 +273,9 @@ function DisputeRow({ d, selected, building, busy, onBuild, onToggleBlock, compa
   const left = daysLeft(d.evidence_due_by);
   const isOpen = OPEN_STATUSES.has(d.status);
   const dueTone = left == null ? 'gray' : left <= 3 ? 'red' : left <= 7 ? 'amber' : 'gray';
-  const playbook = REASON_PLAYBOOK[d.reason];
+  const rail = (d.payment_method || 'card').toLowerCase();
+  const nonCard = rail !== 'card';
+  const playbook = (nonCard && RAIL_PLAYBOOK[rail]) || REASON_PLAYBOOK[d.reason];
   return (
     <div className={`rounded-lg border p-4 ${selected ? 'border-indigo-300 bg-indigo-50/40' : 'border-gray-200'}`}>
       <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -269,10 +286,20 @@ function DisputeRow({ d, selected, building, busy, onBuild, onToggleBlock, compa
             {isOpen && left != null && (
               <Badge tone={dueTone}>{left < 0 ? `Overdue by ${-left}d` : left === 0 ? 'Due today' : `${left}d left · due ${fmtDate(d.evidence_due_by)}`}</Badge>
             )}
+            {nonCard && <Badge tone="accent">{RAIL_LABELS[rail] || rail}{d.pm_reason_code ? ` · ${d.pm_reason_code}` : ''}</Badge>}
             {d.blocked && <Badge tone="red">Blocked from ordering</Badge>}
             {d.evidence_submitted && <Badge tone="accent">Evidence submitted</Badge>}
           </div>
-          <p className="text-sm text-gray-800 mt-1">{REASON_LABELS[d.reason] || d.reason}{d.network_reason_code ? <span className="text-gray-400"> · code {d.network_reason_code}</span> : null}</p>
+          <p className="text-sm text-gray-800 mt-1">
+            {nonCard ? (
+              <>
+                {RAIL_LABELS[rail] || rail} dispute — provider code <b>{RAIL_CODE_LABELS[d.pm_reason_code] || d.pm_reason_code || 'n/a'}</b>
+                <span className="text-gray-400"> · Stripe files it as "{REASON_LABELS[d.reason] || d.reason}"</span>
+              </>
+            ) : (
+              <>{REASON_LABELS[d.reason] || d.reason}{d.network_reason_code ? <span className="text-gray-400"> · code {d.network_reason_code}</span> : null}</>
+            )}
+          </p>
           <p className="text-sm text-gray-600 mt-0.5">
             {d.customer_name || 'Unknown name'} · {d.customer_email || 'no email on the charge'}
             {d.orders_total != null && <span className="text-gray-400"> · {d.orders_paid} paid of {d.orders_total} orders</span>}
