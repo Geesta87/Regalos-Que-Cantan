@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { CenzoSignature } from '../components/Cenzo';
+import AnimadoPhotoUploadV2 from './AnimadoPhotoUploadV2';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Animado — customer-facing UI for the animated story-video upsell.
@@ -473,7 +474,7 @@ const ROLE_LABELS = {
   other: 'Otro',
 };
 
-export function AnimadoPhotoUpload({ recipientName = 'Papá', isFamily = false, otherPeople = [], askPhone = false, onSubmit = null, onAnalyze = null, onConfirm = null }) {
+export function AnimadoPhotoUpload({ recipientName = 'Papá', isFamily = false, otherPeople = [], askPhone = false, onSubmit = null, onAnalyze = null, onConfirm = null, demoFiles = null }) {
   const [mainPhoto, setMainPhoto] = useState(null);   // File
   const [familyPhoto, setFamilyPhoto] = useState(null); // File
   const [phone, setPhone] = useState('');
@@ -491,6 +492,15 @@ export function AnimadoPhotoUpload({ recipientName = 'Papá', isFamily = false, 
   const isHeic = (f) => !!f && (/\.hei[cf]$/i.test(f.name || '') || /image\/hei[cf]/i.test(f.type || ''));
   const pickMain = (f) => { setMainPhoto(f); setFormatWarning(isHeic(f) || isHeic(familyPhoto) ? 'heic' : ''); };
   const pickFamily = (f) => { setFamilyPhoto(f); setFormatWarning(isHeic(f) || isHeic(mainPhoto) ? 'heic' : ''); };
+  // /animado-demo only: preload sample photos (URL -> File) so the flow can be walked without a device picker
+  useEffect(() => {
+    if (!demoFiles) return;
+    const load = async (url, name, setter) => {
+      try { const b = await (await fetch(url)).blob(); setter(new File([b], name, { type: b.type || 'image/jpeg' })); } catch { /* demo only */ }
+    };
+    if (demoFiles.main) load(demoFiles.main, 'main.jpg', setMainPhoto);
+    if (demoFiles.family) load(demoFiles.family, 'family.jpg', setFamilyPhoto);
+  }, [demoFiles]);
 
   // Never let the customer hang on "Guardando…": if the confirm call stalls past
   // the timeout, show the success screen anyway — the server has almost certainly
@@ -895,15 +905,59 @@ export function AnimadoPhotoUpload({ recipientName = 'Papá', isFamily = false, 
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  LOCAL DEMO PAGE — toggle between the two screens
+//  LOCAL DEMO PAGE — toggle between the screens
 // ═══════════════════════════════════════════════════════════════════════════
+// Fixtures from order 56b175ba (Alex el Chino, 2026-09-02): the real 12-person
+// family photo and the exact cast the live analyze step produced. Served from
+// the order's public storage folder via Supabase's resize endpoint (upright).
+const DEMO_BASE = 'https://yzbvajungshqcpusfiia.supabase.co/storage/v1/render/image/public/story-video-assets/56b175ba-bf86-414a-9b55-0203106d513f';
+const DEMO_PHOTOS = {
+  main: DEMO_BASE + '/source-main.jpg?width=1350&height=2400&resize=contain&quality=85',
+  family: DEMO_BASE + '/source-family.jpg?width=1800&height=2400&resize=contain&quality=85',
+};
+const DEMO_CAST = [
+  { key: 'man_red_hoodie', description: 'Hombre mayor, barba blanca, sudadera roja con logo, shorts caqui', role: 'other', name: '', in_photo: true },
+  { key: 'boy_white_gray_jacket', description: 'Adolescente, cabello oscuro corto, chaqueta blanca y gris, pantalón negro', role: 'other', name: '', in_photo: true },
+  { key: 'woman_glasses_brown_coat', description: 'Mujer joven, cabello rizado oscuro, lentes, abrigo marrón, envuelta en manta azul', role: 'other', name: '', in_photo: true },
+  { key: 'man_gray_hair_glasses', description: 'Hombre mayor, cabello y barba gris, lentes, camisa clara, al fondo', role: 'other', name: '', in_photo: true },
+  { key: 'woman_black_jacket', description: 'Mujer joven, cabello oscuro largo, chaqueta negra, jeans rasgados', role: 'other', name: '', in_photo: true },
+  { key: 'woman_gray_hair_glasses', description: 'Mujer mayor, cabello gris corto, lentes, blusa blanca', role: 'other', name: '', in_photo: true },
+  { key: 'woman_blue_blanket', description: 'Mujer joven, cabello oscuro largo, sosteniendo manta azul, top negro', role: 'other', name: '', in_photo: true },
+  { key: 'woman_kneeling_blue_jacket', description: 'Mujer con cabello corto oscuro, chaqueta azul, shorts de mezclilla, agachada al frente, apuntando a la cámara', role: 'recipient', name: '', in_photo: true },
+  { key: 'person_green_hair', description: 'Persona joven, cabello teñido de verde, lentes, camiseta con estampado, sombrero sostenido', role: 'other', name: '', in_photo: true },
+  { key: 'woman_maroon_shirt', description: 'Mujer de mediana edad, cabello oscuro corto, camiseta color vino, jeans', role: 'other', name: '', in_photo: true },
+  { key: 'man_white_hair_maroon_shirt', description: 'Hombre mayor, cabello blanco, camiseta estampada color vino oscuro, shorts', role: 'other', name: '', in_photo: true },
+  { key: 'young_man_black_shirt', description: 'Hombre joven, barba corta, camiseta negra con logo, pantalón caqui, alto', role: 'other', name: '', in_photo: true },
+];
+// Face boxes (normalized x,y,w,h) — what a detector would return for the same photos.
+const DEMO_V2 = {
+  main: { url: DEMO_PHOTOS.main, w: 1350, h: 2400, faces: [
+    { id: 'young', x: 0.235, y: 0.255, w: 0.13, h: 0.075 },
+    { id: 'alex', x: 0.44, y: 0.315, w: 0.13, h: 0.075 },
+  ] },
+  family: { url: DEMO_PHOTOS.family, w: 1800, h: 2400, faces: [
+    { id: 'p1', x: 0.105, y: 0.31, w: 0.065, h: 0.045 },
+    { id: 'p2', x: 0.205, y: 0.335, w: 0.06, h: 0.042 },
+    { id: 'p3', x: 0.318, y: 0.345, w: 0.058, h: 0.04 },
+    { id: 'p4', x: 0.362, y: 0.34, w: 0.058, h: 0.04 },
+    { id: 'p5', x: 0.41, y: 0.338, w: 0.058, h: 0.04 },
+    { id: 'p6', x: 0.46, y: 0.352, w: 0.058, h: 0.04 },
+    { id: 'p7', x: 0.53, y: 0.395, w: 0.062, h: 0.043 },
+    { id: 'p8', x: 0.56, y: 0.30, w: 0.058, h: 0.04 },
+    { id: 'sandra', x: 0.63, y: 0.33, w: 0.06, h: 0.042 },
+    { id: 'alex', x: 0.68, y: 0.328, w: 0.06, h: 0.042 },
+    { id: 'p11', x: 0.80, y: 0.258, w: 0.062, h: 0.043 },
+  ] },
+};
 export default function AnimadoUpsell() {
-  const [view, setView] = useState('offer');   // 'offer' | 'upload'
+  // deep-linkable for screenshots/review: /animado-demo?view=proposal&family=1
+  const qs = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams();
+  const [view, setView] = useState(['offer','upload','proposal'].includes(qs.get('view')) ? qs.get('view') : 'offer');   // 'offer' | 'upload' | 'proposal'
   const [orderSongs, setOrderSongs] = useState(1); // 1 or 2 songs in the order (demo)
   const [count, setCount] = useState(0);        // animated videos selected
   const [videoSongId, setVideoSongId] = useState(null);
   const [style, setStyle] = useState('pixar');  // 'pixar' | 'likeness'
-  const [uploadFamily, setUploadFamily] = useState(false); // demo: story has other people?
+  const [uploadFamily, setUploadFamily] = useState(qs.get('family') === '1'); // demo: story has other people?
 
   const songs = orderSongs === 2
     ? [{ id: 's1', version: 1 }, { id: 's2', version: 2 }]
@@ -927,7 +981,7 @@ export default function AnimadoUpsell() {
         borderBottom: '1px solid rgba(255,255,255,0.08)', marginBottom: 20,
       }}>
         <div style={{ display: 'flex', gap: 8 }}>
-          {[['offer', '1 · La oferta'], ['upload', '2 · Subir foto']].map(([k, lbl]) => (
+          {[['offer', '1 · La oferta'], ['upload', '2 · Subir foto (actual)'], ['proposal', '3 · Propuesta']].map(([k, lbl]) => (
             <button key={k} onClick={() => setView(k)} style={pill(view === k)}>{lbl}</button>
           ))}
         </div>
@@ -938,7 +992,7 @@ export default function AnimadoUpsell() {
             <button onClick={() => setScenario(2)} style={pill(orderSongs === 2)}>2 canciones</button>
           </div>
         )}
-        {view === 'upload' && (
+        {(view === 'upload' || view === 'proposal') && (
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)' }}>Historia:</span>
             <button onClick={() => setUploadFamily(false)} style={pill(!uploadFamily)}>Para 1 persona</button>
@@ -959,10 +1013,22 @@ export default function AnimadoUpsell() {
               enableStylePicker
               onChange={(c, id) => { setCount(c); setVideoSongId(id); }}
             />
-          : <AnimadoPhotoUpload
-              recipientName={uploadFamily ? 'Erica' : 'Papá'}
+          : view === 'proposal'
+          ? <AnimadoPhotoUploadV2
+              recipientName={uploadFamily ? 'Alex' : 'Papá'}
+              senderName={uploadFamily ? 'Sandra' : 'Erica'}
+              relationship={uploadFamily ? 'Pareja' : 'Hija'}
               isFamily={uploadFamily}
-              otherPeople={uploadFamily ? ['Julián', 'Jahziel', 'Jaxon'] : []}
+              demo={DEMO_V2}
+            />
+          : <AnimadoPhotoUpload
+              recipientName={uploadFamily ? 'Alex' : 'Papá'}
+              isFamily={uploadFamily}
+              otherPeople={uploadFamily ? ['Sandra'] : []}
+              askPhone
+              demoFiles={uploadFamily ? { main: DEMO_PHOTOS.main, family: DEMO_PHOTOS.family } : { main: DEMO_PHOTOS.main }}
+              onAnalyze={async () => { await new Promise((r) => setTimeout(r, 900)); return { cast: uploadFamily ? DEMO_CAST : DEMO_CAST.slice(0, 1), quality: { usable: true, issues: [] } }; }}
+              onConfirm={async () => { await new Promise((r) => setTimeout(r, 600)); }}
             />}
       </div>
     </div>
