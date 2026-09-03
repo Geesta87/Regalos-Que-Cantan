@@ -119,13 +119,16 @@ async function kieUploadFromUrl(fileUrl, fileName) {
 }
 
 // `source` is either { taskId, audioId } (separate from Kie's stored copy of
-// the original generation) or { audioUrl, audioId } (separate from a file we
-// uploaded — the fallback when Kie no longer holds the original).
+// the original generation) or { audioUrl } (separate from a file we uploaded —
+// the fallback when Kie no longer holds the original). Per Kie's docs audioUrl
+// and audioId are MUTUALLY EXCLUSIVE — sending both gets a 422 "Please retry
+// with taskId and audioId" (live catch 2026-09-03), so the upload path sends
+// audioUrl alone.
 async function kieSeparateInstrumental(source) {
   const { taskId, audioUrl, audioId } = source;
   const body = taskId
     ? { taskId, audioId, type: 'separate_vocal', callBackUrl: KIE_DUMMY_CALLBACK }
-    : { audioUrl, audioId, type: 'separate_vocal', callBackUrl: KIE_DUMMY_CALLBACK };
+    : { audioUrl, type: 'separate_vocal', callBackUrl: KIE_DUMMY_CALLBACK };
   const submitResp = await fetch('https://api.kie.ai/api/v1/vocal-removal/generate', {
     method: 'POST',
     headers: { Authorization: `Bearer ${KIE_API_KEY}`, 'Content-Type': 'application/json' },
@@ -345,7 +348,7 @@ export default async function handler(req, res) {
         if (!song.audio_url) throw primaryErr;
         console.warn(`[karaoke-fetch] taskId separation failed (${primaryErr.message}) — retrying via uploaded source`);
         const hosted = await kieUploadFromUrl(song.audio_url, `${songId}.mp3`);
-        instrumentalUrl = await kieSeparateInstrumental({ audioUrl: hosted, audioId });
+        instrumentalUrl = await kieSeparateInstrumental({ audioUrl: hosted });
       }
       console.log(`[karaoke-fetch] downloading Kie instrumental`);
       const dl = await fetch(instrumentalUrl);
