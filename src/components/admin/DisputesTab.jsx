@@ -10,7 +10,7 @@
 // in the Stripe dashboard, and pastes. Server: dispute-evidence-pack
 // (actions: list | pack | unblock | block), admin_users-gated server-side.
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { ShieldAlert, RefreshCw, Loader2, AlertTriangle, ExternalLink, Copy, Download, FileText, Ban, Unlock, Check } from 'lucide-react';
+import { ShieldAlert, RefreshCw, Loader2, AlertTriangle, ExternalLink, Copy, Download, FileText, Ban, Unlock, Check, MessageSquare, Mail, ChevronDown, ChevronRight, Paperclip } from 'lucide-react';
 import { Card, Badge, SectionLabel, Stat, btn } from './ui';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
@@ -294,6 +294,86 @@ function DisputeRow({ d, selected, building, busy, onBuild, onToggleBlock, compa
           )}
         </div>
       </div>
+      <CommsPanel d={d} defaultOpen={!compact} />
+    </div>
+  );
+}
+
+// Every communication we have with the disputing customer, right in the box:
+// the full SMS / WhatsApp thread (both directions, Twilio-verifiable) and
+// every email we sent them. Open disputes start expanded; history collapsed.
+function CommsPanel({ d, defaultOpen }) {
+  const [open, setOpen] = useState(!!defaultOpen);
+  const messages = d.messages || [];
+  const emails = d.emails_sent || [];
+  const inbound = messages.filter((m) => m.direction === 'inbound').length;
+  const channels = [...new Set(messages.map((m) => (m.channel || 'sms').toLowerCase()))];
+  const fmtTs = (ts) => new Date(ts).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+
+  return (
+    <div className="mt-3 border-t border-gray-100 pt-3">
+      <button type="button" onClick={() => setOpen((o) => !o)} className="w-full flex items-center gap-2 text-left text-sm text-gray-700 hover:text-gray-900">
+        {open ? <ChevronDown size={15} className="text-gray-400" /> : <ChevronRight size={15} className="text-gray-400" />}
+        <MessageSquare size={15} className="text-indigo-500" />
+        <span className="font-medium">Communications</span>
+        <span className="text-gray-500">
+          · {messages.length} message{messages.length === 1 ? '' : 's'}{messages.length ? ` (${inbound} from customer${channels.length ? `, ${channels.map((c) => c === 'whatsapp' ? 'WhatsApp' : c.toUpperCase()).join(' + ')}` : ''})` : ''}
+          {' '}· {emails.length} email{emails.length === 1 ? '' : 's'} sent
+        </span>
+        {d.phones?.length > 0 && <span className="text-xs text-gray-400 ml-auto">{d.phones.join(', ')}</span>}
+      </button>
+
+      {open && (
+        <div className="mt-3 space-y-4">
+          {messages.length === 0 && emails.length === 0 && (
+            <p className="text-sm text-gray-500">No messages or emails on file for this customer. Check the SMS inbox by phone in case the thread is under a different number.</p>
+          )}
+
+          {messages.length > 0 && (
+            <div>
+              <SectionLabel className="mb-2">SMS / WhatsApp thread</SectionLabel>
+              <div className="space-y-1.5 max-h-96 overflow-y-auto pr-1">
+                {messages.map((m, i) => {
+                  const fromCustomer = m.direction === 'inbound';
+                  return (
+                    <div key={m.twilio_sid || i} className={`flex ${fromCustomer ? 'justify-start' : 'justify-end'}`}>
+                      <div className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${fromCustomer ? 'bg-indigo-50 border border-indigo-100 text-gray-900' : 'bg-gray-100 text-gray-800'}`}>
+                        <div className="flex items-center gap-1.5 text-[11px] text-gray-500 mb-0.5 flex-wrap">
+                          <span className="font-medium text-gray-700">{fromCustomer ? 'Customer' : 'Us'}</span>
+                          <span>· {fmtTs(m.created_at)}</span>
+                          <span>· {(m.channel || 'sms').toLowerCase() === 'whatsapp' ? 'WhatsApp' : 'SMS'}</span>
+                          {m.status && !fromCustomer && <span>· {m.status}</span>}
+                          {m.ai_generated && !fromCustomer && <span>· AI draft</span>}
+                          {m.media_type && <span className="inline-flex items-center gap-0.5"><Paperclip size={11} /> {m.media_type}</span>}
+                        </div>
+                        <p className="whitespace-pre-wrap break-words">{m.body || (m.media_type ? '(attachment)' : '(empty)')}</p>
+                        {m.twilio_sid && <p className="text-[10px] text-gray-400 mt-0.5 font-mono">{m.twilio_sid}</p>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {emails.length > 0 && (
+            <div>
+              <SectionLabel className="mb-2">Emails we sent</SectionLabel>
+              <div className="space-y-1">
+                {emails.map((e, i) => (
+                  <div key={i} className="flex items-start gap-2 text-sm text-gray-700">
+                    <Mail size={14} className="text-gray-400 mt-0.5 shrink-0" />
+                    <div className="min-w-0">
+                      <span className="text-gray-500">{fmtTs(e.created_at)}</span> · <span className="font-medium">{e.subject || e.email_type || 'email'}</span>
+                      <span className="text-gray-400"> · {e.email_type || '—'} · {e.status || '—'}{e.opened_at ? ` · opened ${fmtTs(e.opened_at)}` : ''}{e.clicked_at ? ` · clicked ${fmtTs(e.clicked_at)}` : ''}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -43,6 +43,54 @@ function fmt(ts: string | null | undefined): string {
   return new Date(ts).toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
 }
 
+type SongLite = { id: string; whatsapp_phone: string | null };
+type Msg = {
+  created_at: string; direction: string; channel: string; body: string | null; twilio_sid: string | null;
+  status: string | null; media_type: string | null; ai_generated: boolean | null; phone: string;
+};
+type SentEmail = {
+  created_at: string; email_type: string | null; subject: string | null; status: string | null;
+  opened_at: string | null; clicked_at: string | null;
+};
+
+// Every communication we have with this customer: the full SMS + WhatsApp
+// threads (matched by every phone on their orders AND by order id, so a thread
+// started from the inbox on a song still counts) plus every email we sent
+// them. Shared by the Disputes tab (`list`) and the evidence pack (`pack`).
+// deno-lint-ignore no-explicit-any
+async function gatherComms(supabase: any, email: string, songs: SongLite[]): Promise<{ messages: Msg[]; emails: SentEmail[]; phones: string[] }> {
+  const songIds = songs.map((s) => s.id);
+  const phones = [...new Set(
+    songs.map((s) => (s.whatsapp_phone || '').replace(/\D/g, '')).filter((p) => p.length >= 10).map((p) => p.slice(-10)),
+  )];
+  const convs = new Map<string, { id: string; phone: string; channel: string | null }>();
+  for (const p of phones) {
+    const { data } = await supabase.from('sms_conversations').select('id, phone, channel').like('phone', `%${p}`);
+    for (const c of (data || [])) convs.set(c.id, c);
+  }
+  if (songIds.length) {
+    const { data } = await supabase.from('sms_conversations').select('id, phone, channel').in('order_id', songIds);
+    for (const c of (data || [])) convs.set(c.id, c);
+  }
+  let messages: Msg[] = [];
+  for (const c of convs.values()) {
+    const { data: msgs } = await supabase.from('sms_messages')
+      .select('created_at, direction, channel, body, twilio_sid, status, media_type, ai_generated')
+      .eq('conversation_id', c.id).order('created_at').limit(500);
+    messages = messages.concat((msgs || []).map((m: Omit<Msg, 'phone'>) => ({ ...m, channel: m.channel || c.channel || 'sms', phone: c.phone })));
+  }
+  messages.sort((a, b) => a.created_at.localeCompare(b.created_at));
+
+  const [songEmails, txEmails] = await Promise.all([
+    supabase.from('email_logs').select('created_at, email_type, subject, status, opened_at, clicked_at').ilike('email', email).order('created_at').limit(200),
+    supabase.from('email_log').select('created_at, email_type, subject, status, opened_at, clicked_at').ilike('to_email', email).order('created_at').limit(200),
+  ]);
+  const emails: SentEmail[] = [...(songEmails.data || []), ...(txEmails.data || [])]
+    .sort((a: SentEmail, b: SentEmail) => String(a.created_at).localeCompare(String(b.created_at)));
+
+  return { messages, emails, phones: [...convs.values()].map((c) => c.phone) };
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
@@ -84,14 +132,16 @@ serve(async (req) => {
       const emails = [...new Set((rows || []).map((r) => (r.customer_email || '').toLowerCase()).filter(Boolean))];
       const blockedSet = new Set<string>();
       const orders = new Map<string, { total: number; paid: number }>();
+      const commsByEmail = new Map<string, { messages: Msg[]; emails: SentEmail[]; phones: string[] }>();
       if (emails.length) {
         const { data: blocked } = await supabase.from('blocked_emails').select('email').in('email', emails);
         for (const b of (blocked || [])) blockedSet.add(String(b.email).toLowerCase());
         for (const e of emails) {
-          const { data: songRows } = await supabase.from('songs').select('amount_paid').ilike('email', e).limit(500);
+          const { data: songRows } = await supabase.from('songs').select('id, amount_paid, whatsapp_phone').ilike('email', e).limit(500);
           const total = (songRows || []).length;
           const paid = (songRows || []).filter((r) => Number(r.amount_paid) > 0).length;
           orders.set(e, { total, paid });
+          commsByEmail.set(e, await gatherComms(supabase, e, (songRows || []) as SongLite[]));
         }
       }
       const disputes = (rows || []).map((r) => {
@@ -99,8 +149,12 @@ serve(async (req) => {
         const e = (r.customer_email || '').toLowerCase();
         const o = orders.get(e);
         const { raw: _raw, ...rest } = r;
+        const comms = commsByEmail.get(e);
         return {
           ...rest,
+          messages: comms?.messages || [],
+          emails_sent: comms?.emails || [],
+          phones: comms?.phones || [],
           blocked: blockedSet.has(e),
           evidence_submitted: !!(raw.evidence_details?.submission_count && raw.evidence_details.submission_count > 0),
           orders_total: o ? o.total : null,
@@ -155,19 +209,11 @@ serve(async (req) => {
 
     const songs = songsQ.data || [];
     const songIds = songs.map((s: { id: string }) => s.id);
-    const phones = [...new Set(songs.map((s: { whatsapp_phone: string | null }) => (s.whatsapp_phone || '').replace(/\D/g, '')).filter((p: string) => p.length >= 10))];
 
-    // SMS/WhatsApp threads for every phone on file (match with or without +1).
-    let messages: Record<string, unknown>[] = [];
-    for (const p of phones) {
-      const { data: convs } = await supabase.from('sms_conversations').select('id, phone').like('phone', `%${p}`);
-      for (const c of (convs || [])) {
-        const { data: msgs } = await supabase.from('sms_messages')
-          .select('created_at, direction, channel, body, twilio_sid, status')
-          .eq('conversation_id', (c as { id: string }).id).order('created_at');
-        messages = messages.concat((msgs || []).map((m: Record<string, unknown>) => ({ ...m, phone: (c as { phone: string }).phone })));
-      }
-    }
+    // Every SMS / WhatsApp thread and every email we sent — same gatherer the
+    // Disputes tab uses, so the pack and the tab never disagree.
+    const comms = await gatherComms(supabase, email, songs as SongLite[]);
+    const messages: Record<string, unknown>[] = comms.messages as unknown as Record<string, unknown>[];
 
     // Consumption log — the new proof-of-consumption trail.
     let accessLog: Record<string, unknown>[] = [];
@@ -233,6 +279,12 @@ serve(async (req) => {
       L.push(`- ${fmt(r.created_at as string)} · ${r.direction === 'inbound' ? '**FROM CUSTOMER**' : 'from us'} · ${r.channel} · ${r.phone}`);
       L.push(`  - "${String(r.body || '').slice(0, 300)}"`);
       L.push(`  - Twilio ${r.twilio_sid || '—'} · status ${r.status}`);
+    }
+    L.push('');
+
+    L.push(`## Emails we sent (${comms.emails.length})`);
+    for (const e of comms.emails) {
+      L.push(`- ${fmt(e.created_at)} · ${e.email_type || 'email'} · "${(e.subject || '').slice(0, 120)}" · ${e.status || '—'}${e.opened_at ? ` · opened ${fmt(e.opened_at)}` : ''}${e.clicked_at ? ` · clicked ${fmt(e.clicked_at)}` : ''}`);
     }
     L.push('');
 
