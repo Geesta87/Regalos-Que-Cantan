@@ -752,17 +752,18 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
           // pristine transcript IN TIME: outside the declared window nothing
           // may go missing or appear that the original doesn't sing there.
           let tlOk = true;
-          if (pristineWords && Number.isFinite(origCut) && countableLedgerLines(fullLyrics) < 6) {
-            const dmg = timelineDamage(pristineWords, audible, [{ startS: Number.isFinite(startS) ? startS : 0, endS: origCut }]);
-            if (dmg) {
+          let tlAdvisory = null; // re-render signal — always computed, vetoes only on prose sheets
+          if (pristineWords && Number.isFinite(origCut)) {
+            tlAdvisory = timelineDamage(pristineWords, audible, [{ startS: Number.isFinite(startS) ? startS : 0, endS: origCut }]);
+            if (tlAdvisory && countableLedgerLines(fullLyrics) < 6) {
               tlOk = false;
-              lastReason = `${dmg} — y la letra (en prosa) no permite auditar por líneas`;
+              lastReason = `${tlAdvisory} — y la letra (en prosa) no permite auditar por líneas`;
               lastTakesSeen.push({ url, text: audible.map((w) => w.word).join(' '), reason: lastReason });
               if (relisten()) continue;
             }
           }
           if (sang && keptPrior && consistent && lenOk && deltaOk && tlOk) {
-            wholeCands.push({ url, takeId, drift: Math.abs((trimAtS || takeEnd) - origFullDur), trimAtS });
+            wholeCands.push({ url, takeId, drift: Math.abs((trimAtS || takeEnd) - origFullDur), trimAtS, rerender: !!trimAtS || !!tlAdvisory });
           } else if (wholeOnly && !lenOk && takeEnd > origFullDur * 1.08) {
             lastReason = `la toma ${lenFailWhy || 'salió demasiado larga'}`;
             lastTakesSeen.push({ url, text: words.map((w) => w.word).join(' '), reason: lastReason });
@@ -823,7 +824,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
         // fixTaskId + takeId travel with the result: an UNTRIMMED whole-take apply
         // stores them so the NEXT surgical fix re-sings from THIS take instead of
         // the pristine original (which would revert this correction).
-        return { wholeTake: true, resungUrl: w.url, trimAtS: w.trimAtS || null, fixTaskId, takeId: w.takeId || null, originalAudioUrl, fullLyrics, changeSummary, startS };
+        return { wholeTake: true, resungUrl: w.url, trimAtS: w.trimAtS || null, fixTaskId, takeId: w.takeId || null, originalAudioUrl, fullLyrics, changeSummary: changeSummary + (w.rerender ? ' · ⚠️ RE-RENDER: la toma re-cantó más allá de la ventana — compara la MELODÍA (sobre todo el final) contra el original antes de aplicar' : ''), startS };
       }
       if (lineCands.length) {
         // Prefer the take whose corrected line starts nearest the original slot.
@@ -1582,21 +1583,22 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
         // compare the take against its chain source IN TIME: outside the
         // submitted window nothing may go missing or appear duplicated.
         let tlOk = true;
-        if (countableLedgerLines(combinedLyrics) < 6) {
+        let tlAdvisory = null; // re-render signal — always computed, vetoes only on prose sheets
+        {
           const srcW = best?.words || baseWords;
           const ws = Number(sub.window?.startS), we = Number(sub.window?.endS);
           if (srcW && Number.isFinite(we)) {
-            const dmg = timelineDamage(srcW, audibleWords, [{ startS: Number.isFinite(ws) ? ws : 0, endS: we }]);
-            if (dmg) {
+            tlAdvisory = timelineDamage(srcW, audibleWords, [{ startS: Number.isFinite(ws) ? ws : 0, endS: we }]);
+            if (tlAdvisory && countableLedgerLines(combinedLyrics) < 6) {
               tlOk = false;
-              lastReason = `${dmg} — y la letra (en prosa) no permite auditar por líneas`;
+              lastReason = `${tlAdvisory} — y la letra (en prosa) no permite auditar por líneas`;
               if (lastTakesSeen.length) lastTakesSeen[lastTakesSeen.length - 1].reason = lastReason;
             }
           }
         }
         if (!tlOk) { relisten(); continue; }
         if ((targetLanded || progressed) && lenOk && priorsOk && noRegression && (!roundWinner || score > roundWinner.score)) {
-          roundWinner = { url: t.audioUrl, takeId: t.id || null, fixTaskId: sub.fixTaskId, words: audibleWords, dur: takeEnd, trimAtS, chk, score, partial: !targetLanded };
+          roundWinner = { url: t.audioUrl, takeId: t.id || null, fixTaskId: sub.fixTaskId, words: audibleWords, dur: takeEnd, trimAtS, chk, score, partial: !targetLanded, rerender: !!trimAtS || !!tlAdvisory };
         }
         if (!roundWinner || !targetLanded) lastReason = reason;
       }
@@ -1678,6 +1680,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
       fixTaskId: best.fixTaskId || null,
       fixAudioId: best.takeId || null,
       fixTrimAtS: best.trimAtS || null,
+      rerender: !!best.rerender,
     };
   }
 
@@ -1692,7 +1695,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
       const res = {
         surgical: true,
         splicedBlob: one.splicedBlob,
-        changeSummary: (plan?.changeSummary) || `${changes.length} correcciones`,
+        changeSummary: ((plan?.changeSummary) || `${changes.length} correcciones`) + (one.rerender ? ' · ⚠️ RE-RENDER: la toma re-cantó más allá de la ventana — compara la MELODÍA (sobre todo el final) contra el original antes de aplicar' : ''),
         fullLyrics: combinedLyrics,
         corrections: changes.map((c) => ({ before: c.before, after: c.after })),
         fixTaskId: one.fixTaskId || null,

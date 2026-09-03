@@ -1257,7 +1257,16 @@ async function stepValidate(admin: any, r: any, state: any): Promise<void> {
     }
   }
   const earList = [...new Set(earChecks)];
+  // RE-RENDER FLAG (2026-09-03, Hector/Lea 12360357): over-long-then-trimmed
+  // or time-drifted outside the window = the take re-sang beyond the fix. The
+  // words verify but the melody past the window is a new performance — say so
+  // on the card so the releaser A/Bs the ending by ear.
+  let rerender = false;
+  if (plan.mode !== 'full' && pristineWords) {
+    try { rerender = !!win.trimAtS || !!timelineDamage(pristineWords, win.words || [], changeWindows(pristineWords, plan.changes || [])); } catch { rerender = !!win.trimAtS; }
+  }
   const evidence = [
+    rerender ? '⚠️ RE-RENDER: the take re-sang beyond the fix window — A/B the melody (especially the ending) against the original before releasing' : '',
     spotNotes.length ? `Heard: ${spotNotes.join(', ')}` : '',
     earList.length ? `👂 EAR-CHECK the name${earList.length > 1 ? 's' : ''} ${earList.join(', ')} before releasing (transcripts can't judge names)` : '',
   ].filter(Boolean).join(' · ');
@@ -1267,6 +1276,7 @@ async function stepValidate(admin: any, r: any, state: any): Promise<void> {
     corrections_sung: true,
     length_ok: true,
     trimmed: !!win.trimAtS,
+    rerender,
     round: r.auto_round,
     takes_seen: diags.length,
     ear_check: earList,
