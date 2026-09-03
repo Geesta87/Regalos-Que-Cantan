@@ -104,7 +104,7 @@ const KIE_DUMMY_CALLBACK = 'https://webhook.site/00000000-0000-0000-0000-0000000
 // ~100MB max); the hosted copy auto-deletes after 3 days — plenty for one
 // separation job.
 async function kieUploadFromUrl(fileUrl, fileName) {
-  const resp = await fetch('https://api.kie.ai/api/file-url-upload', {
+  const resp = await fetch('https://kieai.redpandaai.co/api/file-url-upload', {
     method: 'POST',
     headers: { Authorization: `Bearer ${KIE_API_KEY}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ fileUrl, uploadPath: 'rqc/karaoke-src', fileName }),
