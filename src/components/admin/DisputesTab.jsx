@@ -252,7 +252,7 @@ export default function DisputesTab({ accessToken, showToast }) {
         <p className="text-xs text-gray-500 mb-3">For disputes opened before the webhook existed, or a customer who is threatening a chargeback. Same pack, by email.</p>
         <form className="flex gap-2 flex-wrap" onSubmit={(e) => { e.preventDefault(); if (manualEmail.includes('@')) buildPack({ email: manualEmail.trim().toLowerCase() }); }}>
           <input value={manualEmail} onChange={(e) => setManualEmail(e.target.value)} placeholder="customer@email.com" type="email"
-            className="flex-1 min-w-[16rem] text-sm px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-200" />
+            className="flex-1 min-w-[16rem] text-sm px-3 py-2 rounded-lg border border-gray-200 bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-200" />
           <button type="submit" disabled={building || !manualEmail.includes('@')} className={btn.primary}><FileText size={15} /> Build evidence pack</button>
         </form>
       </Card>
@@ -376,9 +376,9 @@ function DisputeRow({ d, selected, building, busy, onBuild, onToggleBlock, onEma
           <SectionLabel>Email to {d.customer_email}</SectionLabel>
           <p className="text-xs text-gray-500">Sent from hola@regalosquecantan.com as "Regalos Que Cantan". Replies go to hola@ and you get a copy. It is logged and will appear under Communications and in the evidence pack.</p>
           <input value={draft.subject} onChange={(e) => setDraft({ ...draft, subject: e.target.value })}
-            className="w-full text-sm px-3 py-2 rounded-lg border border-gray-200 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200" placeholder="Subject" />
+            className="w-full text-sm px-3 py-2 rounded-lg border border-gray-200 bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-200" placeholder="Subject" />
           <textarea value={draft.text} onChange={(e) => setDraft({ ...draft, text: e.target.value })} rows={12}
-            className="w-full text-sm px-3 py-2 rounded-lg border border-gray-200 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200 font-sans" />
+            className="w-full text-sm px-3 py-2 rounded-lg border border-gray-200 bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-200 font-sans" />
           <div className="flex gap-2 justify-end">
             <button onClick={() => setComposing(false)} className={btn.ghost} disabled={sending}>Cancel</button>
             <button onClick={send} className={btn.accent} disabled={sending || !draft.subject.trim() || !draft.text.trim()}>
