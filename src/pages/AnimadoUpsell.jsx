@@ -932,6 +932,19 @@ const DEMO_CAST = [
 // What the "ask the song" pass would return for Alex's lyrics — the three facts
 // the real storyboard had to invent (café for the friend's intro, neutral
 // workplace for "18 años trabajando", generic party venue).
+// Live "ask the song" for the demo order (animado-photo action=questions, cached
+// on the order). Falls back to the hand-written set below while loading / on error.
+const DEMO_ORDER_ID = '56b175ba-bf86-414a-9b55-0203106d513f';
+async function fetchDemoQuestions() {
+  try {
+    const r = await fetch('https://yzbvajungshqcpusfiia.supabase.co/functions/v1/animado-photo', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'questions', story_video_order_id: DEMO_ORDER_ID }),
+    });
+    const j = await r.json();
+    return Array.isArray(j?.questions) && j.questions.length ? j.questions : null;
+  } catch { return null; }
+}
 const DEMO_QUESTIONS = [
   { id: 'work', text: 'La canción dice que llevan 18 años trabajando juntos. ¿En qué trabajan?', hint: 'Ej. tenemos un negocio de jardinería' },
   { id: 'met', text: 'Una amiga los presentó. ¿Dónde fue?', hint: 'Ej. en una boda en Indio, en la iglesia' },
@@ -966,6 +979,8 @@ export default function AnimadoUpsell() {
   const [videoSongId, setVideoSongId] = useState(null);
   const [style, setStyle] = useState('pixar');  // 'pixar' | 'likeness'
   const [uploadFamily, setUploadFamily] = useState(qs.get('family') === '1'); // demo: story has other people?
+  const [liveQuestions, setLiveQuestions] = useState(null);
+  useEffect(() => { if (view === 'proposal' && uploadFamily && !liveQuestions) fetchDemoQuestions().then((q) => { if (q) setLiveQuestions(q); }); }, [view, uploadFamily, liveQuestions]);
 
   const songs = orderSongs === 2
     ? [{ id: 's1', version: 1 }, { id: 's2', version: 2 }]
@@ -1028,7 +1043,7 @@ export default function AnimadoUpsell() {
               relationship={uploadFamily ? 'pareja' : 'papa'}
               occasion="cumpleanos"
               isFamily={uploadFamily}
-              questions={uploadFamily ? DEMO_QUESTIONS : null}
+              questions={uploadFamily ? (liveQuestions || DEMO_QUESTIONS) : null}
               demo={DEMO_V2}
             />
           : <AnimadoPhotoUpload

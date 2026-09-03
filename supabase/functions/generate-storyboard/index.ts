@@ -147,13 +147,20 @@ serve(async (req) => {
     // admin-approved cartoon likeness (that IS the scene reference); fall back to
     // the uploaded photo; degrade to text-only if the order has neither yet.
     const { data: svo } = await supabase.from('story_video_orders')
-      .select('approved_character_url, recipient_photo_url, cast_tags')
+      .select('approved_character_url, recipient_photo_url, cast_tags, detail_answers')
       .eq('song_id', songId).order('created_at', { ascending: false }).limit(1).maybeSingle();
     const refImageUrl = svo?.approved_character_url || svo?.recipient_photo_url || null;
     // Stage 3: customer-confirmed who-is-who. When present it is AUTHORITATIVE —
     // the storyboard must use these exact role/name assignments instead of guessing
     // (a customer knows the woman on the left is grandma; the model does not).
     const confirmedCast = Array.isArray(svo?.cast_tags) && svo.cast_tags.length ? svo.cast_tags : null;
+    // "Ask the song" answers (animado-photo action=questions -> attach.answers):
+    // the customer told us the concrete things the story left blank. They are
+    // FACTS — use them instead of an abstract depiction or an assumption.
+    const detailAnswers = Array.isArray(svo?.detail_answers) ? svo.detail_answers.filter((a: any) => a?.answer) : [];
+    const detailFacts = detailAnswers.length
+      ? `\n\nCUSTOMER-PROVIDED DETAILS (we asked after purchase — treat every line as a FACT and depict it; these are NOT guesses and must not appear in "assumptions"):\n${detailAnswers.map((a: any) => `- ${a.question ? a.question + ' → ' : ''}${a.answer}`).join('\n')}`
+      : '';
 
     // flatten Kie word tokens (it glues "[Verse 1]\nErica," -> "verse 1 erica")
     const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
@@ -162,7 +169,7 @@ serve(async (req) => {
     const userMsg =
       `RECIPIENT: ${song.recipient_name}\nSENDER: ${song.sender_name}\nRELATIONSHIP: ${song.relationship}\n` +
       `OCCASION: ${song.occasion}\nGENRE: ${song.genre_name}\n\n` +
-      `STORY (customer's own words):\n${song.details}\n\n` +
+      `STORY (customer's own words):\n${song.details}${detailFacts}\n\n` +
       `LYRICS:\n${song.lyrics}\n\n` +
       `SUNG WORDS (token@second; '|' joins multi-word tokens):\n${wordList}\n\n` +
       `Produce the storyboard. Remember: distinctive anchors only, dense coverage with image reuse on repeated choruses, child-safe + gender-correct prompts, exactly 3 hero scenes. Vary the camera per rule 15 — assign every scene a shot type, open every prompt with it, and keep front-facing portraits to at most a third of the unique images. NEVER invent an occupation, uniform, vehicle, or place the story didn't state — depict unstated concepts abstractly and list every guess in "assumptions".` +

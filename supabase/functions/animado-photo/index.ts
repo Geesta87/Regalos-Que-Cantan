@@ -9,7 +9,15 @@
 //           a cast (physical description + a guessed role/name per person) for the
 //           customer to CONFIRM. This is the Stage-3 "who is who" step: cast lock stops
 //           being an AI guess and becomes customer-confirmed ground truth.
-//   { action:'attach',  story_video_order_id, has_family, cast? }
+//   { action:'questions', story_video_order_id, force? }
+//        -> "ASK THE SONG": Claude reads the customer's story + the finished lyrics
+//           and returns up to 3 short questions (Spanish) about the concrete blanks
+//           the storyboard would otherwise have to INVENT (place they met, their
+//           trade, an object/team/pet/dish). Cached on the order (detail_questions);
+//           force:true regenerates. Different for every song — the questions quote
+//           the customer's own lines. Falls back to [] so the frontend can use its
+//           per-relationship templates.
+//   { action:'attach',  story_video_order_id, has_family, cast?, answers? }
 //        -> sets the order's recipient_photo_url (the family photo when present, since it
 //           captures everyone; otherwise the main photo), stores the confirmed `cast` on
 //           the order (cast_tags), moves it to generating_likeness, and kicks off
@@ -40,7 +48,7 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   const json = (c: number, o: unknown) => new Response(JSON.stringify(o), { headers: { ...cors, 'Content-Type': 'application/json' }, status: c });
   try {
-    const { action, story_video_order_id, which, has_family, phone, ext: rawExt, cast: castInput } = await req.json();
+    const { action, story_video_order_id, which, has_family, phone, ext: rawExt, cast: castInput, answers: answersInput, force } = await req.json();
     if (!story_video_order_id) throw new Error('Missing story_video_order_id');
     const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
 
@@ -160,6 +168,93 @@ serve(async (req) => {
       }
     }
 
+    if (action === 'questions') {
+      const { data: cached } = await supabase.from('story_video_orders').select('detail_questions').eq('id', story_video_order_id).single();
+      if (!force && Array.isArray(cached?.detail_questions) && cached.detail_questions.length) {
+        return json(200, { success: true, questions: cached.detail_questions, cached: true });
+      }
+      if (!ANTHROPIC_API_KEY || !order.song_id) return json(200, { success: true, questions: [], skipped: !order.song_id ? 'no song' : 'no ANTHROPIC_API_KEY' });
+      const { data: song } = await supabase.from('songs')
+        .select('recipient_name, sender_name, relationship, relationship_custom, occasion, occasion_custom, details, lyrics')
+        .eq('id', order.song_id).single();
+      if (!song) return json(200, { success: true, questions: [], skipped: 'song not found' });
+      const rel = song.relationship_custom || song.relationship || '?';
+      const occ = song.occasion_custom || song.occasion || '?';
+      const TOOL = {
+        name: 'emit_questions',
+        description: 'Up to 3 short questions (Spanish) about the concrete blanks in this song.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            questions: {
+              type: 'array', maxItems: 3,
+              items: {
+                type: 'object',
+                properties: {
+                  id: { type: 'string', description: 'short slug, e.g. "trabajo", "lugar_conocieron", "equipo"' },
+                  gap: { type: 'string', description: 'what the illustrator would have to invent without this answer (English, for the admin)' },
+                  text: { type: 'string', description: 'the question in Spanish, ≤120 chars, tú form to the buyer, names the recipient, quotes/paraphrases the specific line so they see we read their song' },
+                  hint: { type: 'string', description: 'example answer in Spanish starting with "Ej." ≤70 chars' },
+                }, required: ['id', 'gap', 'text', 'hint'],
+              },
+            },
+          }, required: ['questions'],
+        },
+      };
+      const brief =
+        `We are about to illustrate this personalized song as a short animated film. The illustrator may NOT invent an occupation, place, object, pet, food, team or hobby the customer did not state — anything unstated becomes a generic scene (a café nobody named, a neutral workplace, a random party). Find the 3 most important CONCRETE blanks: things the story or lyrics refer to but do not specify visually. Turn each into ONE short question in Spanish.
+
+Rules: address the buyer (${song.sender_name || 'the buyer'}) in tú form; refer to the recipient by name (${song.recipient_name || '?'}); quote or paraphrase the specific line ("La canción dice que llevan 18 años trabajando juntos. ¿En qué trabajan?"); never ask something the story already answers; prefer questions whose answers become a picture (place, trade, object, team, pet, dish, hobby, vehicle); no medical, financial or sensitive questions; if the recipient IS the buyer use tú/tu throughout; for a memorial keep a gentle tone and past tense; keep each question ≤120 characters and each hint ≤70 starting with "Ej.". Return fewer than 3 when the story is already specific; return 0 only if nothing visual is missing.
+
+RECIPIENT: ${song.recipient_name || '?'}
+BUYER / SENDER: ${song.sender_name || '?'}
+RELATIONSHIP: ${rel}
+OCCASION: ${occ}
+
+CUSTOMER'S STORY (their own words):
+${(song.details || '(empty — the customer wrote nothing; ask the three most useful visual questions for this relationship and occasion)').slice(0, 3000)}
+
+LYRICS:
+${(song.lyrics || '').slice(0, 4000)}`;
+      try {
+        const r = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: { 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+          body: JSON.stringify({
+            model: CAST_MODEL, max_tokens: 900, tools: [TOOL], tool_choice: { type: 'tool', name: 'emit_questions' },
+            messages: [{ role: 'user', content: brief }],
+          }),
+        });
+        if (!r.ok) return json(200, { success: true, questions: [], skipped: `anthropic ${r.status}: ${(await r.text()).slice(0, 200)}` });
+        const data = await r.json();
+        const tu = Array.isArray(data.content) ? data.content.find((c: any) => c.type === 'tool_use') : null;
+        // The model double-encodes the tool input (questions arrives as a JSON
+        // STRING wrapping {"questions":[...]}, same quirk the analyze action
+        // guards against) — unwrap up to 3 levels until we hold the array.
+        let list: any = tu?.input;
+        for (let i = 0; i < 4 && !Array.isArray(list); i++) {
+          if (typeof list === 'string') { try { list = JSON.parse(list); } catch { list = []; } continue; }
+          if (list && typeof list === 'object' && 'questions' in list) { list = list.questions; continue; }
+          list = [];
+        }
+        console.log(`ask-the-song: ${Array.isArray(list) ? list.length : 0} question(s) for order ${story_video_order_id.slice(0, 8)}`);
+        const seen = new Set<string>();
+        const questions = (Array.isArray(list) ? list : [])
+          .map((q: any, i: number) => ({
+            id: String(q.id || `q${i + 1}`).toLowerCase().replace(/[^a-z0-9_]/g, '_').slice(0, 24) || `q${i + 1}`,
+            gap: String(q.gap || '').slice(0, 160),
+            text: String(q.text || '').trim().slice(0, 140),
+            hint: String(q.hint || '').trim().slice(0, 80),
+          }))
+          .filter((q: any) => q.text && !seen.has(q.id) && seen.add(q.id))
+          .slice(0, 3);
+        await supabase.from('story_video_orders').update({ detail_questions: questions }).eq('id', story_video_order_id);
+        return json(200, { success: true, questions, cached: false });
+      } catch (e: any) {
+        return json(200, { success: true, questions: [], skipped: e.message });
+      }
+    }
+
     if (action === 'attach') {
       const mainUrl = pub('main');
       const primaryUrl = has_family ? pub('family') : mainUrl;
@@ -183,10 +278,24 @@ serve(async (req) => {
             }))
         : null;
 
+      // customer's answers to the "ask the song" questions — stored verbatim and
+      // injected into generate-storyboard as FACTS (replacing its guesses)
+      const cleanAnswers = Array.isArray(answersInput)
+        ? answersInput
+            .filter((a: any) => a && String(a.answer || '').trim())
+            .slice(0, 3)
+            .map((a: any) => ({
+              id: String(a.id || '').slice(0, 24),
+              question: String(a.question || '').slice(0, 140),
+              answer: String(a.answer).trim().slice(0, 200),
+            }))
+        : [];
+
       await supabase.from('story_video_orders').update({
         recipient_photo_url: primaryUrl,
         state: 'generating_likeness',
         ...(cleanCast && cleanCast.length ? { cast_tags: cleanCast } : {}),
+        ...(cleanAnswers.length ? { detail_answers: cleanAnswers } : {}),
         ...(phone ? { customer_phone: String(phone).slice(0, 30) } : {}),
       }).eq('id', story_video_order_id);
 
