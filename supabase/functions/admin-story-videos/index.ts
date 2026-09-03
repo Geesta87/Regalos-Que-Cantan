@@ -31,6 +31,26 @@ const PIXAR = ' Render as warm, fully-stylized Pixar-style 3D animation (not pho
 
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type' };
 
+// Every photo uploaded to an order (customer's main + family, admin crops such
+// as source-couple.jpg). The cards used to show only recipient_photo_url, which
+// hid the main photo whenever a family photo existed (Alex el Chino, 2026-09-02).
+// Objects are `source-<slot>.<ext>` in the order's folder of story-video-assets.
+const ASSET_BUCKET = 'story-video-assets';
+async function listSourcePhotos(admin: any, orderId: string): Promise<{ slot: string; url: string; name: string }[]> {
+  try {
+    const { data } = await admin.storage.from(ASSET_BUCKET).list(orderId, { limit: 100 });
+    return (data || [])
+      .filter((o: any) => /^source-[a-z0-9_-]+\.[a-z0-9]+$/i.test(o.name))
+      .map((o: any) => ({
+        slot: o.name.replace(/^source-/, '').replace(/\.[a-z0-9]+$/i, ''),
+        name: o.name,
+        url: admin.storage.from(ASSET_BUCKET).getPublicUrl(`${orderId}/${o.name}`).data.publicUrl,
+      }))
+      // main first, then family, then anything else alphabetically
+      .sort((a: any, b: any) => (['main', 'family'].indexOf(a.slot) + 9) % 9 - (['main', 'family'].indexOf(b.slot) + 9) % 9 || a.slot.localeCompare(b.slot));
+  } catch { return []; }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   const json = (o: unknown, code = 200) => new Response(JSON.stringify(o), { headers: { ...cors, 'Content-Type': 'application/json' }, status: code });
@@ -56,7 +76,7 @@ serve(async (req) => {
       // 'delivered' is capped (order by updated_at desc, limit) so the completed
       // history can't grow the payload unbounded.
       const { data: rows, error } = await admin.from('story_video_orders')
-        .select('id, state, recipient_photo_url, character_options, approved_character_url, approved_character_at, video_url, storyboard, cast_tags, created_at, updated_at, build_started_at, delivered_at, final_approved_at, deleted_at, deleted_from_state, error, song_id')
+        .select('id, state, recipient_photo_url, likeness_photo_url, character_options, approved_character_url, approved_character_at, video_url, storyboard, cast_tags, created_at, updated_at, build_started_at, delivered_at, final_approved_at, deleted_at, deleted_from_state, error, song_id')
         // generating_likeness included so a redo/regenerate shows as "Regenerating…"
         // in the Likeness tab instead of silently vanishing until it's done.
         .in('state', ['generating_likeness', 'likeness_review', 'final_review', 'building', 'failed', 'delivered', 'deleted'])
@@ -74,6 +94,12 @@ serve(async (req) => {
           names[s.id] = `${s.recipient_name || ''}${s.genre_name ? ' · ' + s.genre_name : ''}`;
         });
       }
+      // all uploaded photos, for the orders still being worked (one storage list
+      // each; the delivered history can be hundreds of rows, so it keeps just
+      // recipient_photo_url and the detail action fills the rest on demand)
+      const ACTIVE = new Set(['generating_likeness', 'likeness_review', 'building', 'final_review', 'failed']);
+      const photos: Record<string, any[]> = {};
+      await Promise.all((rows || []).filter((r: any) => ACTIVE.has(r.state)).map(async (r: any) => { photos[r.id] = await listSourcePhotos(admin, r.id); }));
       // customer-facing share link (vercel.json rewrites /animado/:id -> the mp4)
       const out = (rows || []).map((r: any) => {
         const a = r.storyboard?.assumptions;
@@ -81,6 +107,7 @@ serve(async (req) => {
           ...r,
           recipient: names[r.song_id] || '—',
           assumptions: Array.isArray(a) ? a : [],
+          source_photos: photos[r.id] || null,
           share_url: r.state === 'delivered' || r.video_url ? `https://regalosquecantan.com/animado/${r.id}` : null,
         };
       });
@@ -171,13 +198,14 @@ serve(async (req) => {
     // persisted asset, plus the song facts the storyboard was built from.
     if (action === 'detail') {
       const { data: full } = await admin.from('story_video_orders')
-        .select('id, state, song_id, video_url, recipient_photo_url, approved_character_url, storyboard, scene_assets, morph_asset, cast_tags, error, updated_at')
+        .select('id, state, song_id, video_url, recipient_photo_url, likeness_photo_url, approved_character_url, storyboard, scene_assets, morph_asset, cast_tags, error, updated_at')
         .eq('id', id).single();
       if (!full) return json({ success: false, error: 'order not found' }, 404);
       const { data: song } = await admin.from('songs')
         .select('recipient_name, sender_name, relationship, occasion, genre_name, details, lyrics')
         .eq('id', full.song_id).single();
-      return json({ success: true, order: full, song: song || null });
+      const source_photos = await listSourcePhotos(admin, id);
+      return json({ success: true, order: { ...full, source_photos }, song: song || null });
     }
 
     // Revise ONE scene's visual context: saves the new prompt on every scene entry

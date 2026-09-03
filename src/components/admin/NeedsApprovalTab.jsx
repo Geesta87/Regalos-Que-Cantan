@@ -161,15 +161,9 @@ export default function NeedsApprovalTab({ accessToken, showToast, gate = 'liken
                   </div>
                   <Assumptions items={o.assumptions} />
                   <CastPanel cast={o.cast_tags} />
-                  <p className="text-xs text-gray-500 mb-2">Compare against the real photo and pick the closest likeness:</p>
-                  <div className="grid grid-cols-3 gap-3">
-                    {/* original photo for comparison — no button */}
-                    <div className="rounded-lg overflow-hidden bg-gray-900 ring-1 ring-sky-500/40">
-                      {o.recipient_photo_url
-                        ? <img src={o.recipient_photo_url} alt="original photo" className="w-full aspect-[3/4] object-cover" />
-                        : <div className="w-full aspect-[3/4] flex items-center justify-center text-gray-600 text-xs">no photo</div>}
-                      <div className="py-2 text-center text-xs font-semibold text-sky-300 bg-sky-500/10">📷 Original photo</div>
-                    </div>
+                  <PhotoStrip order={o} />
+                  <p className="text-xs text-gray-500 mb-2">Pick the closest likeness:</p>
+                  <div className="grid grid-cols-2 gap-3">
                     {/* the cartoon / style options */}
                     {(o.character_options || []).map((opt, i) => (
                       <div key={i} className="rounded-lg overflow-hidden bg-gray-900 ring-1 ring-gray-800">
@@ -371,6 +365,43 @@ function Assumptions({ items }) {
 // Customer-confirmed cast from the "who is who" questionnaire (multi-person
 // photos). Authoritative identities — check every person in the likeness /
 // video against this list before approving.
+// Every photo on the order: the customer's main + family uploads and any admin
+// crop (e.g. source-couple.jpg). Tags say which one the likeness was generated
+// from and which one the storyboard/scenes use. Falls back to the single
+// recipient_photo_url for orders whose list didn't fetch the folder.
+const SLOT_LABEL = { main: 'Main photo', family: 'Family photo', couple: 'Couple crop' };
+const samePath = (a, b) => !!a && !!b && a.split('?')[0] === b.split('?')[0];
+function PhotoStrip({ order, compact = false }) {
+  const photos = Array.isArray(order.source_photos) && order.source_photos.length
+    ? order.source_photos
+    : (order.recipient_photo_url ? [{ slot: 'main', url: order.recipient_photo_url, name: 'photo' }] : []);
+  if (!photos.length) return null;
+  const w = compact ? 'w-24' : 'w-28';
+  return (
+    <div className={compact ? 'flex gap-3 flex-wrap' : 'mb-3'}>
+      {!compact && <p className="text-xs text-gray-500 mb-1.5">Photos submitted · {photos.length}</p>}
+      <div className="flex gap-3 flex-wrap">
+        {photos.map((p) => {
+          const usedForLikeness = samePath(p.url, order.likeness_photo_url) || (!order.likeness_photo_url && samePath(p.url, order.recipient_photo_url));
+          const usedForScenes = samePath(p.url, order.recipient_photo_url);
+          return (
+            <a key={p.name || p.url} href={p.url} target="_blank" rel="noreferrer" className={`${w} block group`} title="Open full size">
+              <img src={p.url} alt={p.slot} className={`rounded-lg w-full aspect-[3/4] object-cover ring-1 ${usedForLikeness ? 'ring-emerald-400/70' : 'ring-sky-500/40'} group-hover:ring-white/60`} />
+              <div className="text-[10px] text-sky-300 text-center mt-1 truncate">{SLOT_LABEL[p.slot] || p.slot}</div>
+              {(usedForLikeness || usedForScenes) && (
+                <div className="flex justify-center gap-1 mt-0.5">
+                  {usedForLikeness && <span className="text-[9px] px-1.5 rounded bg-emerald-500/15 text-emerald-300">likeness</span>}
+                  {usedForScenes && <span className="text-[9px] px-1.5 rounded bg-indigo-500/15 text-indigo-300">scenes</span>}
+                </div>
+              )}
+            </a>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function CastPanel({ cast }) {
   if (!Array.isArray(cast) || cast.length === 0) return null;
   return (
@@ -539,12 +570,7 @@ function SceneReview({ orderId, call, showToast, onRerender }) {
             <>
               {/* reference strip: what the customer gave us vs the approved character */}
               <div className="flex gap-3">
-                {order.recipient_photo_url && (
-                  <div className="w-24">
-                    <img src={order.recipient_photo_url} alt="original" className="rounded-lg w-full aspect-[3/4] object-cover ring-1 ring-sky-500/40" />
-                    <div className="text-[10px] text-sky-300 text-center mt-1">Customer photo</div>
-                  </div>
-                )}
+                <PhotoStrip order={order} compact />
                 {order.approved_character_url && (
                   <div className="w-24">
                     <img src={order.approved_character_url} alt="character" className="rounded-lg w-full aspect-[3/4] object-cover ring-1 ring-emerald-500/40" />
