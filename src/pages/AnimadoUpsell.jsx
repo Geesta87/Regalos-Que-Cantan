@@ -929,6 +929,14 @@ const DEMO_CAST = [
   { key: 'man_white_hair_maroon_shirt', description: 'Hombre mayor, cabello blanco, camiseta estampada color vino oscuro, shorts', role: 'other', name: '', in_photo: true },
   { key: 'young_man_black_shirt', description: 'Hombre joven, barba corta, camiseta negra con logo, pantalón caqui, alto', role: 'other', name: '', in_photo: true },
 ];
+// What the "ask the song" pass would return for Alex's lyrics — the three facts
+// the real storyboard had to invent (café for the friend's intro, neutral
+// workplace for "18 años trabajando", generic party venue).
+const DEMO_QUESTIONS = [
+  { id: 'work', text: 'La canción dice que llevan 18 años trabajando juntos. ¿En qué trabajan?', hint: 'Ej. tenemos un negocio de jardinería' },
+  { id: 'met', text: 'Una amiga los presentó. ¿Dónde fue?', hint: 'Ej. en una boda en Indio, en la iglesia' },
+  { id: 'must', text: '¿Qué no puede faltar en el video?', hint: 'Ej. la playera de Chivas, la carne asada, el perro' },
+];
 // Face boxes (normalized x,y,w,h) — what a detector would return for the same photos.
 const DEMO_V2 = {
   main: { url: DEMO_PHOTOS.main, w: 1350, h: 2400, faces: [
@@ -1017,8 +1025,10 @@ export default function AnimadoUpsell() {
           ? <AnimadoPhotoUploadV2
               recipientName={uploadFamily ? 'Alex' : 'Papá'}
               senderName={uploadFamily ? 'Sandra' : 'Erica'}
-              relationship={uploadFamily ? 'Pareja' : 'Hija'}
+              relationship={uploadFamily ? 'pareja' : 'papa'}
+              occasion="cumpleanos"
               isFamily={uploadFamily}
+              questions={uploadFamily ? DEMO_QUESTIONS : null}
               demo={DEMO_V2}
             />
           : <AnimadoPhotoUpload

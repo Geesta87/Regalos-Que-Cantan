@@ -10,7 +10,13 @@
 //   2. (Optional) upload a family photo and TAP the recipient again, and the
 //      partner when the song is for a partner. Everyone else is "familia"
 //      automatically — no per-person forms, no names, no dropdowns.
-//   3. Press "Crear mi película".
+//   3. Answer up to three optional one-line questions ("3 detalles"). They are
+//      generated from THIS song's story + lyrics when available (the facts the
+//      storyboard would otherwise have to invent — see the assumptions list on
+//      every build), else a per-relationship template. Answers become customer
+//      facts for the storyboard, so a café-nobody-named turns into their real
+//      church, and "18 años trabajando" turns into their actual trade.
+//   4. Press "Crear mi película".
 // A one-line header shows "Para X · de Y" with a swap link, so buyer/recipient
 // gets confirmed without a separate step.
 //
@@ -52,6 +58,7 @@ const I = {
   users: <><circle cx="9" cy="8" r="3.2" /><path d="M2.5 20a6.5 6.5 0 0113 0" /><circle cx="17" cy="9" r="2.6" /><path d="M15.5 14.5a5 5 0 016 5" /></>,
   hand: <path d="M8 13V5.5a1.5 1.5 0 013 0V12m0-6.5a1.5 1.5 0 013 0V12m0-5a1.5 1.5 0 013 0v7a6 6 0 01-6 6h-1a6 6 0 01-5.2-3L3.6 13a1.4 1.4 0 012.3-1.6L8 13" />,
   film: <><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M7 4v16M17 4v16M3 9h4M3 15h4M17 9h4M17 15h4" /></>,
+  spark: <path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3zm7 12l.9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9L19 15z" />,
 };
 
 // crops a normalized face box out of the photo with CSS
@@ -98,10 +105,65 @@ function Drop({ title, hint, onDemo, onFile, inputRef }) {
   );
 }
 
+// ── "3 detalles": per-case fallback questions. `{r}` = recipient name. ──────
+// The production version asks the SONG first (a small function reads story +
+// lyrics and returns the three biggest blanks as questions); these templates
+// fill in when fewer than three come back.
+const QUESTION_SETS = {
+  pareja: [
+    { id: 'place', text: '¿Dónde se conocieron o cuál es su lugar especial?', hint: 'Ej. la iglesia de San Judas, la playa de Rosarito' },
+    { id: 'together', text: '¿Qué hacen juntos que los define?', hint: 'Ej. carne asada los domingos, caminar en la montaña' },
+    { id: 'must', text: '¿Qué no puede faltar en el video?', hint: 'Ej. su playera de Chivas, la troca, el perro' },
+  ],
+  parent: [
+    { id: 'origin', text: '¿De dónde es {r} y qué extraña de allá?', hint: 'Ej. Jalisco, el rancho, la plaza del pueblo' },
+    { id: 'signature', text: '¿Qué cocina o hace {r} que nadie más hace?', hint: 'Ej. sus tamales, arreglar todo en la casa' },
+    { id: 'must', text: '¿Qué no puede faltar en el video?', hint: 'Ej. su sillón, su rosario, su jardín' },
+  ],
+  child: [
+    { id: 'loves', text: '¿Qué le encanta a {r} ahora mismo?', hint: 'Ej. dinosaurios, fútbol, princesas, Minecraft' },
+    { id: 'friend', text: '¿Su mascota, juguete o compañero favorito?', hint: 'Ej. su perrito Max, su peluche de oso' },
+    { id: 'place', text: '¿Su lugar favorito?', hint: 'Ej. el parque, la alberca, la casa de la abuela' },
+  ],
+  sibling: [
+    { id: 'memory', text: '¿Una travesura o recuerdo de siempre con {r}?', hint: 'Ej. las peleas por el control, los viajes a Tijuana' },
+    { id: 'together', text: '¿Qué hacen cuando se juntan?', hint: 'Ej. karaoke, cocinar, ver el fútbol' },
+    { id: 'must', text: '¿Algo que solo ustedes entienden?', hint: 'Ej. un apodo, una canción, un lugar' },
+  ],
+  friend: [
+    { id: 'met', text: '¿Cómo o dónde se conocieron?', hint: 'Ej. en la secundaria, en el trabajo' },
+    { id: 'together', text: '¿Qué hacen juntos?', hint: 'Ej. salir a bailar, pescar, los partidos' },
+    { id: 'must', text: '¿Qué no puede faltar en el video?', hint: 'Ej. su carro, su equipo, su bebida' },
+  ],
+  self: [
+    { id: 'proud', text: '¿De qué estás más orgulloso/a?', hint: 'Ej. mi negocio, mis hijos, llegar a este país' },
+    { id: 'place', text: '¿Tu lugar?', hint: 'Ej. mi taller, mi cocina, la cancha' },
+    { id: 'must', text: '¿Tu equipo, carro u oficio?', hint: 'Ej. Chivas, mi Silverado, la construcción' },
+  ],
+  memorial: [
+    { id: 'remember', text: '¿Cómo recuerdas más a {r}?', hint: 'Ej. riéndose en la cocina, en su silla del porche' },
+    { id: 'place', text: '¿Un lugar donde lo/la sientes cerca?', hint: 'Ej. el rancho, la iglesia, el mar' },
+    { id: 'object', text: '¿Un objeto suyo que debe aparecer?', hint: 'Ej. su sombrero, su guitarra, su rosario' },
+  ],
+};
+function caseFor(relationship = '', occasion = '') {
+  const r = relationship.toLowerCase(), o = occasion.toLowerCase();
+  if (/memorial|falleci|luto|difunt|cielo/.test(o + ' ' + r)) return 'memorial';
+  if (/mismo|misma|para m[ií]|^yo$|self/.test(r)) return 'self';
+  if (/pareja|espos|novi|marido|mujer/.test(r)) return 'pareja';
+  if (/mam[aá]|pap[aá]|madre|padre|abuel|suegr/.test(r)) return 'parent';
+  if (/hij[oa]|niet|beb[eé]|ni[ñn]/.test(r)) return 'child';
+  if (/herman|prim/.test(r)) return 'sibling';
+  if (/amig|compa|colega/.test(r)) return 'friend';
+  return 'friend';
+}
+
 export default function AnimadoPhotoUploadV2({
   recipientName = 'Alex',
   senderName = 'Sandra',
   relationship = 'pareja',   // 'pareja' | anything else
+  occasion = '',
+  questions = null,          // song-generated [{id,text,hint}] (max 3); templates when null/short
   isFamily = true,
   askPhone = true,
   onConfirm = null,
@@ -115,11 +177,20 @@ export default function AnimadoPhotoUploadV2({
   const [famPartner, setFamPartner] = useState(null);
   const [partnerAbsent, setPartnerAbsent] = useState(false);
   const [phone, setPhone] = useState('');
+  const [answers, setAnswers] = useState({});
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
   const fileMain = useRef(null), fileFamily = useRef(null);
   const isPartner = /pareja|espos|novi/i.test(relationship);
   const partnerName = names.sender;
+  const isSelf = caseFor(relationship, occasion) === 'self';
+  const qs = (() => {
+    const dyn = Array.isArray(questions) ? questions.filter((q) => q && q.text).slice(0, 3) : [];
+    const tpl = (QUESTION_SETS[caseFor(relationship, occasion)] || QUESTION_SETS.friend)
+      .filter((t) => !dyn.some((d) => d.id === t.id));
+    return [...dyn, ...tpl].slice(0, 3).map((q) => ({ ...q, text: q.text.replace(/\{r\}/g, names.recipient) }));
+  })();
+  const answered = qs.filter((q) => (answers[q.id] || '').trim()).length;
 
   // production: boxes come from face detection; a picked file here gets one centered box
   const loadFile = (file, setter) => {
@@ -147,6 +218,8 @@ export default function AnimadoPhotoUploadV2({
       recipient_face: main.faces.find((f) => f.id === mainPick),
       family: family ? { recipient_face: famRecipient, partner_face: famPartner, others_are_family: true } : null,
       phone: phone || null,
+      // customer facts for the storyboard — only what they actually typed
+      answers: qs.filter((q) => (answers[q.id] || '').trim()).map((q) => ({ id: q.id, question: q.text, answer: answers[q.id].trim() })),
     };
     try { if (onConfirm) await onConfirm(payload); else await new Promise((r) => setTimeout(r, 600)); setDone(true); }
     finally { setBusy(false); }
@@ -180,8 +253,10 @@ export default function AnimadoPhotoUploadV2({
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, padding: '9px 12px', borderRadius: 12, background: 'rgba(255,255,255,0.05)', fontSize: 13, lineHeight: 1.4 }}>
         <Icon d={I.film} size={18} color={GOLD} />
         <span style={{ color: 'rgba(255,255,255,0.7)' }}>
-          Película para <strong style={{ color: '#fff' }}>{names.recipient}</strong> · regalo de <strong style={{ color: '#fff' }}>{names.sender}</strong>.{' '}
-          <button className="v2-link" onClick={() => setNames((n) => ({ recipient: n.sender, sender: n.recipient }))}>¿Al revés?</button>
+          {isSelf
+            ? <>Tu película, <strong style={{ color: '#fff' }}>{names.recipient}</strong>.</>
+            : <>Película para <strong style={{ color: '#fff' }}>{names.recipient}</strong> · regalo de <strong style={{ color: '#fff' }}>{names.sender}</strong>.{' '}
+                <button className="v2-link" onClick={() => setNames((n) => ({ recipient: n.sender, sender: n.recipient }))}>¿Al revés?</button></>}
         </span>
       </div>
 
@@ -232,6 +307,31 @@ export default function AnimadoPhotoUploadV2({
             )}
         </div>
       )}
+
+      {/* 3 detalles — the facts the storyboard would otherwise invent */}
+      <div style={{ marginTop: 20 }}>
+        <p style={{ margin: '0 0 2px', fontSize: 14.5, fontWeight: 900, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <Icon d={I.spark} size={17} color={GOLD} /> 3 detalles para que salga perfecto
+        </p>
+        <p style={{ margin: '0 0 10px', fontSize: 12.5, color: 'rgba(255,255,255,0.55)', lineHeight: 1.45 }}>
+          Opcional. Lo que nos cuentes aquí sale en las escenas; si lo dejas vacío, lo imaginamos nosotros.
+        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {qs.map((q, i) => (
+            <label key={q.id} style={{ display: 'block' }}>
+              <span style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13.5, fontWeight: 700, lineHeight: 1.35, marginBottom: 6 }}>
+                <span style={{ width: 20, height: 20, borderRadius: '50%', flexShrink: 0, background: (answers[q.id] || '').trim() ? TEAL : 'rgba(232,180,74,0.2)', color: (answers[q.id] || '').trim() ? INK : GOLD, fontSize: 11, fontWeight: 900, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginTop: 1 }}>
+                  {(answers[q.id] || '').trim() ? '✓' : i + 1}
+                </span>
+                {q.text}
+              </span>
+              <input value={answers[q.id] || ''} onChange={(e) => setAnswers((a) => ({ ...a, [q.id]: e.target.value.slice(0, 140) }))} placeholder={q.hint || ''} maxLength={140}
+                style={{ width: '100%', boxSizing: 'border-box', padding: '11px 13px', background: 'rgba(255,255,255,0.06)', color: '#fff', fontSize: 14.5, outline: 'none', border: `1.5px solid ${(answers[q.id] || '').trim() ? 'rgba(67,194,186,0.5)' : 'rgba(255,255,255,0.12)'}`, borderRadius: 12, fontFamily: 'inherit' }} />
+            </label>
+          ))}
+        </div>
+        {answered > 0 && <p style={{ margin: '8px 0 0', fontSize: 12, color: '#89DAD4', fontWeight: 700 }}>{answered} de 3 · gracias, esto hace la diferencia</p>}
+      </div>
 
       {askPhone && (
         <div style={{ marginTop: 18 }}>
