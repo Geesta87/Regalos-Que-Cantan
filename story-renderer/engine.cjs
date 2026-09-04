@@ -5,7 +5,8 @@
 //   1. generates every unique scene image via GPT Image 2 (reference-conditioned)
 //   2. computes lyric-synced windows (token-flatten anchors + dense + split long)
 //   3. (optional) animates the 3 hero scenes via Kie Seedance 2.0 + makes the
-//      real->cartoon morph via Kie Seedance 2.0
+//      real->cartoon morph via Kie Seedance 2.0 (group orders first cartoonify the
+//      exact photo so the morph ends on the same composition it opens on)
 //   4. FFmpeg-renders the storybook and prepends the morph
 // Images route through the gpt-image edge fn (holds OPENAI_API_KEY); video/morph
 // route through test-kie-video (holds KIE_API_KEY). Both run with only the anon key —
@@ -166,10 +167,10 @@ async function genImages() {
     results.forEach((r) => { if (!r.ok) failed.push(r.id); });
   }
   // a build must never die because one scene got content-flagged: reuse a safe
-  // existing image (prefer the faithful family/character cartoon) for any failure.
+  // existing scene image for any failure.
   if (failed.length) {
     const have = ids.filter((id) => fs.existsSync(path.join(DIR, `${id}.png`)));
-    const fb = fs.existsSync(path.join(DIR, 'morph-target.png')) ? 'morph-target.png' : (have[0] ? `${have[0]}.png` : null);
+    const fb = have[0] ? `${have[0]}.png` : null;
     if (!fb) throw new Error('all scene images failed to generate');
     for (const id of failed) { fs.copyFileSync(path.join(DIR, fb), path.join(DIR, `${id}.png`)); console.log(`  ${id} <- reused ${fb}`); }
   }
@@ -262,11 +263,10 @@ function wrapHero(motionFile, outFile, L) {
   }
   ['_mv.mp4', '_last.png', '_freeze.mp4'].forEach((f) => { try { fs.unlinkSync(path.join(DIR, f)); } catch {} });
 }
-// The reference image fed into every scene + used as the morph end-frame.
-// Defaults to the admin-approved likeness; for FAMILIES we replace it with a
-// pose-matched faithful cartoon of the exact uploaded photo (see genFaithfulRef)
-// so the kids stay recognizable and the morph transforms the whole picture.
-let CHAR_REF = cfg.approved_character_url;
+// The reference image fed into every scene: the admin-approved likeness (Gate 1).
+const CHAR_REF = cfg.approved_character_url;
+// The morph END frame. Defaults to the approved likeness; for GROUP orders it is
+// replaced by a pose-matched faithful cartoon of the exact photo (genFaithfulRef).
 let MORPH_END = cfg.approved_character_url;
 // The REAL photo the intro opens on and the morph transforms FROM. Prefer the
 // photo the approved likeness was actually generated from (a crop of the
@@ -279,27 +279,38 @@ const MORPH_SRC = cfg.morph_photo_url || cfg.recipient_photo_url;
 const INTRO_XF = 1.0;
 const probeDur = (f) => parseFloat(execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', path.join(DIR, f)]).toString().trim());
 
-// For a family/group: cartoonify the EXACT uploaded photo keeping the identical
-// composition, pose, background and EVERY person in place. This faithful family
-// cartoon becomes BOTH the scene reference (so each kid stays recognizable across
-// scenes, not a generic default) AND the morph end-frame (so the intro transforms
-// the actual family picture). Best-effort — falls back to the approved likeness.
+// Group orders (family / couple): the storyboard flags them, or ≥2 cast members
+// are in the photo. A solo order's likeness is already a waist-up portrait of the
+// one person in the (cropped) photo, so the approved likeness morphs fine as-is.
+const IS_GROUP = !!sb.is_family || (Array.isArray(sb.cast) && sb.cast.filter((c) => c && c.in_photo !== false).length >= 2);
+
+// For a group: cartoonify the EXACT photo the morph opens on, keeping the identical
+// composition, pose, background and EVERY person in place, and use THAT as the
+// morph end-frame. The approved group likeness is deliberately RECOMPOSED by
+// animado-photo ("natural family portrait, normal camera distance, everyone at
+// the same scale") so it cannot be the end-frame of a morph whose prompt demands
+// "the exact pose and framing": Seedance had to invent the transition and people
+// drifted into strangers mid-morph (Fernando 26e7a9d7, 2026-09-04). This
+// function existed since 2026-08-27 but was never called. Best-effort — falls
+// back to the approved likeness. Scenes keep CHAR_REF (the human-approved
+// identity); only the 5s morph targets the faithful frame.
 async function genFaithfulRef() {
-  const file = 'morph-target.png';
-  if (fs.existsSync(path.join(DIR, file))) { return; }
+  if (!IS_GROUP || !MORPH_SRC) return;
+  console.log('generating faithful morph target (GPT Image 2, exact photo)...');
   try {
     const url = await gptImage(
       'Turn this exact photo into a warm, fully-stylized Pixar-style 3D animated version. Keep the IDENTICAL composition, pose, framing and background, and EVERY person in the same position with their face, hair, age and clothing faithful and recognizable. Do not add, remove, or change anyone. Wholesome, soft cinematic light.',
-      [cfg.recipient_photo_url], 'faithful-ref');
-    dl(url, file);
-    CHAR_REF = url; MORPH_END = url;
-    console.log('  faithful family reference ready (drives scenes + morph)');
-  } catch (e) { console.log('  faithful-ref gen failed, using approved likeness:', e.message); }
+      [MORPH_SRC], 'faithful-ref');
+    dl(url, 'morph-target.png');
+    MORPH_END = url;
+    console.log('  faithful morph target ready (exact photo, cartoonified)');
+  } catch (e) { console.log(`  faithful-ref gen failed, morph ends on the approved likeness: ${e.message}`); }
 }
 
 async function genMorph() {
   const out = 'BOOKEND.mp4';
-  if (fs.existsSync(path.join(DIR, out))) return;
+  if (fs.existsSync(path.join(DIR, out))) return; // seeded from the order's morph_asset
+  await genFaithfulRef(); // only paid for when a morph is actually generated
   console.log('generating morph (Kie Seedance)...');
   const url = await kieRun('bytedance/seedance-2',
     'A real photograph slowly and magically transforms into a warm 3D Pixar-style animated version of the same subjects, keeping every person and the exact pose and framing. Smooth seamless morph, gentle glow. Wholesome.',

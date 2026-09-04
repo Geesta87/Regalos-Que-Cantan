@@ -242,3 +242,16 @@ the name consistent in any new fix-song UI or notification copy.
 - `fix_auto_state.active_since` must be non-NULL while enabled (a NULL makes
   the worker silently process nothing). The `auto-toggle` action sets it on
   first enable — keep that invariant.
+
+## 7. Animado morph (real photo → cartoon intro)
+
+The 5s intro morph (`genMorph` in `story-builder/engine.cjs`, mirrored byte-for-byte
+in `story-renderer/engine.cjs` — keep both identical) runs Seedance from
+`morph_photo_url` (the photo the likeness was made from) to `MORPH_END`.
+For GROUP orders the approved likeness is deliberately recomposed by
+`animado-photo`, so it is NOT a valid morph end-frame; `genFaithfulRef` first
+cartoonifies the exact photo (same pose/framing) and the morph ends on that.
+Scenes still use the admin-approved likeness. `reject_final`/`rerender` reuse a
+persisted `morph_asset`; to re-roll a bad morph, null `morph_asset` on the order
+before rebuilding. Engine changes ship only via a Cloud Run deploy of
+`story-builder/` from an up-to-date main.
