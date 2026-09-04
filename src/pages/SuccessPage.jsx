@@ -1646,7 +1646,7 @@ export default function SuccessPage() {
     setVideoDownloading(true);
     // Proxy through our edge function to force Content-Disposition: attachment
     // This auto-saves to the user's device instead of opening in a new tab
-    const filename = `video-para-${recipientName || 'ti'}.mp4`;
+    const filename = `video-con-fotos-para-${recipientName || 'ti'}.mp4`;
     const proxyUrl = `${SUPABASE_URL}/functions/v1/download-video?url=${encodeURIComponent(videoOrder.video_url)}&filename=${encodeURIComponent(filename)}`;
     const a = document.createElement('a');
     a.href = proxyUrl;
@@ -3694,7 +3694,7 @@ export default function SuccessPage() {
                     .filter((o) => o?.status === 'completed' && o?.video_url).length > 1;
                   return done.map(({ s, i, o }) => {
                     const key = `pv-${o.id}`;
-                    const filename = `video-${multi ? `cancion-${i + 1}-` : ''}para-${s.recipient_name || 'ti'}.mp4`;
+                    const filename = `video-con-fotos-${multi ? `cancion-${i + 1}-` : ''}para-${s.recipient_name || 'ti'}.mp4`;
                     const proxyUrl = `${SUPABASE_URL}/functions/v1/download-video?url=${encodeURIComponent(o.video_url)}&filename=${encodeURIComponent(filename)}`;
                     return (
                       <div key={key} style={{ marginBottom: '18px' }}>

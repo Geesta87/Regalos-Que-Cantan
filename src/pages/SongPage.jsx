@@ -333,7 +333,7 @@ export default function SongPage({ songId: propSongId }) {
         // own photos, so it wins when both exist.
         ordered.forEach(s => {
           if (s.share_video_url && !map[s.id]) {
-            map[s.id] = { video_url: s.share_video_url, status: 'completed', song_id: s.id };
+            map[s.id] = { video_url: s.share_video_url, status: 'completed', song_id: s.id, isShareClip: true };
           }
         });
         if (Object.keys(map).length > 0) setVideoDataMap(map);
@@ -1332,7 +1332,7 @@ export default function SongPage({ songId: propSongId }) {
                     // black page — use the download-video proxy, which serves the
                     // file with Content-Disposition: attachment instead.
                     if (isInAppBrowser()) {
-                      const fileName = `video-para-${(recipient || 'ti').replace(/[^a-zA-Z0-9áéíóúñÁÉÍÓÚÑ ]/g, '')}.mp4`;
+                      const fileName = `${videoData.isShareClip ? 'video-para-' : 'video-con-fotos-para-'}${(recipient || 'ti').replace(/[^a-zA-Z0-9áéíóúñÁÉÍÓÚÑ ]/g, '')}.mp4`;
                       const base = import.meta.env.VITE_SUPABASE_URL || 'https://yzbvajungshqcpusfiia.supabase.co';
                       const a = document.createElement('a');
                       a.href = `${base}/functions/v1/download-video?url=${encodeURIComponent(videoData.video_url)}&filename=${encodeURIComponent(fileName)}`;
@@ -1367,7 +1367,7 @@ export default function SongPage({ songId: propSongId }) {
                         }
                       }
                       const blob = new Blob(chunks, { type: 'video/mp4' });
-                      const fileName = `video-para-${(recipient || 'ti').replace(/[^a-zA-Z0-9áéíóúñÁÉÍÓÚÑ ]/g, '')}.mp4`;
+                      const fileName = `${videoData.isShareClip ? 'video-para-' : 'video-con-fotos-para-'}${(recipient || 'ti').replace(/[^a-zA-Z0-9áéíóúñÁÉÍÓÚÑ ]/g, '')}.mp4`;
 
                       // Direct blob download on all devices — the share-sheet
                       // path confused users (looked like "send to a contact").
