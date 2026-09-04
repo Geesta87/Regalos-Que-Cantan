@@ -1201,7 +1201,21 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
       const j = hay.indexOf(String(c.after).toLowerCase().split('\n')[0]);
       return j === -1 ? hay.length : j;
     };
-    const ordered = [...list].sort((a, b) => posOf(a) - posOf(b));
+    // CASE-DUPLICATE MERGE (2026-09-03, Rosaura 8022c22f): the planner listed
+    // the same repeated chorus line TWICE — "Eres mi cotorrita" and "eres mi
+    // cotorrita" — and timesInLyrics counts case-blind, so EACH item claimed
+    // every occurrence. A pronunciation change then owed ~double the windows:
+    // the ladder sang all 5 occurrences and still reported "faltan 1
+    // ventana(s)" after 12 generations. Changes that collapse to the same
+    // lowercase text are ONE change — keep the first, drop the twins.
+    const ck = (s) => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
+    const seenChange = new Set();
+    const deduped = [...list].filter((c) => {
+      const k = ck(c?.before) + '→' + ck(c?.after);
+      if (seenChange.has(k)) return false;
+      seenChange.add(k); return true;
+    });
+    const ordered = deduped.sort((a, b) => posOf(a) - posOf(b));
     // TRANSCRIPT-INVISIBLE CHANGES (2026-08-20, Daniel d3c552fc). "Esete"→"Este"
     // is one edit apart: Whisper normalizes the mispronunciation into the real
     // word AND the fuzzy matcher (lev-1, ≥5 chars) treats them as equal — so the
