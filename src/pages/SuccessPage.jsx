@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import { AnimadoPhotoUpload } from './AnimadoUpsell';
+import AnimadoPhotoUploadV2 from './AnimadoPhotoUploadV2';
 import GiftTextUpsell from '../components/GiftTextUpsell';
 import { OneTapUpsell } from '../components/OneTapUpsell';
 import { chargeUpsell } from '../services/api';
@@ -314,6 +314,17 @@ export default function SuccessPage() {
   // Animado (animated story-video) — orders the customer paid for this checkout.
   // confirm-animado-order verifies payment server-side and returns the order(s).
   const [animadoOrders, setAnimadoOrders] = useState([]);
+  // "ask the song": per-order questions for the upload screen, fetched once
+  const [animadoQuestions, setAnimadoQuestions] = useState({});
+  useEffect(() => {
+    animadoOrders.filter((o) => o.state === 'awaiting_photo' && o.order_id && animadoQuestions[o.order_id] === undefined).forEach((o) => {
+      setAnimadoQuestions((q) => ({ ...q, [o.order_id]: null })); // in flight
+      supabase.functions.invoke('animado-photo', { body: { action: 'questions', story_video_order_id: o.order_id } })
+        .then(({ data }) => setAnimadoQuestions((q) => ({ ...q, [o.order_id]: Array.isArray(data?.questions) ? data.questions : [] })))
+        .catch(() => setAnimadoQuestions((q) => ({ ...q, [o.order_id]: [] })));
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [animadoOrders]);
 
   // Video upsell states
   // selectedVideoSongIdx must be declared BEFORE videoOrdersMap so the derived videoOrder can reference it.
@@ -579,6 +590,46 @@ export default function SuccessPage() {
   const confirmAnimadoCast = async (orderId, { cast, phone, hasFamily }) => {
     const { data, error } = await supabase.functions.invoke('animado-photo', {
       body: { action: 'attach', story_video_order_id: orderId, has_family: !!hasFamily, phone: phone || null, cast: cast || null },
+    });
+    if (error || !data?.success) throw new Error(data?.error || 'No se pudo procesar la foto.');
+  };
+
+  // ── One-screen upload (AnimadoPhotoUploadV2) ──
+  // detect: upload ONE photo and get its people back with face boxes so the
+  // customer can tap who is who. Never throws — an empty list means "one face".
+  const detectAnimadoPhoto = async (orderId, file, which) => {
+    await uploadAnimadoFile(orderId, which, file);
+    try {
+      const { data } = await supabase.functions.invoke('animado-photo', {
+        body: { action: 'analyze', story_video_order_id: orderId, which },
+      });
+      return { people: Array.isArray(data?.cast) ? data.cast : [], quality: data?.quality || { usable: true, issues: [] } };
+    } catch { return { people: [], quality: { usable: true, issues: [] } }; }
+  };
+  // confirm: the taps become the cast (roles), the tapped main-photo face becomes
+  // the likeness target, answers + name swap ride along. One attach call.
+  const confirmAnimadoV2 = async (orderId, p) => {
+    const roleFor = (photo, f) => {
+      if (!photo) return 'other';
+      if (f.id === photo.recipient) return 'recipient';
+      if (f.id === photo.partner) return 'spouse';
+      return 'other';
+    };
+    const src = p.family || p.main; // the photo the cast is written from (family when present)
+    const cast = src ? src.faces.map((f) => ({
+      key: f.id, description: f.description || '', in_photo: true, box: f.box || null,
+      role: roleFor(src, f),
+      name: f.id === src.recipient ? p.names.recipient : f.id === src.partner ? p.names.sender : '',
+    })) : null;
+    const mainFace = p.main ? p.main.faces.find((f) => f.id === p.main.recipient) : null;
+    const { data, error } = await supabase.functions.invoke('animado-photo', {
+      body: {
+        action: 'attach', story_video_order_id: orderId, has_family: !!p.family, phone: p.phone || null,
+        cast,
+        likeness: mainFace ? { which: 'main', description: mainFace.description || '', name: p.names.recipient } : null,
+        answers: p.answers || [],
+        names_override: p.names_swapped ? p.names : null,
+      },
     });
     if (error || !data?.success) throw new Error(data?.error || 'No se pudo procesar la foto.');
   };
@@ -2245,14 +2296,16 @@ export default function SuccessPage() {
             if (o.state !== 'awaiting_photo') return null;
             return (
               <div key={o.order_id} id="rqc-animado" style={{ marginBottom: '28px' }}>
-                <AnimadoPhotoUpload
+                <AnimadoPhotoUploadV2
                   recipientName={o.recipient_name || 'tu ser querido'}
+                  senderName={o.sender_name || ''}
+                  relationship={o.relationship || ''}
+                  occasion={o.occasion || ''}
+                  questions={animadoQuestions[o.order_id] || null}
                   isFamily={o.is_family !== false}
-                  otherPeople={o.other_people || []}
                   askPhone={!o.has_phone}
-                  onSubmit={(files) => submitAnimadoPhotos(o.order_id, files)}
-                  onAnalyze={(files) => analyzeAnimadoPhotos(o.order_id, files)}
-                  onConfirm={(payload) => confirmAnimadoCast(o.order_id, payload)}
+                  onDetect={(file, which) => detectAnimadoPhoto(o.order_id, file, which)}
+                  onConfirm={(payload) => confirmAnimadoV2(o.order_id, payload)}
                 />
               </div>
             );

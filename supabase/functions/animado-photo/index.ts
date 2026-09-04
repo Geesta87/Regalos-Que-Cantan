@@ -4,7 +4,10 @@
 // Customer photo upload for the Animado pipeline, used by the success page.
 //   { action:'sign',    story_video_order_id, which:'main'|'family' }
 //        -> a signed PUT url to upload that photo into story-video-assets/{orderId}/source-<which>.jpg
-//   { action:'analyze', story_video_order_id, has_family }
+//   { action:'analyze', story_video_order_id, has_family, which? }
+//        which:'main'|'family' analyzes THAT photo (the new one-screen upload runs
+//        it once per photo). Every person comes back with a normalized FACE box
+//        {x,y,w,h} so the customer can TAP who is who instead of reading prose.
 //        -> Claude vision inventories everyone in the just-uploaded photo and proposes
 //           a cast (physical description + a guessed role/name per person) for the
 //           customer to CONFIRM. This is the Stage-3 "who is who" step: cast lock stops
@@ -48,7 +51,7 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   const json = (c: number, o: unknown) => new Response(JSON.stringify(o), { headers: { ...cors, 'Content-Type': 'application/json' }, status: c });
   try {
-    const { action, story_video_order_id, which, has_family, phone, ext: rawExt, cast: castInput, answers: answersInput, force } = await req.json();
+    const { action, story_video_order_id, which, has_family, phone, ext: rawExt, cast: castInput, answers: answersInput, force, likeness: likenessInput, names_override: namesInput } = await req.json();
     if (!story_video_order_id) throw new Error('Missing story_video_order_id');
     const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
 
@@ -79,7 +82,10 @@ serve(async (req) => {
       // public URL served the CDN's cached FIRST photo, so the confirmed cast
       // described a baptism that was no longer on the order. Same path + new
       // bytes = stale read unless the URL changes.
-      const photoUrl = `${has_family ? pub('family') : pub('main')}?v=${Date.now()}`;
+      const slot = which === 'main' || which === 'family' ? which : (has_family ? 'family' : 'main');
+      // The resize endpoint applies the phone's EXIF rotation, so the boxes the
+      // model returns line up with what the browser shows the customer.
+      const photoUrl = `${pub(slot).replace('/storage/v1/object/public/', '/storage/v1/render/image/public/')}?width=1600&height=1600&resize=contain&quality=85&v=${Date.now()}`;
       const { data: song } = order.song_id
         ? await supabase.from('songs').select('recipient_name, sender_name, relationship').eq('id', order.song_id).single()
         : { data: null };
@@ -109,7 +115,13 @@ serve(async (req) => {
                   description: { type: 'string', description: 'physical descriptor a stranger could use to pick them out: apparent age/gender, hair color+length, clothing color+type' },
                   guess_role: { type: 'string', enum: ROLES, description: 'best guess at their role from the story context' },
                   guess_name: { type: 'string', description: 'their name if inferable from the story context, else empty' },
-                }, required: ['key', 'description', 'guess_role'],
+                  box: {
+                    type: 'object',
+                    description: 'bounding box of this person\'s FACE as fractions of the image (0-1): x = left edge, y = top edge, w = width, h = height. Tight around the face, from hairline to chin.',
+                    properties: { x: { type: 'number' }, y: { type: 'number' }, w: { type: 'number' }, h: { type: 'number' } },
+                    required: ['x', 'y', 'w', 'h'],
+                  },
+                }, required: ['key', 'description', 'guess_role', 'box'],
               },
             },
           }, required: ['photo_quality', 'people'],
@@ -153,12 +165,19 @@ serve(async (req) => {
         };
         const input = parseObj(tu?.input);
         const peopleRaw = unwrapArr(input.people ?? tu?.input);
-        const people = peopleRaw.map((p: any) => ({
-          key: String(p.key || '').slice(0, 40),
+        const clamp01 = (v: any) => Math.max(0, Math.min(1, Number(v)));
+        const boxOf = (b: any) => {
+          const bb = parseObj(b);
+          const x = clamp01(bb.x), y = clamp01(bb.y), w = clamp01(bb.w), h = clamp01(bb.h);
+          return [x, y, w, h].every((n) => Number.isFinite(n)) && w > 0.005 && h > 0.005 ? { x, y, w, h } : null;
+        };
+        const people = peopleRaw.map((p: any, i: number) => ({
+          key: String(p.key || `person_${i + 1}`).slice(0, 40),
           description: String(p.description || '').slice(0, 300),
           role: ROLES.includes(p.guess_role) ? p.guess_role : 'other',
           name: String(p.guess_name || '').slice(0, 60),
           in_photo: true,
+          box: boxOf(p.box),
         })).filter((p: any) => p.description || p.key);
         // photo-quality verdict — default usable:true (fail-open, never block on
         // missing/garbled data; only block when the model explicitly says unusable).
@@ -280,7 +299,14 @@ ${(song.lyrics || '').slice(0, 4000)}`;
               role: ROLES.includes(c.role) ? c.role : 'other',
               name: String(c.name || '').slice(0, 60),
               in_photo: c.in_photo === false ? false : true,
+              ...(c.box && Number.isFinite(Number(c.box.x)) ? { box: { x: +c.box.x, y: +c.box.y, w: +c.box.w, h: +c.box.h } } : {}),
             }))
+        : null;
+
+      // "¿Al revés?" — the customer flipped para/de on the upload screen. Video
+      // only; the song row is never touched.
+      const cleanNames = namesInput && typeof namesInput === 'object' && String(namesInput.recipient || '').trim() && String(namesInput.sender || '').trim()
+        ? { recipient: String(namesInput.recipient).trim().slice(0, 120), sender: String(namesInput.sender).trim().slice(0, 120) }
         : null;
 
       // customer's answers to the "ask the song" questions — stored verbatim and
@@ -301,6 +327,7 @@ ${(song.lyrics || '').slice(0, 4000)}`;
         state: 'generating_likeness',
         ...(cleanCast && cleanCast.length ? { cast_tags: cleanCast } : {}),
         ...(cleanAnswers.length ? { detail_answers: cleanAnswers } : {}),
+        ...(cleanNames ? { names_override: cleanNames } : {}),
         ...(phone ? { customer_phone: String(phone).slice(0, 30) } : {}),
       }).eq('id', story_video_order_id);
 
@@ -324,19 +351,27 @@ ${(song.lyrics || '').slice(0, 4000)}`;
       // description matches; no cast -> old behaviour (single-face photo).
       let likenessSubject: string | null = null;
       let likenessExtra: string | null = null;
+      let likenessPhoto: string = primaryUrl;
       try {
         const { data: songRow } = order.song_id
           ? await supabase.from('songs').select('recipient_name').eq('id', order.song_id).single()
           : { data: null };
         const inPhoto = (cleanCast || []).filter((c: any) => c.in_photo !== false && c.description);
         const recipients = inPhoto.filter((c: any) => c.role === 'recipient');
-        const rn = String(songRow?.recipient_name || '');
+        const rn = String(cleanNames?.recipient || songRow?.recipient_name || '');
         // "Esposa Ana, mis hijos Jacob y Caleb y mi suegra Vilma" / "mi familia" / "mis hijos"
         const groupSong = /,| y |\b(familia|hijos|hijas|nietos|nietas|todos|todas|papás|padres|abuelos)\b/i.test(rn);
         const desc = (c: any) => `${c.name ? c.name + ' — ' : ''}${c.description}`;
         if (groupSong && inPhoto.length >= 2) {
           likenessSubject = `the family of ${inPhoto.length} in the reference photo: ${inPhoto.map(desc).join('; ')}`;
           likenessExtra = `Recompose the group as a natural, warm family portrait seen from normal camera distance, everyone at the same scale (no selfie wide-angle distortion, nobody oversized), standing close together. Exactly ${inPhoto.length} people, all ${inPhoto.length} faces clearly visible, front-facing and recognizable, no one else in the image, no text.`;
+        } else if (likenessInput && typeof likenessInput === 'object' && String(likenessInput.description || '').trim()) {
+          // the new upload screen: the customer TAPPED the recipient's face, in
+          // the photo it says (usually the main photo — the cleanest portrait)
+          const w = likenessInput.which === 'family' ? 'family' : 'main';
+          likenessPhoto = pub(w);
+          likenessSubject = `the ONE person in the reference photo who is: ${String(likenessInput.description).slice(0, 300)}${likenessInput.name ? ` (${String(likenessInput.name).slice(0, 60)})` : ''}`;
+          likenessExtra = 'Draw only that person, waist-up, front-facing, faithful likeness; ignore everyone else in the photo. Exactly one person, no text.';
         } else if (recipients.length === 1 && inPhoto.length >= 2) {
           const r = recipients[0];
           likenessSubject = `the ONE person in the reference photo who is: ${r.description}${r.name ? ` (${r.name})` : ''}`;
@@ -370,7 +405,7 @@ ${(song.lyrics || '').slice(0, 4000)}`;
             body: JSON.stringify({
               songId: order.song_id, recipient_photo_url: primaryUrl, story_video_order_id,
               // the cast descriptions were written from THIS photo, so target it
-              ...(likenessSubject ? { photo_url: primaryUrl, subject: likenessSubject, extra: likenessExtra } : {}),
+              ...(likenessSubject ? { photo_url: likenessPhoto, subject: likenessSubject, extra: likenessExtra } : {}),
             }),
           });
         } catch (e) { console.error('generate-likeness kick failed:', (e as any).message); }

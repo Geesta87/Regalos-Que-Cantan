@@ -31,13 +31,16 @@ const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers
 // at this awaiting_photo stage there's nothing to read. We default is_family =
 // true (offer the optional family slot) and leave other_people empty.
 async function decorate(supabase: any, songId: string, orderId: string | null, state: string | null) {
-  const { data: song } = await supabase.from('songs').select('recipient_name, whatsapp_phone, phone_number').eq('id', songId).single();
+  const { data: song } = await supabase.from('songs').select('recipient_name, sender_name, relationship, occasion, whatsapp_phone, phone_number').eq('id', songId).single();
   const hasPhone = !!(song?.whatsapp_phone || song?.phone_number);
   return {
     order_id: orderId,
     song_id: songId,
     state,
     recipient_name: song?.recipient_name || null,
+    sender_name: song?.sender_name || null,
+    relationship: song?.relationship || null,
+    occasion: song?.occasion || null,
     has_phone: hasPhone,
     is_family: true,
     other_people: [],

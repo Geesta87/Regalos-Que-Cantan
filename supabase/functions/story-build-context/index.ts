@@ -25,7 +25,7 @@ serve(async (req) => {
     const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
 
     const { data: order, error } = await supabase.from('story_video_orders')
-      .select('id, song_id, state, approved_character_url, recipient_photo_url, likeness_photo_url, storyboard, scene_assets, morph_asset').eq('id', story_video_order_id).single();
+      .select('id, song_id, state, approved_character_url, recipient_photo_url, likeness_photo_url, storyboard, scene_assets, morph_asset, names_override').eq('id', story_video_order_id).single();
     if (error || !order) throw new Error('order not found');
     if (!order.approved_character_url) throw new Error('no approved_character_url (gate 1 not passed)');
 
@@ -47,7 +47,7 @@ serve(async (req) => {
       await supabase.from('story_video_orders').update({ storyboard }).eq('id', story_video_order_id);
     }
 
-    const name = song.recipient_name || 'Tu historia';
+    const name = (order as any).names_override?.recipient || song.recipient_name || 'Tu historia';
     const config = {
       name,
       title: name,

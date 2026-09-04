@@ -147,7 +147,7 @@ serve(async (req) => {
     // admin-approved cartoon likeness (that IS the scene reference); fall back to
     // the uploaded photo; degrade to text-only if the order has neither yet.
     const { data: svo } = await supabase.from('story_video_orders')
-      .select('approved_character_url, recipient_photo_url, cast_tags, detail_answers')
+      .select('approved_character_url, recipient_photo_url, cast_tags, detail_answers, names_override')
       .eq('song_id', songId).order('created_at', { ascending: false }).limit(1).maybeSingle();
     const refImageUrl = svo?.approved_character_url || svo?.recipient_photo_url || null;
     // Stage 3: customer-confirmed who-is-who. When present it is AUTHORITATIVE —
@@ -158,6 +158,9 @@ serve(async (req) => {
     // the customer told us the concrete things the story left blank. They are
     // FACTS — use them instead of an abstract depiction or an assumption.
     const detailAnswers = Array.isArray(svo?.detail_answers) ? svo.detail_answers.filter((a: any) => a?.answer) : [];
+    // the customer may have flipped para/de on the upload screen (video only)
+    const recipientName = svo?.names_override?.recipient || song.recipient_name;
+    const senderName = svo?.names_override?.sender || song.sender_name;
     const detailFacts = detailAnswers.length
       ? `\n\nCUSTOMER-PROVIDED DETAILS (we asked after purchase — treat every line as a FACT and depict it; these are NOT guesses and must not appear in "assumptions"):\n${detailAnswers.map((a: any) => `- ${a.question ? a.question + ' → ' : ''}${a.answer}`).join('\n')}`
       : '';
@@ -167,7 +170,7 @@ serve(async (req) => {
     const wordList = ts.words.map((w: any) => `${norm(w.word).replace(/ /g, '|')}@${Number(w.start).toFixed(0)}`).join(' ');
 
     const userMsg =
-      `RECIPIENT: ${song.recipient_name}\nSENDER: ${song.sender_name}\nRELATIONSHIP: ${song.relationship}\n` +
+      `RECIPIENT: ${recipientName}\nSENDER: ${senderName}\nRELATIONSHIP: ${song.relationship}\n` +
       `OCCASION: ${song.occasion}\nGENRE: ${song.genre_name}\n\n` +
       `STORY (customer's own words):\n${song.details}${detailFacts}\n\n` +
       `LYRICS:\n${song.lyrics}\n\n` +
