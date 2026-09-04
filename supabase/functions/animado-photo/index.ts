@@ -74,7 +74,12 @@ serve(async (req) => {
       // Best-effort: if anything fails, return an empty cast so the frontend can
       // still let them proceed (attach with no cast falls back to the AI guess).
       if (!ANTHROPIC_API_KEY) return json(200, { success: true, cast: [], quality: { usable: true, issues: [] }, skipped: 'no ANTHROPIC_API_KEY' });
-      const photoUrl = has_family ? pub('family') : pub('main');
+      // CACHE-BUST (2026-09-04, Fernando 26e7a9d7): the customer replaced both
+      // photos 18 min after the first upload; analyze re-ran 10 s later but the
+      // public URL served the CDN's cached FIRST photo, so the confirmed cast
+      // described a baptism that was no longer on the order. Same path + new
+      // bytes = stale read unless the URL changes.
+      const photoUrl = `${has_family ? pub('family') : pub('main')}?v=${Date.now()}`;
       const { data: song } = order.song_id
         ? await supabase.from('songs').select('recipient_name, sender_name, relationship').eq('id', order.song_id).single()
         : { data: null };
@@ -309,6 +314,36 @@ ${(song.lyrics || '').slice(0, 4000)}`;
         }
       }
 
+      // LIKENESS TARGETING (2026-09-04). Until now generate-likeness was asked
+      // for "the person in the reference photo" on whatever photo was primary:
+      // a 12-person family photo came back as two random relatives (Alex,
+      // 56b175ba) and a kitchen selfie came back as the dad's giant face when
+      // the song was for the whole family (Fernando, 26e7a9d7). Now the
+      // customer-confirmed cast decides: a group song -> draw everyone tagged,
+      // at the same scale; a single recipient -> draw only the person whose
+      // description matches; no cast -> old behaviour (single-face photo).
+      let likenessSubject: string | null = null;
+      let likenessExtra: string | null = null;
+      try {
+        const { data: songRow } = order.song_id
+          ? await supabase.from('songs').select('recipient_name').eq('id', order.song_id).single()
+          : { data: null };
+        const inPhoto = (cleanCast || []).filter((c: any) => c.in_photo !== false && c.description);
+        const recipients = inPhoto.filter((c: any) => c.role === 'recipient');
+        const rn = String(songRow?.recipient_name || '');
+        // "Esposa Ana, mis hijos Jacob y Caleb y mi suegra Vilma" / "mi familia" / "mis hijos"
+        const groupSong = /,| y |\b(familia|hijos|hijas|nietos|nietas|todos|todas|papás|padres|abuelos)\b/i.test(rn);
+        const desc = (c: any) => `${c.name ? c.name + ' — ' : ''}${c.description}`;
+        if (groupSong && inPhoto.length >= 2) {
+          likenessSubject = `the family of ${inPhoto.length} in the reference photo: ${inPhoto.map(desc).join('; ')}`;
+          likenessExtra = `Recompose the group as a natural, warm family portrait seen from normal camera distance, everyone at the same scale (no selfie wide-angle distortion, nobody oversized), standing close together. Exactly ${inPhoto.length} people, all ${inPhoto.length} faces clearly visible, front-facing and recognizable, no one else in the image, no text.`;
+        } else if (recipients.length === 1 && inPhoto.length >= 2) {
+          const r = recipients[0];
+          likenessSubject = `the ONE person in the reference photo who is: ${r.description}${r.name ? ` (${r.name})` : ''}`;
+          likenessExtra = 'Draw only that person, waist-up, front-facing, faithful likeness; ignore everyone else in the photo. Exactly one person, no text.';
+        }
+      } catch (e) { console.warn('likeness targeting skipped:', (e as any).message); }
+
       // Kick the likeness options + early storyboard as TRUE background work.
       // These take ~40-60s each; a bare un-awaited fetch keeps the isolate busy and
       // holds the HTTP response open until they finish, so the customer's browser sat
@@ -332,7 +367,11 @@ ${(song.lyrics || '').slice(0, 4000)}`;
           await fetch(`${SUPABASE_URL}/functions/v1/generate-likeness`, {
             method: 'POST',
             headers: { Authorization: `Bearer ${SERVICE_ROLE}`, apikey: SERVICE_ROLE, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ songId: order.song_id, recipient_photo_url: primaryUrl, story_video_order_id }),
+            body: JSON.stringify({
+              songId: order.song_id, recipient_photo_url: primaryUrl, story_video_order_id,
+              // the cast descriptions were written from THIS photo, so target it
+              ...(likenessSubject ? { photo_url: primaryUrl, subject: likenessSubject, extra: likenessExtra } : {}),
+            }),
           });
         } catch (e) { console.error('generate-likeness kick failed:', (e as any).message); }
         if (order.song_id) {

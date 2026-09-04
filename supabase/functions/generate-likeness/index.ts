@@ -77,8 +77,10 @@ function sizedPhotoUrl(url: string): string | null {
   const marker = '/storage/v1/object/public/';
   const i = url.indexOf(marker);
   if (i === -1) return null; // not one of our storage urls — send it untouched
+  // v=<now> defeats the CDN cache: a photo re-uploaded to the same path within
+  // the cache window otherwise comes back as the OLD bytes (2026-09-04).
   return `${url.slice(0, i)}/storage/v1/render/image/public/${url.slice(i + marker.length)}` +
-    `?width=${MAX_EDGE}&height=${MAX_EDGE}&resize=contain&quality=85`;
+    `?width=${MAX_EDGE}&height=${MAX_EDGE}&resize=contain&quality=85&v=${Date.now()}`;
 }
 // Always returns something usable: falls back to the original photo whenever the
 // transform is unavailable, so this can only ever help.
@@ -97,7 +99,7 @@ async function loadPhoto(photoUrl: string): Promise<Blob> {
       console.log(`  downscale unavailable (http ${r.status}) — using the original photo`);
     } catch (e) { console.log(`  downscale failed (${(e as Error).message}) — using the original photo`); }
   }
-  const ref = await fetch(photoUrl);
+  const ref = await fetch(`${photoUrl}${photoUrl.includes('?') ? '&' : '?'}v=${Date.now()}`);
   if (!ref.ok) throw new Error(`ref fetch ${ref.status}`);
   return await ref.blob();
 }
